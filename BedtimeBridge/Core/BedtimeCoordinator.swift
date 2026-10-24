@@ -21,7 +21,12 @@ final class BedtimeCoordinator {
             .lazy
             .compactMap { event -> ShiftCandidate? in
                 guard let rule = WakePlanner.matchingRule(forTitle: event.title ?? "", rules: settings.shiftRules) else { return nil }
-                return ShiftCandidate(title: event.title ?? rule.keyword, start: event.startDate, wakeMinutesBefore: rule.wakeMinutesBefore)
+                return ShiftCandidate(
+                    title: event.title ?? rule.keyword,
+                    start: event.startDate,
+                    wakeMinutesBefore: rule.wakeMinutesBefore,
+                    cause: rule.keyword.trimmingCharacters(in: .whitespaces)
+                )
             }
             .first
 
@@ -33,9 +38,15 @@ final class BedtimeCoordinator {
 
         var appointments: [AppointmentCandidate] = []
         if !appointmentEvents.isEmpty {
-            let origin = try? await travel.origin(homeAddress: settings.homeAddress)
+            // A missing origin or API key becomes the fallback reason on each appointment.
+            let route: Result<(MKMapItem, DriveTimeProvider), Error>
+            do {
+                route = .success((try await travel.origin(homeAddress: settings.homeAddress), try travel.provider(for: settings)))
+            } catch {
+                route = .failure(error)
+            }
             for event in appointmentEvents {
-                appointments.append(await appointmentCandidate(for: event, origin: origin, settings: settings))
+                appointments.append(await appointmentCandidate(for: event, route: route, settings: settings))
             }
         }
 
@@ -46,6 +57,9 @@ final class BedtimeCoordinator {
         let plan = try await buildPlan(settings: settings)
         if plan.hasAlarm {
             try await alarms.replaceAlarms(with: plan.alarmTimes, title: alarmTitle(for: plan))
+        } else {
+            // Don't leave last night's alarms ringing on a day off.
+            try alarms.cancelAll()
         }
         return plan
     }
@@ -61,22 +75,33 @@ final class BedtimeCoordinator {
     func drivingMinutes(to destination: String, arrivingAt arrival: Date, settings: BridgeSettings) async throws -> Int {
         let origin = try await travel.origin(homeAddress: settings.homeAddress)
         let target = try await travel.destination(locationText: destination, coordinates: nil)
-        let seconds = try await travel.drivingTime(from: origin, to: target, arrivingAt: arrival)
+        let seconds = try await travel.provider(for: settings).drivingTime(from: origin, to: target, arrivingBy: arrival)
         return Int((seconds / 60).rounded())
     }
 
-    private func appointmentCandidate(for event: EKEvent, origin: MKMapItem?, settings: BridgeSettings) async -> AppointmentCandidate {
-        let title = event.title ?? "Appointment"
-        let location = event.location ?? ""
-        var seconds = Double(settings.fallbackTravelMinutes) * 60
-        var usedFallback = true
-        if let origin,
-           let destination = try? await travel.destination(locationText: location, coordinates: event.structuredLocation?.geoLocation),
-           let travelTime = try? await travel.drivingTime(from: origin, to: destination, arrivingAt: event.startDate) {
-            seconds = travelTime
-            usedFallback = false
+    private func appointmentCandidate(
+        for event: EKEvent,
+        route: Result<(MKMapItem, DriveTimeProvider), Error>,
+        settings: BridgeSettings
+    ) async -> AppointmentCandidate {
+        var candidate = AppointmentCandidate(
+            title: event.title ?? "Appointment",
+            start: event.startDate,
+            location: event.location ?? "",
+            travelSeconds: Double(settings.fallbackTravelMinutes) * 60
+        )
+        do {
+            let (origin, provider) = try route.get()
+            let destination = try await travel.destination(locationText: candidate.location, coordinates: event.structuredLocation?.geoLocation)
+            candidate.travelSeconds = try await provider.drivingTime(
+                from: origin,
+                to: destination,
+                arrivingBy: candidate.arriveBy(bufferMinutes: settings.arrivalBufferMinutes)
+            )
+        } catch {
+            candidate.fallbackReason = error.localizedDescription
         }
-        return AppointmentCandidate(title: title, start: event.startDate, location: location, travelSeconds: seconds, usedFallbackTravel: usedFallback)
+        return candidate
     }
 
     private func alarmTitle(for plan: WakePlan) -> String {

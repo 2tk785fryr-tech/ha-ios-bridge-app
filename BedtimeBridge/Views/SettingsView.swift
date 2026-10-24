@@ -4,6 +4,7 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(SettingsStore.self) private var store
     @State private var calendars: [EKCalendar] = []
+    @State private var apiKey = ""
 
     var body: some View {
         @Bindable var store = store
@@ -30,12 +31,34 @@ struct SettingsView: View {
             Section {
                 TextField("Notes contain", text: $store.settings.appointmentKeyword)
                 Stepper("Get ready: \(store.settings.getReadyMinutes) min", value: $store.settings.getReadyMinutes, in: 0...240, step: 5)
-                Stepper("If no drive time: \(store.settings.fallbackTravelMinutes) min", value: $store.settings.fallbackTravelMinutes, in: 0...180, step: 5)
-                TextField("Home address (blank = current location)", text: $store.settings.homeAddress, axis: .vertical)
+                Stepper("Arrive early: \(store.settings.arrivalBufferMinutes) min", value: $store.settings.arrivalBufferMinutes, in: 0...60, step: 5)
             } header: {
                 Text("Appointments")
             } footer: {
-                Text("Wake time = start − drive time (with traffic expected at that hour) − get-ready time. Only used when it's earlier than your shift alarm.")
+                Text("Wake time = start − arrive-early buffer − drive time − get-ready time. Only used when it's earlier than your shift alarm.")
+            }
+
+            Section {
+                Picker("Service", selection: $store.settings.driveTimeSource) {
+                    ForEach(DriveTimeSource.allCases) { Text($0.displayName).tag($0) }
+                }
+                if store.settings.driveTimeSource.needsAPIKey {
+                    SecureField("\(store.settings.driveTimeSource.displayName) API key", text: $apiKey)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .onChange(of: apiKey) { _, key in
+                            KeychainStore.setAPIKey(key, for: store.settings.driveTimeSource)
+                        }
+                }
+                if store.settings.driveTimeSource == .google {
+                    Toggle("Plan for heavy traffic", isOn: $store.settings.googlePessimisticTraffic)
+                }
+                TextField("Home address", text: $store.settings.homeAddress, axis: .vertical)
+                Stepper("If no drive time: \(store.settings.fallbackTravelMinutes) min", value: $store.settings.fallbackTravelMinutes, in: 0...180, step: 5)
+            } header: {
+                Text("Drive time")
+            } footer: {
+                Text(driveTimeFooter(for: store.settings.driveTimeSource))
             }
 
             Section("Alarms") {
@@ -52,11 +75,26 @@ struct SettingsView: View {
             }
         }
         .navigationTitle("Settings")
+        .onAppear { apiKey = KeychainStore.apiKey(for: store.settings.driveTimeSource) }
+        .onChange(of: store.settings.driveTimeSource) { _, source in
+            apiKey = KeychainStore.apiKey(for: source)
+        }
         .task {
             let service = BedtimeCoordinator.shared.calendar
             try? await service.ensureAccess()
             calendars = service.eventCalendars()
         }
+    }
+}
+
+private func driveTimeFooter(for source: DriveTimeSource) -> String {
+    switch source {
+    case .apple:
+        "Free, no key. Asks Apple Maps for the traffic it expects when you'd arrive. A blank home address uses your current location."
+    case .tomTom:
+        "Uses TomTom's typical traffic for your arrival time. Needs a home address and a key from developer.tomtom.com."
+    case .google:
+        "Google only plans from a departure time, so the app tries a few departure times until the trip lands on time. Heavy traffic plans for a bad day, not a typical one. Needs a home address and a Routes API key."
     }
 }
 

@@ -91,6 +91,9 @@ private struct PlanSummary: View {
                 Text("No alarm needed").font(.title2.bold())
             }
             Text(plan.reason).foregroundStyle(.secondary)
+            Text("Sent to Home Assistant as: \(plan.cause)")
+                .font(.footnote.monospaced())
+                .foregroundStyle(.secondary)
             if let appointment = plan.appointment, plan.source == .shift {
                 Text("\(appointment.title) doesn't need an earlier alarm.")
                     .font(.footnote)

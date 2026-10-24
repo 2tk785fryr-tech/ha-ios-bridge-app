@@ -2,16 +2,17 @@ import CoreLocation
 import MapKit
 
 final class TravelTimeService {
-    /// Driving time that arrives at `arrival`. Passing an arrival date makes Apple Maps use
-    /// predicted traffic for that time of day instead of current or free-flow conditions.
-    func drivingTime(from origin: MKMapItem, to destination: MKMapItem, arrivingAt arrival: Date) async throws -> TimeInterval {
-        let request = MKDirections.Request()
-        request.source = origin
-        request.destination = destination
-        request.transportType = .automobile
-        request.arrivalDate = arrival
-        let response = try await MKDirections(request: request).calculateETA()
-        return response.expectedTravelTime
+    /// The drive-time service chosen in Settings.
+    func provider(for settings: BridgeSettings) throws -> DriveTimeProvider {
+        let source = settings.driveTimeSource
+        guard source.needsAPIKey else { return AppleDriveTime() }
+        let key = KeychainStore.apiKey(for: source)
+        guard !key.isEmpty else { throw BridgeError.apiKeyMissing(source.displayName) }
+        switch source {
+        case .tomTom: return TomTomDriveTime(apiKey: key)
+        case .google: return GoogleDriveTime(apiKey: key, pessimistic: settings.googlePessimisticTraffic)
+        case .apple: return AppleDriveTime()
+        }
     }
 
     /// The home address from settings, or the current location when it is blank.

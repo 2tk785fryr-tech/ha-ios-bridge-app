@@ -9,8 +9,9 @@ struct WakePlanEntity: TransientAppEntity {
     @Property(title: "Has Alarm")
     var hasAlarm: Bool
 
-    @Property(title: "Source")
-    var source: String
+    /// "Days", "Swings", "calendar", "automade" or "noalarm".
+    @Property(title: "Alarm Cause")
+    var alarmCause: String
 
     @Property(title: "First Alarm")
     var firstAlarm: Date?
@@ -30,7 +31,7 @@ struct WakePlanEntity: TransientAppEntity {
 
     init() {
         hasAlarm = false
-        source = WakeSource.none.rawValue
+        alarmCause = AlarmCause.none
         firstAlarm = nil
         alarmTimesText = ""
         reason = ""
@@ -41,7 +42,7 @@ struct WakePlanEntity: TransientAppEntity {
     init(plan: WakePlan) {
         self.init()
         hasAlarm = plan.hasAlarm
-        source = plan.source.rawValue
+        alarmCause = plan.cause
         firstAlarm = plan.firstAlarm
         alarmTimesText = plan.alarmTimes.map(WakePlanner.format).joined(separator: ", ")
         reason = plan.reason
@@ -56,12 +57,12 @@ struct WakePlanEntity: TransientAppEntity {
         )
     }
 
-    static func homeAssistantJSON(for plan: WakePlan) -> String {
+    static func homeAssistantJSON(for plan: WakePlan, buffer: Int = SettingsStore.shared.settings.arrivalBufferMinutes) -> String {
         let iso = ISO8601DateFormatter()
         iso.timeZone = .current
         var body: [String: Any] = [
             "has_alarm": plan.hasAlarm,
-            "source": plan.source.rawValue,
+            "alarm_cause": plan.cause,
             "reason": plan.reason,
             "alarm_times": plan.alarmTimes.map { iso.string(from: $0) },
         ]
@@ -71,7 +72,9 @@ struct WakePlanEntity: TransientAppEntity {
                 "title": appointment.title,
                 "start": iso.string(from: appointment.start),
                 "location": appointment.location,
+                "leave_by": iso.string(from: appointment.leaveBy(bufferMinutes: buffer)),
                 "drive_minutes": Int((appointment.travelSeconds / 60).rounded()),
+                "drive_time_estimated": appointment.usedFallbackTravel,
             ]
         }
         if let shift = plan.shift {
