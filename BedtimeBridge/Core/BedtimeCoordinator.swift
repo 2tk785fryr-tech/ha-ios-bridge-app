@@ -1,6 +1,7 @@
 import EventKit
 import Foundation
 import MapKit
+import WidgetKit
 
 /// Glues calendar, drive time, Home Assistant and alarms together. Used by the app UI,
 /// the Shortcuts actions and the alarm buttons, so they all behave the same.
@@ -98,6 +99,7 @@ final class BedtimeCoordinator {
     func cancelAlarms(settings: BridgeSettings) async throws {
         try alarms.cancelAll()
         leaveReminder.clear()
+        updateWidget { $0 = NextAlarmSnapshot(alarmStyle: settings.alarmStyle.rawValue) }
         await publish(state: nil, cause: AlarmCause.none, alarmTimes: [], reason: "Cancelled", event: "cancelled", settings: settings)
     }
 
@@ -132,6 +134,16 @@ final class BedtimeCoordinator {
             leaveReminder.clear()
         }
 
+        updateWidget { snapshot in
+            snapshot = NextAlarmSnapshot(
+                alarmTimes: plan.alarmTimes,
+                cause: plan.cause,
+                label: widgetLabel(for: plan),
+                leaveBy: plan.source == .appointment ? plan.appointment?.leaveBy(bufferMinutes: settings.arrivalBufferMinutes) : nil,
+                alarmStyle: settings.alarmStyle.rawValue
+            )
+        }
+
         await publish(
             state: plan.firstAlarm,
             cause: plan.cause,
@@ -147,6 +159,10 @@ final class BedtimeCoordinator {
     func alarmSnoozed(id: UUID, settings: BridgeSettings) async {
         alarms.snooze(id)
         let ringsAgain = Date.now.addingTimeInterval(Double(settings.snoozeMinutes) * 60)
+        updateWidget { snapshot in
+            snapshot.snoozedUntil = ringsAgain
+            snapshot.alarmTimes = alarms.scheduledAlarmTimes()
+        }
         if let homeAssistant = HomeAssistantClient.configured(settings) {
             try? await homeAssistant.turnOn(settings.snoozeHelper)
         }
@@ -162,6 +178,10 @@ final class BedtimeCoordinator {
             try? await homeAssistant.turnOn(settings.stopHelper)
         }
         let remaining = alarms.scheduledAlarmTimes().filter { $0 > .now }
+        updateWidget { snapshot in
+            snapshot.snoozedUntil = nil
+            snapshot.alarmTimes = remaining
+        }
         await publish(
             state: remaining.first,
             cause: remaining.isEmpty ? AlarmCause.none : lastCause,
@@ -175,6 +195,7 @@ final class BedtimeCoordinator {
            let provider = try? travel.provider(for: settings),
            let origin = try? await travel.origin(homeAddress: settings.homeAddress) {
             await leaveReminder.recheck(using: provider, origin: origin, travel: travel, leadMinutes: settings.leaveReminderLeadMinutes)
+            updateWidget { $0.leaveBy = leaveReminder.pendingTrip?.leaveBy }
         }
     }
 
@@ -261,6 +282,23 @@ final class BedtimeCoordinator {
         let arrival = plan.source == .appointment ? plan.appointment?.start : plan.shift?.start
         guard let arrival, arrival > first else { return nil }
         return first...arrival
+    }
+
+    /// Saves what the Lock Screen widget shows and asks WidgetKit to redraw it.
+    private func updateWidget(_ change: (inout NextAlarmSnapshot) -> Void) {
+        var snapshot = NextAlarmSnapshot.load()
+        change(&snapshot)
+        snapshot.save()
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    private func widgetLabel(for plan: WakePlan) -> String {
+        switch plan.source {
+        case .shift: "\(plan.cause) shift"
+        case .appointment: plan.appointment?.title ?? "Appointment"
+        case .manual: "Day off"
+        case .none: ""
+        }
     }
 
     private func alarmTitle(for plan: WakePlan) -> String {

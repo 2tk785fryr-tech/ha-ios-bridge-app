@@ -5,6 +5,7 @@ import WidgetKit
 @main
 struct BedtimeBridgeWidgets: WidgetBundle {
     var body: some Widget {
+        NextAlarmWidget()
         WakeAlarmLiveActivity()
     }
 }

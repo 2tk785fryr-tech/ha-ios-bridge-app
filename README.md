@@ -43,6 +43,20 @@ alarms. They never see app alarms, so in app-alarm mode the app has to tell HA i
 **Turn off those Shortcuts automations when you use app alarms,** or a Clock alarm and an app
 alarm could both fire. Also delete the Clock alarms the old shortcut toggled.
 
+## Lock Screen widget
+
+Add **Next Alarm** from the Lock Screen widget gallery (Bedtime Bridge). It shows the next
+alarm time, why it's set ("Days shift", "Dentist", "Day off"), and leave-by on appointment
+mornings. While snoozing it shows the snooze time instead. Sizes: rectangular (time, reason,
+leave-by), circular (time) and the inline line above the clock. There's also a small
+Home Screen widget.
+
+The app updates it whenever alarms change (plan, snooze, stop, cancel). It moves on to the next
+alarm by itself as each one passes. In Clock app mode it shows the planned times but can't
+see Clock snoozes. The app and widget share data through the App Group
+`group.com.example.BedtimeBridge`. If you change the bundle ID, change the group in
+`project.yml` and `Shared/NextAlarmSnapshot.swift` to match.
+
 ## Leave-by reminder and bad weather
 
 - **Leave-by reminder.** On appointment mornings you get a notification 15 min (adjustable)
@@ -167,8 +181,8 @@ BedtimeBridge/
     DriveTime/  Apple Maps, TomTom and Google drive-time providers
   Intents/    Shortcuts actions, Snooze/Stop button actions, Wake Plan result type
   Views/      main screen and settings
-BedtimeBridgeWidgets/  Live Activity that shows the snooze countdown
-Shared/       alarm metadata used by the app and the widget
+BedtimeBridgeWidgets/  Lock Screen "Next Alarm" widget and the snooze-countdown Live Activity
+Shared/       alarm metadata and widget snapshot used by both the app and the widgets
 BedtimeBridgeTests/
 project.yml   XcodeGen spec (the .xcodeproj is generated, not committed)
 ```

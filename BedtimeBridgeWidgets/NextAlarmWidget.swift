@@ -1,0 +1,102 @@
+import SwiftUI
+import WidgetKit
+
+struct NextAlarmEntry: TimelineEntry {
+    let date: Date
+    let snapshot: NextAlarmSnapshot
+
+    var nextAlarm: Date? { snapshot.nextAlarm(after: date) }
+    var isSnoozing: Bool { snapshot.snoozedUntil.map { $0 > date } ?? false }
+}
+
+struct NextAlarmProvider: TimelineProvider {
+    func placeholder(in context: Context) -> NextAlarmEntry {
+        NextAlarmEntry(
+            date: .now,
+            snapshot: NextAlarmSnapshot(alarmTimes: [.now.addingTimeInterval(8 * 3600)], cause: "Days", label: "Days shift")
+        )
+    }
+
+    func getSnapshot(in context: Context, completion: @escaping (NextAlarmEntry) -> Void) {
+        completion(context.isPreview ? placeholder(in: context) : NextAlarmEntry(date: .now, snapshot: .load()))
+    }
+
+    /// One entry now plus one as each alarm passes, so the widget moves on to the next alarm
+    /// (or "No alarm") without waiting for the app. The app reloads it whenever alarms change.
+    func getTimeline(in context: Context, completion: @escaping (Timeline<NextAlarmEntry>) -> Void) {
+        let snapshot = NextAlarmSnapshot.load()
+        let now = Date.now
+        let entries = ([now] + snapshot.changeDates(after: now)).map { NextAlarmEntry(date: $0, snapshot: snapshot) }
+        completion(Timeline(entries: entries, policy: .never))
+    }
+}
+
+struct NextAlarmWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "NextAlarm", provider: NextAlarmProvider()) { entry in
+            NextAlarmView(entry: entry)
+                .containerBackground(.fill.tertiary, for: .widget)
+        }
+        .configurationDisplayName("Next Alarm")
+        .description("Your next wake-up alarm and why it's set.")
+        .supportedFamilies([.accessoryRectangular, .accessoryCircular, .accessoryInline, .systemSmall])
+    }
+}
+
+struct NextAlarmView: View {
+    @Environment(\.widgetFamily) private var family
+    let entry: NextAlarmEntry
+
+    var body: some View {
+        switch family {
+        case .accessoryInline:
+            if let alarm = entry.nextAlarm {
+                Label("\(time(alarm)) · \(entry.snapshot.label)", systemImage: entry.isSnoozing ? "zzz" : "alarm")
+            } else {
+                Label("No alarm", systemImage: "alarm")
+            }
+
+        case .accessoryCircular:
+            VStack(spacing: 0) {
+                Image(systemName: entry.isSnoozing ? "zzz" : "alarm")
+                    .font(.caption)
+                if let alarm = entry.nextAlarm {
+                    Text(alarm, format: .dateTime.hour(.defaultDigits(amPM: .omitted)).minute())
+                        .font(.headline)
+                        .minimumScaleFactor(0.6)
+                } else {
+                    Text("Off").font(.headline)
+                }
+            }
+            .widgetAccentable()
+
+        default:
+            VStack(alignment: .leading, spacing: 1) {
+                if let alarm = entry.nextAlarm {
+                    Label(time(alarm), systemImage: entry.isSnoozing ? "zzz" : "alarm")
+                        .font(.headline)
+                        .widgetAccentable()
+                    Text(entry.isSnoozing ? "Snoozing · \(entry.snapshot.label)" : entry.snapshot.label)
+                        .font(.caption)
+                        .lineLimit(1)
+                    if let leaveBy = entry.snapshot.leaveBy, leaveBy > entry.date {
+                        Text("Leave by \(time(leaveBy))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else if entry.snapshot.alarmStyle == "clock" {
+                        Text("Clock app alarms").font(.caption2).foregroundStyle(.secondary)
+                    }
+                } else {
+                    Label("No alarm", systemImage: "alarm")
+                        .font(.headline)
+                    Text("Nothing planned").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func time(_ date: Date) -> String {
+        date.formatted(date: .omitted, time: .shortened)
+    }
+}

@@ -4,3 +4,4 @@ xcuserdata/
 .DS_Store
 BedtimeBridge/Info.plist
 BedtimeBridgeWidgets/Info.plist
+*.entitlements
