@@ -56,6 +56,8 @@ enum AlarmCause {
 
 struct WakePlan: Equatable {
     var source: WakeSource
+    /// When you need to be up: the last or first alarm, per Settings.
+    var wakeTime: Date? = nil
     var alarmTimes: [Date]
     var reason: String
     var shift: ShiftCandidate?
@@ -92,8 +94,14 @@ enum WakePlanner {
         return notes.range(of: keyword, options: [.caseInsensitive, .diacriticInsensitive]) != nil
     }
 
-    static func alarmTimes(first: Date, count: Int, spacingMinutes: Int) -> [Date] {
-        (0..<max(count, 1)).map { first.addingTimeInterval(Double($0 * spacingMinutes) * 60) }
+    /// The alarm series around a wake-up time. With `.last` the wake-up time is the final
+    /// alarm and the others count back from it; with `.first` they follow it.
+    static func alarmTimes(wakeTime: Date, count: Int, spacingMinutes: Int, wakeIs: WakeTimeAlarm) -> [Date] {
+        let count = max(count, 1)
+        let first = wakeIs == .last
+            ? wakeTime.addingTimeInterval(-Double((count - 1) * spacingMinutes) * 60)
+            : wakeTime
+        return (0..<count).map { first.addingTimeInterval(Double($0 * spacingMinutes) * 60) }
     }
 
     /// Picks the wake time: the shift's wake time, unless an appointment needs you up earlier.
@@ -141,8 +149,8 @@ enum WakePlanner {
             }
         }
 
-        let makeTimes = { (first: Date) in
-            alarmTimes(first: first, count: settings.alarmCount, spacingMinutes: settings.alarmSpacingMinutes)
+        let makeTimes = { (wake: Date) in
+            alarmTimes(wakeTime: wake, count: settings.alarmCount, spacingMinutes: settings.alarmSpacingMinutes, wakeIs: settings.wakeTimeIs)
         }
 
         let weatherNote = weather.map { " +\($0.minutes) min for \($0.reason)" } ?? ""
@@ -153,6 +161,7 @@ enum WakePlanner {
             let leaveBy = appointment.leaveBy(bufferMinutes: settings.arrivalBufferMinutes)
             return WakePlan(
                 source: .appointment,
+                wakeTime: wake,
                 alarmTimes: makeTimes(wake),
                 reason: "\(appointment.title) at \(format(appointment.start)). Leave by \(format(leaveBy)) (\(minutes) min drive, \(settings.arrivalBufferMinutes) min early)\(weatherNote)",
                 shift: shift,
@@ -165,6 +174,7 @@ enum WakePlanner {
         if let shift, let shiftWake {
             return WakePlan(
                 source: .shift,
+                wakeTime: shiftWake,
                 alarmTimes: makeTimes(shiftWake),
                 reason: "\(shift.cause) shift at \(format(shift.start))\(weatherNote)",
                 shift: shift,

@@ -20,7 +20,11 @@ instead of a long chain of calendar, maps and alarm actions.
    (Off = no work alarm, Days/Swings = use that shift's lead time). It warns if
    `sensor.current_shift` disagrees with the calendar, and adds extra time when the hourly
    forecast looks bad between waking and arriving.
-5. **Sets the alarms.** 3 alarms 10 minutes apart (you can change this), either as the app's own
+5. **Sets the alarms.** 3 alarms 10 minutes apart (you can change this). The worked-out
+   wake-up time is the **last** alarm by default, so the others go off earlier (up at 5:30 →
+   5:10, 5:20, 5:30). Settings → Alarms → *Wake-up time is the* can make it the first alarm
+   instead (5:30, 5:40, 5:50). The day-off *Set Wake-Up Alarms* action follows the same
+   setting. Alarms are set either as the app's own
    alarms or as times for your shortcut to make Clock alarms with (see [Alarms and snooze](#alarms-and-snooze)).
 6. **Nothing found.** It returns `Has Alarm = false` so your shortcut can ask about a
    day-off alarm and the Sleep In helper, as it does now.
@@ -71,6 +75,7 @@ integration's **Configure**. Keep it private.
 | Entity | |
 |---|---|
 | `sensor.bedtime_bridge_next_alarm` | Next alarm (timestamp). Attributes: all alarm times, cause, label, style |
+| `sensor.bedtime_bridge_wake_up_time` | When you need to be up (the last alarm by default, or the first) |
 | `sensor.bedtime_bridge_alarm_cause` | `Days` / `Swings` / `calendar` / `automade` / `noalarm` |
 | `sensor.bedtime_bridge_reason` | "Dentist at 7:00 AM. Leave by 6:26 AM (…)". Attribute: warnings |
 | `sensor.bedtime_bridge_leave_by`, `_drive_time`, `_bad_weather_extra_time` | Appointment and weather details |
@@ -135,8 +140,8 @@ Rounded (light for the big alarm time).
 
 | Action | Use |
 |---|---|
-| **Plan Wake-Up Alarms** | The main step. Returns a *Wake Plan*: `Has Alarm`, `First Alarm`, `Alarm Times`, `Alarm Dates`, `Needs Clock Alarms`, `Alarm Cause`, `Reason`, `Warnings`, `Home Assistant JSON`. Turn off *Set Alarms* to preview only. If nothing needs an alarm, it also clears the app's old alarms. |
-| **Set Wake-Up Alarms** | The day-off path. Give it a time and it sets the usual alarm series. A time already past today rolls to tomorrow. |
+| **Plan Wake-Up Alarms** | The main step. Returns a *Wake Plan*: `Has Alarm`, `Wake-Up Time`, `First Alarm`, `Alarm Times`, `Alarm Dates`, `Needs Clock Alarms`, `Alarm Cause`, `Reason`, `Warnings`, `Home Assistant JSON`. Turn off *Set Alarms* to preview only. If nothing needs an alarm, it also clears the app's old alarms. |
+| **Set Wake-Up Alarms** | The day-off path. Give it your wake-up time and it sets the usual alarm series around it (ending at it by default). A time already past today rolls to tomorrow. |
 | **Cancel Wake-Up Alarms** | Clears every alarm the app has set and the leave-by reminder. |
 | **Get Drive Time** | Drive minutes from home to a place, arriving by a given time. Useful in other shortcuts. |
 
@@ -178,7 +183,7 @@ Plan Wake-Up Alarms (Set Alarms: on)            → Wake Plan
 If  Wake Plan › Has Alarm  is  false
     Ask for Input (Time) "Alarm for your day off?"
     If  Provided Input has any value
-        Set Wake-Up Alarms (First Alarm: Provided Input)   → Wake Plan
+        Set Wake-Up Alarms (Wake-Up Time: Provided Input)  → Wake Plan
     End If
     Choose from Menu "Turn on Sleep In?"  …                 (your existing step)
 End If

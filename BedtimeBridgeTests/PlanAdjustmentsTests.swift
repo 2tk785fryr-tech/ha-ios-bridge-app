@@ -77,12 +77,12 @@ final class PlanAdjustmentsTests: XCTestCase {
     func testWeatherMovesShiftAlarmAndAppointmentDrive() {
         let weather = WeatherAdjustment(minutes: 15, reason: "pouring at 8 AM")
         let shiftPlan = WakePlanner.plan(shift: daysShift, appointments: [], settings: settings, now: now, weather: weather)
-        XCTAssertEqual(shiftPlan.firstAlarm, hours(8).addingTimeInterval(-15 * 60))
+        XCTAssertEqual(shiftPlan.wakeTime, hours(8).addingTimeInterval(-15 * 60))
 
         let appointment = AppointmentCandidate(title: "Dentist", start: hours(7), location: "Main St", travelSeconds: 1800)
         let plan = WakePlanner.plan(shift: nil, appointments: [appointment], settings: settings, now: now, weather: weather)
         // 7h − 10 min early − (30 + 15) min drive − 60 min ready
-        XCTAssertEqual(plan.firstAlarm, hours(7).addingTimeInterval(-(10 + 45 + 60) * 60))
+        XCTAssertEqual(plan.wakeTime, hours(7).addingTimeInterval(-(10 + 45 + 60) * 60))
     }
 
     // MARK: Settings from the Home Assistant integration

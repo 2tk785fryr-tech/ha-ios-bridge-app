@@ -12,6 +12,16 @@ final class WakePlannerTests: XCTestCase {
         let plan = WakePlanner.plan(shift: shift, appointments: [], settings: settings, now: now)
 
         XCTAssertEqual(plan.cause, "Days")
+        XCTAssertEqual(plan.wakeTime, hours(8))
+        // Default: the wake-up time is the last alarm; the others count back from it.
+        XCTAssertEqual(plan.alarmTimes, [hours(8).addingTimeInterval(-1200), hours(8).addingTimeInterval(-600), hours(8)])
+    }
+
+    func testWakeTimeAsFirstAlarm() {
+        var firstSettings = settings
+        firstSettings.wakeTimeIs = .first
+        let shift = ShiftCandidate(title: "Days", start: hours(9), wakeMinutesBefore: 60, cause: "Days")
+        let plan = WakePlanner.plan(shift: shift, appointments: [], settings: firstSettings, now: now)
         XCTAssertEqual(plan.alarmTimes, [hours(8), hours(8).addingTimeInterval(600), hours(8).addingTimeInterval(1200)])
     }
 
@@ -22,7 +32,7 @@ final class WakePlannerTests: XCTestCase {
         let plan = WakePlanner.plan(shift: shift, appointments: [appointment], settings: settings, now: now)
 
         XCTAssertEqual(plan.cause, "calendar")
-        XCTAssertEqual(plan.firstAlarm, hours(5).addingTimeInterval(20 * 60))
+        XCTAssertEqual(plan.wakeTime, hours(5).addingTimeInterval(20 * 60))
         XCTAssertEqual(appointment.leaveBy(bufferMinutes: 10), hours(6).addingTimeInterval(20 * 60))
     }
 
@@ -32,7 +42,7 @@ final class WakePlannerTests: XCTestCase {
         let plan = WakePlanner.plan(shift: shift, appointments: [appointment], settings: settings, now: now)
 
         XCTAssertEqual(plan.cause, "Swings")
-        XCTAssertEqual(plan.firstAlarm, hours(6))
+        XCTAssertEqual(plan.wakeTime, hours(6))
     }
 
     func testAppointmentWithoutShiftIsUsed() {
@@ -40,7 +50,7 @@ final class WakePlannerTests: XCTestCase {
         let plan = WakePlanner.plan(shift: nil, appointments: [appointment], settings: settings, now: now)
 
         XCTAssertEqual(plan.cause, "calendar")
-        XCTAssertEqual(plan.firstAlarm, hours(10).addingTimeInterval(-600 - 1200 - 3600))
+        XCTAssertEqual(plan.wakeTime, hours(10).addingTimeInterval(-600 - 1200 - 3600))
         XCTAssertEqual(plan.warnings.count, 1)
     }
 
@@ -59,7 +69,9 @@ final class WakePlannerTests: XCTestCase {
     }
 
     func testCustomAlarmSeries() {
-        XCTAssertEqual(WakePlanner.alarmTimes(first: now, count: 2, spacingMinutes: 5), [now, now.addingTimeInterval(300)])
+        XCTAssertEqual(WakePlanner.alarmTimes(wakeTime: now, count: 2, spacingMinutes: 5, wakeIs: .first), [now, now.addingTimeInterval(300)])
+        XCTAssertEqual(WakePlanner.alarmTimes(wakeTime: now, count: 2, spacingMinutes: 5, wakeIs: .last), [now.addingTimeInterval(-300), now])
+        XCTAssertEqual(WakePlanner.alarmTimes(wakeTime: now, count: 1, spacingMinutes: 5, wakeIs: .last), [now])
     }
 
     func testPastManualTimeRollsToTomorrow() {

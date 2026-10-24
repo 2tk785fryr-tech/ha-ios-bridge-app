@@ -36,8 +36,9 @@ PLAN = {
     "type": "planned",
     "data": {
         "alarm_cause": "calendar",
-        "alarm_time": "2026-10-26T09:26:00+00:00",
-        "alarm_times": ["2026-10-26T09:26:00+00:00", "2026-10-26T09:36:00+00:00"],
+        "alarm_time": "2026-10-26T09:16:00+00:00",
+        "wake_time": "2026-10-26T09:26:00+00:00",
+        "alarm_times": ["2026-10-26T09:16:00+00:00", "2026-10-26T09:26:00+00:00"],
         "label": "Dentist",
         "reason": "Dentist at 7:00 AM. Leave by 6:26 AM",
         "leave_by": "2026-10-26T10:26:00+00:00",
@@ -57,7 +58,8 @@ async def test_plan_updates_entities_and_seeds_settings(hass, hass_client_no_aut
     reply = await send(hass_client_no_auth, PLAN)
     await hass.async_block_till_done()
 
-    assert hass.states.get("sensor.bedtime_bridge_next_alarm").state == "2026-10-26T09:26:00+00:00"
+    assert hass.states.get("sensor.bedtime_bridge_next_alarm").state == "2026-10-26T09:16:00+00:00"
+    assert hass.states.get("sensor.bedtime_bridge_wake_up_time").state == "2026-10-26T09:26:00+00:00"
     assert hass.states.get("sensor.bedtime_bridge_alarm_cause").state == "calendar"
     assert hass.states.get("sensor.bedtime_bridge_drive_time").state == "24"
     assert hass.states.get("sensor.bedtime_bridge_leave_by").state == "2026-10-26T10:26:00+00:00"

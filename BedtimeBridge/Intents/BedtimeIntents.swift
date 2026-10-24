@@ -32,19 +32,19 @@ struct PlanWakeAlarmsIntent: AppIntent {
 struct SetWakeAlarmsIntent: AppIntent {
     static var title: LocalizedStringResource = "Set Wake-Up Alarms"
     static var description = IntentDescription(
-        "Sets your usual series of alarms (e.g. 3 alarms, 10 minutes apart) starting at the time you choose."
+        "Sets your usual series of alarms (e.g. 3 alarms, 10 minutes apart) around the wake-up time you choose. By default it's the last alarm, so the others go off earlier."
     )
 
-    @Parameter(title: "First Alarm")
-    var firstAlarm: Date
+    @Parameter(title: "Wake-Up Time")
+    var wakeTime: Date
 
     static var parameterSummary: some ParameterSummary {
-        Summary("Set wake-up alarms starting at \(\.$firstAlarm)")
+        Summary("Set wake-up alarms for \(\.$wakeTime)")
     }
 
     @MainActor
     func perform() async throws -> some IntentResult & ReturnsValue<WakePlanEntity> {
-        let plan = try await BedtimeCoordinator.shared.scheduleManual(firstAlarm: firstAlarm, settings: SettingsStore.shared.settings)
+        let plan = try await BedtimeCoordinator.shared.scheduleManual(wakeTime: wakeTime, settings: SettingsStore.shared.settings)
         return .result(value: WakePlanEntity(plan: plan))
     }
 }

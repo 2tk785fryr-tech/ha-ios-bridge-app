@@ -33,6 +33,9 @@ struct BridgeSettings: Codable, Equatable {
     var fallbackTravelMinutes = 30
     var alarmCount = 3
     var alarmSpacingMinutes = 10
+    /// Whether the planned wake-up time is the last alarm of the series (the others go
+    /// off earlier) or the first (the others go off later).
+    var wakeTimeIs: WakeTimeAlarm = .last
     /// Only events starting within this many hours from now are considered.
     var lookAheadHours = 24
     /// Starting point for drive times. Empty means current location.
@@ -75,6 +78,22 @@ struct BridgeSettings: Codable, Equatable {
     var leaveReminderEnabled = true
     /// Notification this many minutes before leave-by time.
     var leaveReminderLeadMinutes = 15
+}
+
+enum WakeTimeAlarm: String, Codable, CaseIterable, Identifiable {
+    /// Default: e.g. wake-up 5:30 → alarms 5:10, 5:20, 5:30.
+    case last
+    /// e.g. wake-up 5:30 → alarms 5:30, 5:40, 5:50.
+    case first
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .last: "Last alarm"
+        case .first: "First alarm"
+        }
+    }
 }
 
 enum AlarmStyle: String, Codable, CaseIterable, Identifiable {

@@ -60,6 +60,7 @@
   "entity": {
     "sensor": {
       "next_alarm": { "name": "Next alarm" },
+      "wake_time": { "name": "Wake-up time" },
       "alarm_cause": { "name": "Alarm cause" },
       "reason": { "name": "Reason" },
       "leave_by": { "name": "Leave by" },

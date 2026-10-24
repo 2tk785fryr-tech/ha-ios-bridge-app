@@ -46,6 +46,12 @@ SENSORS = (
         },
     ),
     BridgeSensorDescription(
+        key="wake_time",
+        translation_key="wake_time",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        value=lambda s: _time(s.get("wake_time")),
+    ),
+    BridgeSensorDescription(
         key="alarm_cause",
         translation_key="alarm_cause",
         icon="mdi:alarm-note",

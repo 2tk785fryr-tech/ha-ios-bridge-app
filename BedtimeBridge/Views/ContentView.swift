@@ -24,7 +24,7 @@ struct ContentView: View {
                         if let weather = plan.weather {
                             WarningBanner(text: "+\(weather.minutes) min for \(weather.reason)", systemImage: "cloud.rain")
                         }
-                        if plan.source == .appointment, let appointment = plan.appointment, let wake = plan.firstAlarm {
+                        if plan.source == .appointment, let appointment = plan.appointment, let wake = plan.wakeTime {
                             MorningTimeline(appointment: appointment, wake: wake, bufferMinutes: settings.arrivalBufferMinutes)
                         }
                     } else {
@@ -135,8 +135,8 @@ struct ContentView: View {
     }
 
     private var primaryTitle: String {
-        if let first = plan?.firstAlarm, plan?.hasAlarm == true {
-            return "Set \(settings.alarmCount) alarms from \(WakePlanner.format(first))"
+        if let wake = plan?.wakeTime, plan?.hasAlarm == true {
+            return "Set \(settings.alarmCount) alarms, up by \(WakePlanner.format(wake))"
         }
         return "Plan and set alarms"
     }
@@ -170,15 +170,15 @@ private struct PlanCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Text(plan.hasAlarm ? "First alarm" : "Tomorrow")
+                Text(plan.hasAlarm ? "Wake-up time" : "Tomorrow")
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(Theme.textMuted)
                 Spacer()
                 if plan.hasAlarm { CauseChip(plan: plan) }
             }
 
-            if let first = plan.firstAlarm {
-                BigTime(date: first)
+            if let wake = plan.wakeTime ?? plan.firstAlarm {
+                BigTime(date: wake)
             } else {
                 Text("No alarm needed")
                     .font(.system(size: 34, weight: .light, design: .rounded))
@@ -191,12 +191,14 @@ private struct PlanCard: View {
 
             if plan.alarmTimes.count > 1 {
                 HStack(spacing: 8) {
-                    ForEach(Array(plan.alarmTimes.enumerated()), id: \.offset) { index, time in
+                    // The highlighted pill is the wake-up time: last by default, or first.
+                    ForEach(Array(plan.alarmTimes.enumerated()), id: \.offset) { _, time in
+                        let isWake = time == plan.wakeTime
                         Text(time.formatted(.dateTime.hour(.defaultDigits(amPM: .omitted)).minute()))
-                            .font(.system(size: 15, weight: index == 0 ? .bold : .semibold))
-                            .foregroundStyle(index == 0 ? .white : Theme.textSoft)
+                            .font(.system(size: 15, weight: isWake ? .bold : .semibold))
+                            .foregroundStyle(isWake ? .white : Theme.textSoft)
                             .frame(maxWidth: .infinity, minHeight: 40)
-                            .background(index == 0 ? Theme.accent : Theme.raised, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .background(isWake ? Theme.accent : Theme.raised, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                     }
                 }
             }

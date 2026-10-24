@@ -96,11 +96,11 @@ final class BedtimeCoordinator {
     }
 
     /// For the day-off path: you pick the time, the app sets the usual alarm series.
-    func scheduleManual(firstAlarm: Date, settings phoneSettings: BridgeSettings) async throws -> WakePlan {
+    func scheduleManual(wakeTime: Date, settings phoneSettings: BridgeSettings) async throws -> WakePlan {
         let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
-        let first = Self.nextOccurrence(ofTimeIn: firstAlarm)
-        let times = WakePlanner.alarmTimes(first: first, count: settings.alarmCount, spacingMinutes: settings.alarmSpacingMinutes)
-        let plan = WakePlan(source: .manual, alarmTimes: times, reason: "Day off alarm")
+        let wake = Self.nextOccurrence(ofTimeIn: wakeTime)
+        let times = WakePlanner.alarmTimes(wakeTime: wake, count: settings.alarmCount, spacingMinutes: settings.alarmSpacingMinutes, wakeIs: settings.wakeTimeIs)
+        let plan = WakePlan(source: .manual, wakeTime: wake, alarmTimes: times, reason: "Day off alarm")
         try await apply(plan, settings: settings)
         return plan
     }

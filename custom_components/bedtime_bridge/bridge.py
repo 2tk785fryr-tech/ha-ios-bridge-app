@@ -46,6 +46,7 @@ STORAGE_VERSION = 1
 PLAN_FIELDS = (
     "alarm_cause",
     "alarm_time",
+    "wake_time",
     "alarm_times",
     "label",
     "reason",
@@ -62,6 +63,7 @@ def empty_state() -> dict[str, Any]:
     return {
         "alarm_cause": "noalarm",
         "alarm_time": None,
+        "wake_time": None,
         "alarm_times": [],
         "label": None,
         "reason": None,
@@ -254,6 +256,7 @@ class BedtimeBridge:
                     "type": kind,
                     "alarm_cause": self.state.get("alarm_cause"),
                     "alarm_time": self.state.get("alarm_time"),
+                    "wake_time": self.state.get("wake_time"),
                     "alarm_times": self.state.get("alarm_times"),
                     "label": self.state.get("label"),
                     "leave_by": self.state.get("leave_by"),

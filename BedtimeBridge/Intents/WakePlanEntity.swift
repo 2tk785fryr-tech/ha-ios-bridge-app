@@ -13,6 +13,10 @@ struct WakePlanEntity: TransientAppEntity {
     @Property(title: "Alarm Cause")
     var alarmCause: String
 
+    /// When you need to be up (the last or first alarm, per Settings).
+    @Property(title: "Wake-Up Time")
+    var wakeTime: Date?
+
     @Property(title: "First Alarm")
     var firstAlarm: Date?
 
@@ -40,6 +44,7 @@ struct WakePlanEntity: TransientAppEntity {
     init() {
         hasAlarm = false
         alarmCause = AlarmCause.none
+        wakeTime = nil
         firstAlarm = nil
         alarmTimesText = ""
         alarmDates = []
@@ -53,6 +58,7 @@ struct WakePlanEntity: TransientAppEntity {
         self.init()
         hasAlarm = plan.hasAlarm
         alarmCause = plan.cause
+        wakeTime = plan.wakeTime
         firstAlarm = plan.firstAlarm
         alarmTimesText = plan.alarmTimes.map(WakePlanner.format).joined(separator: ", ")
         alarmDates = plan.alarmTimes

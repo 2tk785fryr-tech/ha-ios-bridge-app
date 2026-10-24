@@ -186,6 +186,7 @@ extension WakePlan {
             "alarm_style": settings.alarmStyle.rawValue,
         ]
         if let first = firstAlarm { body["alarm_time"] = iso.string(from: first) }
+        if let wakeTime { body["wake_time"] = iso.string(from: wakeTime) }
         if let appointment, source == .appointment {
             let leaveBy = iso.string(from: appointment.leaveBy(bufferMinutes: settings.arrivalBufferMinutes))
             body["leave_by"] = leaveBy

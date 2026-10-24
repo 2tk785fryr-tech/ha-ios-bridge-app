@@ -104,6 +104,13 @@ struct SettingsView: View {
 private struct AlarmSettingsSection: View {
     @Binding var settings: BridgeSettings
 
+    /// e.g. "Up at 5:30 → alarms 5:10, 5:20, 5:30"
+    private var seriesExample: String {
+        let wake = Calendar.current.date(bySettingHour: 5, minute: 30, second: 0, of: .now) ?? .now
+        let times = WakePlanner.alarmTimes(wakeTime: wake, count: settings.alarmCount, spacingMinutes: settings.alarmSpacingMinutes, wakeIs: settings.wakeTimeIs)
+        return "Up at 5:30 → alarms " + times.map(WakePlanner.format).joined(separator: ", ")
+    }
+
     var body: some View {
         Section {
             Picker("Alarms", selection: $settings.alarmStyle) {
@@ -111,6 +118,12 @@ private struct AlarmSettingsSection: View {
             }
             Stepper("\(settings.alarmCount) alarms", value: $settings.alarmCount, in: 1...10)
             Stepper("\(settings.alarmSpacingMinutes) min apart", value: $settings.alarmSpacingMinutes, in: 1...60)
+            Picker("Wake-up time is the", selection: $settings.wakeTimeIs) {
+                ForEach(WakeTimeAlarm.allCases) { Text($0.displayName).tag($0) }
+            }
+            Text(seriesExample)
+                .font(.footnote)
+                .foregroundStyle(Theme.textMuted)
             if settings.alarmStyle == .app {
                 Stepper("Snooze: \(settings.snoozeMinutes) min", value: $settings.snoozeMinutes, in: 1...30)
                 Toggle("Stop cancels the rest", isOn: $settings.stopCancelsRemaining)
