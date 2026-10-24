@@ -10,6 +10,7 @@ struct SettingsView: View {
         @Bindable var store = store
 
         Form {
+            Group {
             Section {
                 ForEach($store.settings.shiftRules) { $rule in
                     HStack {
@@ -80,7 +81,13 @@ struct SettingsView: View {
             Section("Appointment calendars") {
                 CalendarPicker(calendars: calendars, selection: $store.settings.appointmentCalendarIDs)
             }
+            }
+            .listRowBackground(Theme.surface)
+            .listRowSeparatorTint(Theme.divider)
         }
+        .scrollContentBackground(.hidden)
+        .background(Theme.ground.ignoresSafeArea())
+        .toolbarBackground(Theme.ground, for: .navigationBar)
         .navigationTitle("Settings")
         .onAppear { apiKey = KeychainStore.apiKey(for: store.settings.driveTimeSource) }
         .onChange(of: store.settings.driveTimeSource) { _, source in

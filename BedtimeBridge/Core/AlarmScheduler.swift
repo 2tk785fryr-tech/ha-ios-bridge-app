@@ -54,7 +54,7 @@ final class AlarmScheduler {
         let attributes = AlarmAttributes<WakeAlarmMetadata>(
             presentation: presentation,
             metadata: WakeAlarmMetadata(cause: cause),
-            tintColor: .orange
+            tintColor: Theme.accent
         )
 
         for time in times where time > .now {

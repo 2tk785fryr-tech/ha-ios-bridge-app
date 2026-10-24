@@ -123,6 +123,14 @@ see Clock snoozes. The app and widget share data through the App Group
   earlier. Appointment drives get the time added, so leave-by moves too. The Wake Plan reason
   says why ("+15 min for pouring at 6 AM").
 
+## Look: Nightfall
+
+The app uses a dark-only theme called **Nightfall**: midnight blue backgrounds (`#0B1026`, with
+cards in `#141B3A`), violet buttons (`#6D4AFF`) and violet text (`#DDD6FE`). Accent colors:
+mint for connected, sky blue for leave-by, amber for weather warnings. Colors live in
+`Shared/Theme.swift`, so the widgets and the snooze Live Activity match. Type is SF Pro
+Rounded (light for the big alarm time).
+
 ## Shortcuts actions
 
 | Action | Use |
@@ -236,7 +244,7 @@ BedtimeBridge/
   Intents/    Shortcuts actions, Snooze/Stop button actions, Wake Plan result type
   Views/      main screen and settings
 BedtimeBridgeWidgets/  Lock Screen "Next Alarm" widget and the snooze-countdown Live Activity
-Shared/       alarm metadata and widget snapshot used by both the app and the widgets
+Shared/       Nightfall theme, alarm metadata and widget snapshot used by the app and the widgets
 BedtimeBridgeTests/
 custom_components/bedtime_bridge/  Home Assistant integration (HACS)
 blueprints/automation/bedtime_bridge/  "Bedtime Bridge alarm event" blueprint

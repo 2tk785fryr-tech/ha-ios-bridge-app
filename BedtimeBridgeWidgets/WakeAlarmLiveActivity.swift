@@ -19,20 +19,23 @@ struct WakeAlarmLiveActivity: Widget {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(context.attributes.presentation.alert.title)
                         .font(.headline)
+                        .foregroundStyle(Theme.text)
                     if let cause = context.attributes.metadata?.cause, !cause.isEmpty {
-                        Text(cause).font(.caption).foregroundStyle(.secondary)
+                        Text("Snoozing · \(cause)").font(.caption).foregroundStyle(Theme.textMuted)
                     }
                 }
                 Spacer()
                 SnoozeCountdown(state: context.state)
-                    .font(.title.monospacedDigit().bold())
+                    .font(.system(size: 30, weight: .semibold, design: .rounded).monospacedDigit())
+                    .foregroundStyle(Theme.accentText)
             }
             .padding()
-            .activityBackgroundTint(.black.opacity(0.6))
+            .activityBackgroundTint(Theme.surface)
+            .activitySystemActionForegroundColor(Theme.accentText)
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    Label("Snoozing", systemImage: "zzz")
+                    Label("Snoozing", systemImage: "zzz").foregroundStyle(Theme.accentIcon)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
                     SnoozeCountdown(state: context.state).monospacedDigit()
@@ -41,11 +44,11 @@ struct WakeAlarmLiveActivity: Widget {
                     Text(context.attributes.presentation.alert.title).font(.caption)
                 }
             } compactLeading: {
-                Image(systemName: "zzz").foregroundStyle(.orange)
+                Image(systemName: "zzz").foregroundStyle(Theme.accentIcon)
             } compactTrailing: {
-                SnoozeCountdown(state: context.state).monospacedDigit().frame(maxWidth: 44)
+                SnoozeCountdown(state: context.state).monospacedDigit().foregroundStyle(Theme.accentText).frame(maxWidth: 44)
             } minimal: {
-                Image(systemName: "alarm").foregroundStyle(.orange)
+                Image(systemName: "alarm").foregroundStyle(Theme.accentIcon)
             }
         }
     }

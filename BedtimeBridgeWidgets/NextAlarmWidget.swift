@@ -35,7 +35,8 @@ struct NextAlarmWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "NextAlarm", provider: NextAlarmProvider()) { entry in
             NextAlarmView(entry: entry)
-                .containerBackground(.fill.tertiary, for: .widget)
+                // Lock Screen sizes are tinted by the system; the Home Screen size uses Nightfall.
+                .containerBackground(Theme.surface, for: .widget)
         }
         .configurationDisplayName("Next Alarm")
         .description("Your next wake-up alarm and why it's set.")
@@ -70,6 +71,9 @@ struct NextAlarmView: View {
             }
             .widgetAccentable()
 
+        case .systemSmall:
+            NightfallSmallView(entry: entry)
+
         default:
             VStack(alignment: .leading, spacing: 1) {
                 if let alarm = entry.nextAlarm {
@@ -98,5 +102,43 @@ struct NextAlarmView: View {
 
     private func time(_ date: Date) -> String {
         date.formatted(date: .omitted, time: .shortened)
+    }
+}
+
+/// Home Screen widget in the Nightfall style.
+private struct NightfallSmallView: View {
+    let entry: NextAlarmEntry
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label(entry.isSnoozing ? "Snoozing" : "Next alarm", systemImage: entry.isSnoozing ? "zzz" : "alarm")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Theme.textMuted)
+            if let alarm = entry.nextAlarm {
+                Text(alarm, format: .dateTime.hour(.defaultDigits(amPM: .omitted)).minute())
+                    .font(.system(size: 40, weight: .light, design: .rounded))
+                    .foregroundStyle(Theme.accentText)
+                    .minimumScaleFactor(0.7)
+                Text(entry.snapshot.label)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Theme.shiftChip.text)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Theme.shiftChip.background, in: Capsule())
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                if let leaveBy = entry.snapshot.leaveBy, leaveBy > entry.date {
+                    Text("Leave by \(leaveBy.formatted(date: .omitted, time: .shortened))")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(Theme.appointmentChip.text)
+                }
+            } else {
+                Text("No alarm")
+                    .font(.system(size: 26, weight: .light, design: .rounded))
+                    .foregroundStyle(Theme.textSoft)
+                Spacer(minLength: 0)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }

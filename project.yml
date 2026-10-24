@@ -29,11 +29,13 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.BedtimeBridge
         TARGETED_DEVICE_FAMILY: "1"
         GENERATE_INFOPLIST_FILE: YES
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
     info:
       path: BedtimeBridge/Info.plist
       properties:
         CFBundleDisplayName: Bedtime Bridge
-        UILaunchScreen: {}
+        UILaunchScreen:
+          UIColorName: LaunchBackground
         NSCalendarsFullAccessUsageDescription: Bedtime Bridge reads your shift and appointment events to work out when you need to wake up.
         NSAlarmKitUsageDescription: Bedtime Bridge sets your wake-up alarms for work shifts and appointments.
         NSLocationWhenInUseUsageDescription: If no home address is set, your current location is used as the starting point for drive times.
