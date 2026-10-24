@@ -5,3 +5,5 @@ xcuserdata/
 BedtimeBridge/Info.plist
 BedtimeBridgeWidgets/Info.plist
 *.entitlements
+__pycache__/
+.pytest_cache/

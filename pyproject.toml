@@ -1,0 +1,4 @@
+# Only for testing the Home Assistant integration in custom_components/bedtime_bridge.
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests/ha"]

@@ -1,0 +1,83 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Bedtime Bridge",
+        "description": "Choose what Snooze and Stop on your iPhone do in Home Assistant, and which entities the app should read when it plans your alarms.",
+        "data": {
+          "wake_action": "When you snooze or stop an alarm",
+          "snooze_helper": "Turn on when snoozed",
+          "stop_helper": "Turn on when stopped",
+          "shift_override_entity": "Shift override",
+          "shift_sensor_entity": "Shift sensor (checks next_shift_start)",
+          "weather_entity": "Weather forecast",
+          "shift_types": "Shift types (comma separated, as they appear in calendar titles)"
+        },
+        "data_description": {
+          "wake_action": "Helpers: turn on the entities below, for blueprints that watch them (Wake Snooze Fade, Wake Sequence). Events: fire a bedtime_bridge event for automations and blueprints to trigger on. Both: do both.",
+          "shift_types": "Each one gets a lead-time setting, and its name is sent as the alarm cause."
+        }
+      },
+      "pair": {
+        "title": "Pair your iPhone",
+        "description": "In the Bedtime Bridge app, open Settings › Home Assistant › Integration address and paste:\n\n`{webhook_url}`\n\nKeep it private: anyone with this address can send alarm updates. You can see it again later under this integration's Configure."
+      }
+    },
+    "abort": {
+      "already_configured": "Bedtime Bridge is already set up."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Bedtime Bridge",
+        "description": "Pairing address for the app: `{webhook_url}`",
+        "data": {
+          "wake_action": "When you snooze or stop an alarm",
+          "snooze_helper": "Turn on when snoozed",
+          "stop_helper": "Turn on when stopped",
+          "shift_override_entity": "Shift override",
+          "shift_sensor_entity": "Shift sensor (checks next_shift_start)",
+          "weather_entity": "Weather forecast",
+          "shift_types": "Shift types (comma separated, as they appear in calendar titles)"
+        },
+        "data_description": {
+          "wake_action": "Helpers: turn on the entities below, for blueprints that watch them (Wake Snooze Fade, Wake Sequence). Events: fire a bedtime_bridge event for automations and blueprints to trigger on. Both: do both.",
+          "shift_types": "Each one gets a lead-time setting, and its name is sent as the alarm cause."
+        }
+      }
+    }
+  },
+  "selector": {
+    "wake_action": {
+      "options": {
+        "both": "Turn on helpers and fire events",
+        "helpers": "Turn on helpers only",
+        "events": "Fire events only"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "next_alarm": { "name": "Next alarm" },
+      "alarm_cause": { "name": "Alarm cause" },
+      "reason": { "name": "Reason" },
+      "leave_by": { "name": "Leave by" },
+      "drive_time": { "name": "Drive time" },
+      "weather_extra": { "name": "Bad-weather extra time" },
+      "snooze_count": { "name": "Snooze count" },
+      "last_event": { "name": "Last event" }
+    },
+    "binary_sensor": {
+      "snoozing": { "name": "Snoozing" }
+    },
+    "number": {
+      "get_ready_minutes": { "name": "Get-ready time" },
+      "arrival_buffer_minutes": { "name": "Arrive early" },
+      "snooze_minutes": { "name": "Snooze length" },
+      "weather_extra_minutes": { "name": "Bad-weather extra time setting" },
+      "leave_reminder_minutes": { "name": "Leave-by reminder lead" },
+      "shift_lead": { "name": "{shift} lead time" }
+    }
+  }
+}

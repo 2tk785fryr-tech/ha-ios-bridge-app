@@ -84,4 +84,31 @@ final class PlanAdjustmentsTests: XCTestCase {
         // 7h − 10 min early − (30 + 15) min drive − 60 min ready
         XCTAssertEqual(plan.firstAlarm, hours(7).addingTimeInterval(-(10 + 45 + 60) * 60))
     }
+
+    // MARK: Settings from the Home Assistant integration
+
+    func testHomeAssistantSettingsOverridePhone() {
+        let remote: [String: Any] = [
+            "get_ready_minutes": 45,
+            "snooze_minutes": 5,
+            "shift_lead_minutes": ["days": 75],
+        ]
+        let merged = settings.applying(remote)
+        XCTAssertEqual(merged.getReadyMinutes, 45)
+        XCTAssertEqual(merged.snoozeMinutes, 5)
+        XCTAssertEqual(merged.shiftRules.first { $0.keyword == "Days" }?.wakeMinutesBefore, 75)
+        XCTAssertEqual(merged.shiftRules.first { $0.keyword == "Swings" }?.wakeMinutesBefore, 60)
+        XCTAssertEqual(merged.arrivalBufferMinutes, settings.arrivalBufferMinutes)
+    }
+
+    func testPayloadHasIntegrationKeys() {
+        let appointment = AppointmentCandidate(title: "Dentist", start: hours(7), location: "Main St", travelSeconds: 1800)
+        let plan = WakePlanner.plan(shift: nil, appointments: [appointment], settings: settings, now: now)
+        let payload = plan.homeAssistantPayload(settings: settings)
+        XCTAssertEqual(payload["alarm_cause"] as? String, "calendar")
+        XCTAssertEqual(payload["label"] as? String, "Dentist")
+        XCTAssertEqual(payload["drive_minutes"] as? Int, 30)
+        XCTAssertNotNil(payload["leave_by"] as? String)
+        XCTAssertEqual((payload["alarm_times"] as? [String])?.count, 3)
+    }
 }

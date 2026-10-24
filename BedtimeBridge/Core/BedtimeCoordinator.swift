@@ -18,10 +18,32 @@ final class BedtimeCoordinator {
 
     /// Works out tonight's wake-up without touching any alarms.
     func buildPlan(settings: BridgeSettings, now: Date = .now) async throws -> WakePlan {
+        try await makePlan(settings: settings, now: now).plan
+    }
+
+    func planAndSchedule(settings: BridgeSettings) async throws -> WakePlan {
+        let (plan, effective) = try await makePlan(settings: settings, now: .now)
+        try await apply(plan, settings: effective)
+        return plan
+    }
+
+    /// Returns the plan and the settings it was made with (the phone's settings with any
+    /// adjusted in Home Assistant laid over them).
+    private func makePlan(settings phoneSettings: BridgeSettings, now: Date) async throws -> (plan: WakePlan, settings: BridgeSettings) {
         try await calendar.ensureAccess()
-        let end = now.addingTimeInterval(Double(settings.lookAheadHours) * 3600)
-        let homeAssistant = HomeAssistantClient.configured(settings)
+        let link = HomeAssistantLinks.current(phoneSettings)
         var extraWarnings: [String] = []
+
+        var context: HomeAssistantContext?
+        if let link {
+            do {
+                context = try await link.context(settings: phoneSettings)
+            } catch {
+                extraWarnings.append("Couldn't reach Home Assistant: \(error.localizedDescription)")
+            }
+        }
+        let settings = phoneSettings.applying(context?.settings ?? HomeAssistantLinks.cachedSettings)
+        let end = now.addingTimeInterval(Double(settings.lookAheadHours) * 3600)
 
         var shift = calendar.events(from: now, to: end, calendarIDs: settings.shiftCalendarIDs)
             .lazy
@@ -36,19 +58,13 @@ final class BedtimeCoordinator {
             }
             .first
 
-        if let homeAssistant {
-            do {
-                let override = try await homeAssistant.state(of: settings.shiftOverrideEntity).state
-                let result = PlanAdjustments.applyShiftOverride(override, to: shift, rules: settings.shiftRules)
-                shift = result.shift
-                extraWarnings += [result.warning].compactMap { $0 }
-                if override.caseInsensitiveCompare("auto") == .orderedSame {
-                    let sensor = try await homeAssistant.state(of: settings.shiftSensorEntity)
-                    let haStart = (sensor.attributes["next_shift_start"] as? String).flatMap { ISO8601DateFormatter().date(from: $0) }
-                    extraWarnings += [PlanAdjustments.shiftMismatchWarning(calendarShift: shift, haNextShiftStart: haStart, lookAheadEnd: end)].compactMap { $0 }
-                }
-            } catch {
-                extraWarnings.append("Couldn't read the shift override from Home Assistant: \(error.localizedDescription)")
+        if let context {
+            let result = PlanAdjustments.applyShiftOverride(context.shiftOverride, to: shift, rules: settings.shiftRules)
+            shift = result.shift
+            extraWarnings += [result.warning].compactMap { $0 }
+            let override = context.shiftOverride ?? "auto"
+            if override.caseInsensitiveCompare("auto") == .orderedSame {
+                extraWarnings += [PlanAdjustments.shiftMismatchWarning(calendarShift: shift, haNextShiftStart: context.nextShiftStart, lookAheadEnd: end)].compactMap { $0 }
             }
         }
 
@@ -57,14 +73,12 @@ final class BedtimeCoordinator {
         var plan = WakePlanner.plan(shift: shift, appointments: appointments, settings: settings, now: now)
 
         // Weather depends on the plan (wake-up until arrival), so check it second and re-plan.
-        if let homeAssistant, settings.weatherExtraMinutes > 0, let window = travelWindow(for: plan) {
+        if let link, context != nil, settings.weatherExtraMinutes > 0, let window = travelWindow(for: plan) {
             do {
-                async let forecast = homeAssistant.hourlyForecast(for: settings.weatherEntity)
-                async let weatherState = homeAssistant.state(of: settings.weatherEntity)
-                let unit = try await weatherState.attributes["temperature_unit"] as? String ?? "°F"
-                let freezing: Double? = settings.addTimeWhenFreezing ? (unit.contains("C") ? 0 : 32) : nil
+                let (forecast, unit) = try await link.forecast(settings: settings)
+                let freezing: Double? = settings.addTimeWhenFreezing ? ((unit ?? "°F").contains("C") ? 0 : 32) : nil
                 if let adjustment = PlanAdjustments.weather(
-                    forecast: try await forecast,
+                    forecast: forecast,
                     window: window,
                     conditions: settings.badWeatherConditions,
                     freezingAt: freezing,
@@ -78,17 +92,12 @@ final class BedtimeCoordinator {
         }
 
         plan.warnings = extraWarnings + plan.warnings
-        return plan
-    }
-
-    func planAndSchedule(settings: BridgeSettings) async throws -> WakePlan {
-        let plan = try await buildPlan(settings: settings)
-        try await apply(plan, settings: settings)
-        return plan
+        return (plan, settings)
     }
 
     /// For the day-off path: you pick the time, the app sets the usual alarm series.
-    func scheduleManual(firstAlarm: Date, settings: BridgeSettings) async throws -> WakePlan {
+    func scheduleManual(firstAlarm: Date, settings phoneSettings: BridgeSettings) async throws -> WakePlan {
+        let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
         let first = Self.nextOccurrence(ofTimeIn: firstAlarm)
         let times = WakePlanner.alarmTimes(first: first, count: settings.alarmCount, spacingMinutes: settings.alarmSpacingMinutes)
         let plan = WakePlan(source: .manual, alarmTimes: times, reason: "Day off alarm")
@@ -100,7 +109,8 @@ final class BedtimeCoordinator {
         try alarms.cancelAll()
         leaveReminder.clear()
         updateWidget { $0 = NextAlarmSnapshot(alarmStyle: settings.alarmStyle.rawValue) }
-        await publish(state: nil, cause: AlarmCause.none, alarmTimes: [], reason: "Cancelled", event: "cancelled", settings: settings)
+        lastCause = AlarmCause.none
+        await report(.cancelled, data: [:], settings: settings)
     }
 
     /// Sets (or clears) alarms, the leave-by reminder and the HA sensor for a plan.
@@ -138,64 +148,63 @@ final class BedtimeCoordinator {
             snapshot = NextAlarmSnapshot(
                 alarmTimes: plan.alarmTimes,
                 cause: plan.cause,
-                label: widgetLabel(for: plan),
+                label: plan.label,
                 leaveBy: plan.source == .appointment ? plan.appointment?.leaveBy(bufferMinutes: settings.arrivalBufferMinutes) : nil,
                 alarmStyle: settings.alarmStyle.rawValue
             )
         }
 
-        await publish(
-            state: plan.firstAlarm,
-            cause: plan.cause,
-            alarmTimes: plan.alarmTimes,
-            reason: plan.reason,
-            event: "planned",
-            settings: settings
-        )
+        lastCause = plan.cause
+        var payload = plan.homeAssistantPayload(settings: settings)
+        payload["app_settings"] = settings.homeAssistantSettings
+        await report(.planned, data: payload, settings: settings)
     }
 
     // MARK: Alarm buttons (app alarms only)
 
-    func alarmSnoozed(id: UUID, settings: BridgeSettings) async {
+    func alarmSnoozed(id: UUID, settings phoneSettings: BridgeSettings) async {
+        let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
         alarms.snooze(id)
         let ringsAgain = Date.now.addingTimeInterval(Double(settings.snoozeMinutes) * 60)
         updateWidget { snapshot in
             snapshot.snoozedUntil = ringsAgain
             snapshot.alarmTimes = alarms.scheduledAlarmTimes()
         }
-        if let homeAssistant = HomeAssistantClient.configured(settings) {
-            try? await homeAssistant.turnOn(settings.snoozeHelper)
-        }
-        await publish(state: ringsAgain, cause: lastCause, alarmTimes: alarms.scheduledAlarmTimes(), reason: "Snoozed", event: "snoozed", settings: settings)
+        await report(.snoozed, data: [
+            "rings_again": Self.iso(ringsAgain),
+            "alarm_time": Self.iso(ringsAgain),
+            "alarm_cause": lastCause,
+            "alarm_times": alarms.scheduledAlarmTimes().map(Self.iso),
+        ], settings: settings)
     }
 
-    func alarmStopped(id: UUID, settings: BridgeSettings) async {
+    func alarmStopped(id: UUID, settings phoneSettings: BridgeSettings) async {
+        let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
         alarms.stop(id)
         if settings.stopCancelsRemaining {
             alarms.cancelAll(except: id)
-        }
-        if let homeAssistant = HomeAssistantClient.configured(settings) {
-            try? await homeAssistant.turnOn(settings.stopHelper)
         }
         let remaining = alarms.scheduledAlarmTimes().filter { $0 > .now }
         updateWidget { snapshot in
             snapshot.snoozedUntil = nil
             snapshot.alarmTimes = remaining
         }
-        await publish(
-            state: remaining.first,
-            cause: remaining.isEmpty ? AlarmCause.none : lastCause,
-            alarmTimes: remaining,
-            reason: "Stopped",
-            event: "stopped",
-            settings: settings
-        )
+        if remaining.isEmpty { lastCause = AlarmCause.none }
+        var stopped: [String: Any] = ["alarm_times": remaining.map(Self.iso), "alarm_cause": lastCause]
+        stopped["alarm_time"] = remaining.first.map(Self.iso)
+        await report(.stopped, data: stopped, settings: settings)
 
         if settings.leaveReminderEnabled, leaveReminder.pendingTrip != nil,
            let provider = try? travel.provider(for: settings),
            let origin = try? await travel.origin(homeAddress: settings.homeAddress) {
             await leaveReminder.recheck(using: provider, origin: origin, travel: travel, leadMinutes: settings.leaveReminderLeadMinutes)
             updateWidget { $0.leaveBy = leaveReminder.pendingTrip?.leaveBy }
+            if let trip = leaveReminder.pendingTrip {
+                await report(.leaveBy, data: [
+                    "leave_by": Self.iso(trip.leaveBy),
+                    "drive_minutes": Int((trip.plannedTravelSeconds / 60).rounded()),
+                ], settings: settings)
+            }
         }
     }
 
@@ -292,15 +301,6 @@ final class BedtimeCoordinator {
         WidgetCenter.shared.reloadAllTimelines()
     }
 
-    private func widgetLabel(for plan: WakePlan) -> String {
-        switch plan.source {
-        case .shift: "\(plan.cause) shift"
-        case .appointment: plan.appointment?.title ?? "Appointment"
-        case .manual: "Day off"
-        case .none: ""
-        }
-    }
-
     private func alarmTitle(for plan: WakePlan) -> String {
         switch plan.source {
         case .shift: "Wake up for \(plan.shift?.cause ?? "work")"
@@ -309,24 +309,15 @@ final class BedtimeCoordinator {
         }
     }
 
-    /// Updates the next-alarm sensor in Home Assistant. Best effort: HA being down never
-    /// stops alarms from being set.
-    private func publish(state: Date?, cause: String, alarmTimes: [Date], reason: String, event: String, settings: BridgeSettings) async {
-        if event == "planned" || event == "cancelled" { lastCause = cause }
-        guard let homeAssistant = HomeAssistantClient.configured(settings), !settings.nextAlarmSensor.isEmpty else { return }
-        let iso = ISO8601DateFormatter()
-        iso.timeZone = .current
-        let attributes: [String: Any] = [
-            "friendly_name": "Bedtime Bridge Next Alarm",
-            "device_class": "timestamp",
-            "icon": "mdi:alarm",
-            "alarm_cause": cause,
-            "alarm_times": alarmTimes.map { iso.string(from: $0) },
-            "alarm_style": settings.alarmStyle.rawValue,
-            "reason": reason,
-            "last_event": event,
-            "updated": iso.string(from: .now),
-        ]
-        try? await homeAssistant.setState(settings.nextAlarmSensor, state: state.map { iso.string(from: $0) } ?? "unknown", attributes: attributes)
+    /// Tells Home Assistant. Best effort: HA being down never stops alarms from being set.
+    private func report(_ event: BridgeEvent, data: [String: Any], settings: BridgeSettings) async {
+        guard let link = HomeAssistantLinks.current(settings) else { return }
+        try? await link.report(event, data: data, settings: settings)
+    }
+
+    private static func iso(_ date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.timeZone = .current
+        return formatter.string(from: date)
     }
 }

@@ -124,26 +124,37 @@ private struct AlarmSettingsSection: View {
 
 private struct HomeAssistantSection: View {
     @Binding var settings: BridgeSettings
+    @State private var webhook = KeychainStore.secret(HomeAssistantLinks.webhookAccount)
     @State private var token = KeychainStore.secret(KeychainStore.homeAssistantAccount)
     @State private var testResult: String?
 
+    private var usesIntegration: Bool { !webhook.trimmingCharacters(in: .whitespaces).isEmpty }
+
     var body: some View {
         Section {
-            TextField("URL, e.g. http://homeassistant.local:8123", text: $settings.homeAssistantURL)
-                .keyboardType(.URL)
+            SecureField("Integration address (…/api/webhook/…)", text: $webhook)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
-            SecureField("Long-lived access token", text: $token)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .onChange(of: token) { _, value in
-                    KeychainStore.setSecret(value, account: KeychainStore.homeAssistantAccount)
+                .onChange(of: webhook) { _, value in
+                    KeychainStore.setSecret(value, account: HomeAssistantLinks.webhookAccount)
                 }
-            EntityField(title: "On snooze, turn on", text: $settings.snoozeHelper)
-            EntityField(title: "On stop, turn on", text: $settings.stopHelper)
-            EntityField(title: "Shift override", text: $settings.shiftOverrideEntity)
-            EntityField(title: "Shift sensor", text: $settings.shiftSensorEntity)
-            EntityField(title: "Next-alarm sensor", text: $settings.nextAlarmSensor)
+            if !usesIntegration {
+                TextField("URL, e.g. http://homeassistant.local:8123", text: $settings.homeAssistantURL)
+                    .keyboardType(.URL)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                SecureField("Long-lived access token", text: $token)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .onChange(of: token) { _, value in
+                        KeychainStore.setSecret(value, account: KeychainStore.homeAssistantAccount)
+                    }
+                EntityField(title: "On snooze, turn on", text: $settings.snoozeHelper)
+                EntityField(title: "On stop, turn on", text: $settings.stopHelper)
+                EntityField(title: "Shift override", text: $settings.shiftOverrideEntity)
+                EntityField(title: "Shift sensor", text: $settings.shiftSensorEntity)
+                EntityField(title: "Next-alarm sensor", text: $settings.nextAlarmSensor)
+            }
             Button("Test connection") { Task { await test() } }
             if let testResult {
                 Text(testResult).font(.footnote).foregroundStyle(.secondary)
@@ -151,18 +162,23 @@ private struct HomeAssistantSection: View {
         } header: {
             Text("Home Assistant")
         } footer: {
-            Text("Make the token in Home Assistant under your profile › Security. The next-alarm sensor is created by the app; it reads unavailable after an HA restart until the next update.")
+            if usesIntegration {
+                Text("Using the Bedtime Bridge integration. Helpers, events, the shift override and weather entity are chosen in Home Assistant (Settings › Devices & services › Bedtime Bridge › Configure), and times you change there override these settings.")
+            } else {
+                Text("Recommended: install the Bedtime Bridge integration in Home Assistant and paste the address it shows above. Without it, the app uses a long-lived token (profile › Security) and writes a sensor that reads unavailable after an HA restart until the next update.")
+            }
         }
     }
 
     private func test() async {
-        guard let client = HomeAssistantClient.configured(settings) else {
-            testResult = "Add a URL and token first."
+        guard let link = HomeAssistantLinks.current(settings) else {
+            testResult = "Add the integration address, or a URL and token."
             return
         }
         do {
-            let override = try await client.state(of: settings.shiftOverrideEntity)
-            testResult = "Connected. Shift override is \(override.state)."
+            let context = try await link.context(settings: settings)
+            let via = usesIntegration ? "the integration" : "token"
+            testResult = "Connected via \(via). Shift override is \(context.shiftOverride ?? "not set")."
         } catch {
             testResult = error.localizedDescription
         }

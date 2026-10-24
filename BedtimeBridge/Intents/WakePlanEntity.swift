@@ -69,32 +69,8 @@ struct WakePlanEntity: TransientAppEntity {
         )
     }
 
-    static func homeAssistantJSON(for plan: WakePlan, buffer: Int = SettingsStore.shared.settings.arrivalBufferMinutes) -> String {
-        let iso = ISO8601DateFormatter()
-        iso.timeZone = .current
-        var body: [String: Any] = [
-            "has_alarm": plan.hasAlarm,
-            "alarm_cause": plan.cause,
-            "reason": plan.reason,
-            "alarm_times": plan.alarmTimes.map { iso.string(from: $0) },
-        ]
-        if let first = plan.firstAlarm { body["alarm_time"] = iso.string(from: first) }
-        if let appointment = plan.appointment {
-            body["appointment"] = [
-                "title": appointment.title,
-                "start": iso.string(from: appointment.start),
-                "location": appointment.location,
-                "leave_by": iso.string(from: appointment.leaveBy(bufferMinutes: buffer)),
-                "drive_minutes": Int((appointment.travelSeconds / 60).rounded()),
-                "drive_time_estimated": appointment.usedFallbackTravel,
-            ]
-        }
-        if let weather = plan.weather {
-            body["weather_extra"] = ["minutes": weather.minutes, "reason": weather.reason]
-        }
-        if let shift = plan.shift {
-            body["shift"] = ["title": shift.title, "start": iso.string(from: shift.start)]
-        }
+    static func homeAssistantJSON(for plan: WakePlan) -> String {
+        let body = plan.homeAssistantPayload(settings: SettingsStore.shared.settings)
         guard let data = try? JSONSerialization.data(withJSONObject: body, options: [.sortedKeys]) else { return "{}" }
         return String(decoding: data, as: UTF8.self)
     }

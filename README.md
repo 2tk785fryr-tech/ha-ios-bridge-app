@@ -43,6 +43,60 @@ alarms. They never see app alarms, so in app-alarm mode the app has to tell HA i
 **Turn off those Shortcuts automations when you use app alarms,** or a Clock alarm and an app
 alarm could both fire. Also delete the Clock alarms the old shortcut toggled.
 
+## Home Assistant integration (recommended)
+
+`custom_components/bedtime_bridge` is a companion integration. With it, the app pairs through
+a private webhook instead of an admin token, and everything shows up in Home Assistant as a
+**Bedtime Bridge** device.
+
+**Install:** HACS → ⋮ → Custom repositories → add this repo as an *Integration* → install
+**Bedtime Bridge** → restart HA. Then go to Settings → Devices & services → Add integration →
+Bedtime Bridge. Or copy `custom_components/bedtime_bridge` into your config folder.
+
+**Setup screen:**
+
+| Option | Default |
+|---|---|
+| When you snooze or stop an alarm | **Turn on helpers and fire events** (both), helpers only, or events only |
+| Turn on when snoozed / stopped | `input_boolean.wake_fade` / `input_boolean.wake_mike` (any input_boolean, script, automation, switch or scene) |
+| Shift override, shift sensor, weather | `input_select.select_shift_override`, `sensor.current_shift`, `weather.forecast_home` |
+| Shift types | `Days, Swings` |
+
+The last step shows a **pairing address**. Paste it into the app under Settings → Home Assistant →
+Integration address and tap **Test connection**. You can see it again later under the
+integration's **Configure**. Keep it private.
+
+**Entities** (all keep their values through HA restarts):
+
+| Entity | |
+|---|---|
+| `sensor.bedtime_bridge_next_alarm` | Next alarm (timestamp). Attributes: all alarm times, cause, label, style |
+| `sensor.bedtime_bridge_alarm_cause` | `Days` / `Swings` / `calendar` / `automade` / `noalarm` |
+| `sensor.bedtime_bridge_reason` | "Dentist at 7:00 AM. Leave by 6:26 AM (…)". Attribute: warnings |
+| `sensor.bedtime_bridge_leave_by`, `_drive_time`, `_bad_weather_extra_time` | Appointment and weather details |
+| `sensor.bedtime_bridge_snooze_count`, `_last_event` | This morning's snoozes. Last event: planned/snoozed/stopped/cancelled/leave_by |
+| `binary_sensor.bedtime_bridge_snoozing` | On from a snooze until the alarm rings again |
+| `number.bedtime_bridge_get_ready_time`, `_arrive_early`, `_snooze_length`, `_bad_weather_extra_time_setting`, `_leave_by_reminder_lead`, `_days_lead_time`, `_swings_lead_time` | **Settings you can change in HA.** They start out matching the app after its first plan. After that, HA's value wins each time the app runs. |
+
+**Events:** `bedtime_bridge` with `type` (`planned`, `snoozed`, `stopped`, `cancelled`,
+`leave_by`) plus `alarm_cause`, `alarm_time`, `alarm_times`, `label`, `leave_by` and
+`snooze_count`. With *helpers only*, snoozed/stopped aren't fired.
+
+**Helpers or blueprints, your choice:**
+- *Helpers:* your existing Wake Snooze Fade and Wake Sequence blueprints keep watching
+  `wake_fade` / `wake_mike`. Nothing to change. They also no longer need to be in the HomeKit
+  Bridge for this.
+- *Events:* import `blueprints/automation/bedtime_bridge/bedtime_bridge_alarm_event.yaml`
+  (Settings → Blueprints → Import, using the raw GitHub URL). Pick an event (for example
+  "Alarm snoozed"), optionally limit it to causes like `Days`, and add your actions.
+- *Both* is the default, so you can move routines over one at a time. Don't let a helper-driven
+  automation and an event-driven automation do the same thing, or it will run twice.
+
+What it can't do: HA can't push commands to the phone. Settings changed in HA reach the app
+the next time it runs (bedtime, snooze or stop).
+
+The integration has its own tests (`pytest`, with `pytest-homeassistant-custom-component`).
+
 ## Lock Screen widget
 
 Add **Next Alarm** from the Lock Screen widget gallery (Bedtime Bridge). It shows the next
@@ -184,5 +238,8 @@ BedtimeBridge/
 BedtimeBridgeWidgets/  Lock Screen "Next Alarm" widget and the snooze-countdown Live Activity
 Shared/       alarm metadata and widget snapshot used by both the app and the widgets
 BedtimeBridgeTests/
+custom_components/bedtime_bridge/  Home Assistant integration (HACS)
+blueprints/automation/bedtime_bridge/  "Bedtime Bridge alarm event" blueprint
+tests/ha/     integration tests
 project.yml   XcodeGen spec (the .xcodeproj is generated, not committed)
 ```
