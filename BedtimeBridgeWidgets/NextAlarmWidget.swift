@@ -63,7 +63,7 @@ struct NextAlarmView: View {
                     .font(.caption)
                 if let alarm = entry.nextAlarm {
                     Text(alarm, format: .dateTime.hour(.defaultDigits(amPM: .omitted)).minute())
-                        .font(.headline)
+                        .font(.sora(fixed: 17, .semibold))
                         .minimumScaleFactor(0.6)
                 } else {
                     Text("Off").font(.headline)
@@ -78,7 +78,7 @@ struct NextAlarmView: View {
             VStack(alignment: .leading, spacing: 1) {
                 if let alarm = entry.nextAlarm {
                     Label(time(alarm), systemImage: entry.isSnoozing ? "zzz" : "alarm")
-                        .font(.headline)
+                        .font(.sora(fixed: 17, .semibold))
                         .widgetAccentable()
                     Text(entry.isSnoozing ? "Snoozing · \(entry.snapshot.label)" : entry.snapshot.label)
                         .font(.caption)
@@ -116,7 +116,7 @@ private struct NightfallSmallView: View {
                 .foregroundStyle(Theme.textMuted)
             if let alarm = entry.nextAlarm {
                 Text(alarm, format: .dateTime.hour(.defaultDigits(amPM: .omitted)).minute())
-                    .font(.system(size: 40, weight: .light, design: .rounded))
+                    .font(.sora(fixed: 40, .light))
                     .foregroundStyle(Theme.accentText)
                     .minimumScaleFactor(0.7)
                 Text(entry.snapshot.label)
@@ -134,7 +134,7 @@ private struct NightfallSmallView: View {
                 }
             } else {
                 Text("No alarm")
-                    .font(.system(size: 26, weight: .light, design: .rounded))
+                    .font(.sora(fixed: 26, .light))
                     .foregroundStyle(Theme.textSoft)
                 Spacer(minLength: 0)
             }

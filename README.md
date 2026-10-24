@@ -133,8 +133,10 @@ see Clock snoozes. The app and widget share data through the App Group
 The app uses a dark-only theme called **Nightfall**: midnight blue backgrounds (`#0B1026`, with
 cards in `#141B3A`), violet buttons (`#6D4AFF`) and violet text (`#DDD6FE`). Accent colors:
 mint for connected, sky blue for leave-by, amber for weather warnings. Colors live in
-`Shared/Theme.swift`, so the widgets and the snooze Live Activity match. Type is SF Pro
-Rounded (light for the big alarm time).
+`Shared/Theme.swift`, so the widgets and the snooze Live Activity match. Times and titles use
+**Sora** (light for the big alarm time); body text is SF Pro. The five Sora weights in
+`Shared/Fonts` are static cuts of Google Fonts' variable Sora, made with fontTools. They're
+used under the SIL Open Font License (`Shared/Fonts/OFL.txt`, shipped inside the app).
 
 ## Shortcuts actions
 

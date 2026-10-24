@@ -26,7 +26,7 @@ struct WakeAlarmLiveActivity: Widget {
                 }
                 Spacer()
                 SnoozeCountdown(state: context.state)
-                    .font(.system(size: 30, weight: .semibold, design: .rounded).monospacedDigit())
+                    .font(.sora(fixed: 30, .semibold).monospacedDigit())
                     .foregroundStyle(Theme.accentText)
             }
             .padding()

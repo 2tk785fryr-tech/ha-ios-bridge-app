@@ -40,6 +40,12 @@ targets:
         NSAlarmKitUsageDescription: Bedtime Bridge sets your wake-up alarms for work shifts and appointments.
         NSLocationWhenInUseUsageDescription: If no home address is set, your current location is used as the starting point for drive times.
         NSSupportsLiveActivities: true
+        UIAppFonts:
+          - Sora-Light.ttf
+          - Sora-Regular.ttf
+          - Sora-Medium.ttf
+          - Sora-SemiBold.ttf
+          - Sora-Bold.ttf
         # Lets the app reach Home Assistant on your home network over plain http.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
@@ -64,6 +70,12 @@ targets:
       path: BedtimeBridgeWidgets/Info.plist
       properties:
         CFBundleDisplayName: Bedtime Bridge
+        UIAppFonts:
+          - Sora-Light.ttf
+          - Sora-Regular.ttf
+          - Sora-Medium.ttf
+          - Sora-SemiBold.ttf
+          - Sora-Bold.ttf
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
   BedtimeBridgeTests:

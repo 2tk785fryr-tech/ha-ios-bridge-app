@@ -30,6 +30,28 @@ enum Theme {
     static let danger = Color(hex: 0xFCA5A5)
 }
 
+/// Sora (SIL Open Font License, Shared/Fonts/OFL.txt) for times and titles; body text stays
+/// SF Pro. Five static weights are bundled and listed under UIAppFonts in both targets.
+enum SoraWeight: String {
+    case light = "Light"
+    case regular = "Regular"
+    case medium = "Medium"
+    case semibold = "SemiBold"
+    case bold = "Bold"
+}
+
+extension Font {
+    /// Scales with Dynamic Type relative to `style`.
+    static func sora(_ size: CGFloat, _ weight: SoraWeight = .regular, relativeTo style: Font.TextStyle = .body) -> Font {
+        .custom("Sora-\(weight.rawValue)", size: size, relativeTo: style)
+    }
+
+    /// Fixed size, for the big alarm digits that already fill their space.
+    static func sora(fixed size: CGFloat, _ weight: SoraWeight = .regular) -> Font {
+        .custom("Sora-\(weight.rawValue)", fixedSize: size)
+    }
+}
+
 extension Color {
     init(hex: UInt32) {
         self.init(

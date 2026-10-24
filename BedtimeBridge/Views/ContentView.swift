@@ -84,7 +84,7 @@ struct ContentView: View {
                     .tracking(1)
                     .foregroundStyle(Theme.textMuted)
                 Text("Tonight")
-                    .font(.system(size: 30, weight: .semibold, design: .rounded))
+                    .font(.sora(30, .semibold, relativeTo: .largeTitle))
                     .foregroundStyle(Theme.text)
             }
             Spacer()
@@ -181,7 +181,7 @@ private struct PlanCard: View {
                 BigTime(date: wake)
             } else {
                 Text("No alarm needed")
-                    .font(.system(size: 34, weight: .light, design: .rounded))
+                    .font(.sora(34, .light, relativeTo: .largeTitle))
                     .foregroundStyle(Theme.accentText)
             }
 
@@ -213,13 +213,13 @@ private struct BigTime: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(date.formatted(.dateTime.hour(.defaultDigits(amPM: .omitted)).minute()))
-                .font(.system(size: 88, weight: .light, design: .rounded))
+                .font(.sora(fixed: 88, .light))
                 .tracking(-2)
                 .foregroundStyle(Theme.accentText)
                 .minimumScaleFactor(0.6)
                 .lineLimit(1)
             Text(date.formatted(.dateTime.hour(.defaultDigits(amPM: .abbreviated))).filter { $0.isLetter })
-                .font(.system(size: 24, weight: .medium, design: .rounded))
+                .font(.sora(fixed: 24, .medium))
                 .foregroundStyle(Theme.textMuted)
         }
         .accessibilityElement(children: .combine)
@@ -259,14 +259,14 @@ private struct EmptyPlanCard: View {
                 .foregroundStyle(Theme.accentIcon)
             if let first = scheduled.first {
                 Text("Alarms set from \(WakePlanner.format(first))")
-                    .font(.system(size: 22, weight: .semibold, design: .rounded))
+                    .font(.sora(22, .semibold, relativeTo: .title2))
                     .foregroundStyle(Theme.text)
                 Text("Preview to see why, or plan again if your calendar changed.")
                     .font(.subheadline)
                     .foregroundStyle(Theme.textSoft)
             } else {
                 Text("Nothing planned yet")
-                    .font(.system(size: 22, weight: .semibold, design: .rounded))
+                    .font(.sora(22, .semibold, relativeTo: .title2))
                     .foregroundStyle(Theme.text)
                 Text("Preview to check your shifts and \"wake up\" appointments.")
                     .font(.subheadline)
