@@ -16,22 +16,52 @@ instead of a long chain of calendar, maps and alarm actions.
    Wake time = start − 10 min buffer − drive − get-ready time.
 3. **Picks the earlier one.** The appointment only wins if its wake time is earlier than the
    shift's.
-4. **Sets the alarms.** Sets 3 alarms 10 minutes apart (you can change this) with
-   **AlarmKit**. They ring through Silent mode and Focus like Clock alarms. Every run clears
-   the app's earlier alarms first, so re-running bedtime never leaves duplicates.
-5. **Nothing found.** It returns `Has Alarm = false` so your shortcut can ask about a
+4. **Checks Home Assistant** (optional). It applies `input_select.select_shift_override`
+   (Off = no work alarm, Days/Swings = use that shift's lead time). It warns if
+   `sensor.current_shift` disagrees with the calendar, and adds extra time when the hourly
+   forecast looks bad between waking and arriving.
+5. **Sets the alarms.** 3 alarms 10 minutes apart (you can change this), either as the app's own
+   alarms or as times for your shortcut to make Clock alarms with (see [Alarms and snooze](#alarms-and-snooze)).
+6. **Nothing found.** It returns `Has Alarm = false` so your shortcut can ask about a
    day-off alarm and the Sleep In helper, as it does now.
+7. **Keeps HA updated.** `sensor.bedtime_bridge_next_alarm` holds the next alarm time and cause.
+   It's updated on plan, snooze, stop and cancel.
 
-> AlarmKit alarms belong to this app and **don't appear in the Clock app**. Once you switch
-> over, delete the Clock alarms your shortcut used to toggle so you don't get two sets.
+## Alarms and snooze
+
+Settings → Alarms chooses one of two styles:
+
+| | **Bedtime Bridge alarms** (default) | **Clock app (via shortcut)** |
+|---|---|---|
+| Who makes the alarms | The app (AlarmKit). Rings through Silent and Focus. | Your shortcut, with *Create Alarm* for each item in `Wake Plan › Alarm Dates`. |
+| Snooze | Snooze button. **Length is adjustable** (default 9 min). The countdown shows on the Lock Screen and in the Dynamic Island. | Apple's fixed 9 minutes. |
+| Morning routines | **Snooze** turns on `input_boolean.wake_fade` (Wake Snooze Fade). **Stop** turns on `input_boolean.wake_mike` (Wake Sequence). The app tells HA directly and retries if HA doesn't answer. | Your existing "Alarm is snoozed / stopped" Shortcuts automations, unchanged. |
+| After Stop | Cancels the rest of the series (setting), rechecks traffic for the leave-by reminder. | Whatever your shortcut does. |
+
+Why two styles: the Shortcuts "Alarm is snoozed / stopped" triggers only fire for **Clock app**
+alarms. They never see app alarms, so in app-alarm mode the app has to tell HA itself.
+**Turn off those Shortcuts automations when you use app alarms,** or a Clock alarm and an app
+alarm could both fire. Also delete the Clock alarms the old shortcut toggled.
+
+## Leave-by reminder and bad weather
+
+- **Leave-by reminder.** On appointment mornings you get a notification 15 min (adjustable)
+  before leave-by. When you stop an app alarm, the app re-asks the drive-time service with that
+  morning's traffic and moves the reminder ("Traffic is 8 min worse than planned"). In Clock
+  mode it stays at the bedtime estimate.
+- **Bad weather.** Uses `weather.forecast_home`'s hourly forecast from your first alarm until
+  you need to be there. If a ticked condition shows up (default: pouring, lightning-rainy,
+  snowy, snowy-rainy, hail, or rain/snow at freezing), it adds 15 min. Shift alarms go off
+  earlier. Appointment drives get the time added, so leave-by moves too. The Wake Plan reason
+  says why ("+15 min for pouring at 6 AM").
 
 ## Shortcuts actions
 
 | Action | Use |
 |---|---|
-| **Plan Wake-Up Alarms** | The main step. Returns a *Wake Plan*: `Has Alarm`, `First Alarm`, `Alarm Times`, `Alarm Cause`, `Reason`, `Warnings`, `Home Assistant JSON`. Turn off *Set Alarms* to preview only. If nothing needs an alarm, it also clears the app's old alarms. |
+| **Plan Wake-Up Alarms** | The main step. Returns a *Wake Plan*: `Has Alarm`, `First Alarm`, `Alarm Times`, `Alarm Dates`, `Needs Clock Alarms`, `Alarm Cause`, `Reason`, `Warnings`, `Home Assistant JSON`. Turn off *Set Alarms* to preview only. If nothing needs an alarm, it also clears the app's old alarms. |
 | **Set Wake-Up Alarms** | The day-off path. Give it a time and it sets the usual alarm series. A time already past today rolls to tomorrow. |
-| **Cancel Wake-Up Alarms** | Clears every alarm the app has set. |
+| **Cancel Wake-Up Alarms** | Clears every alarm the app has set and the leave-by reminder. |
 | **Get Drive Time** | Drive minutes from home to a place, arriving by a given time. Useful in other shortcuts. |
 
 ## Alarm cause
@@ -76,6 +106,11 @@ If  Wake Plan › Has Alarm  is  false
     End If
     Choose from Menu "Turn on Sleep In?"  …                 (your existing step)
 End If
+If  Wake Plan › Needs Clock Alarms  is  true              (Clock app mode only)
+    Repeat with Each item in Wake Plan › Alarm Dates
+        Create Alarm at Repeat Item
+    End Repeat
+End If
 …arm house alarm (existing)…
 …send to Home Assistant (existing). Send Wake Plan › First Alarm and
    Wake Plan › Alarm Cause, or the whole Wake Plan › Home Assistant JSON…
@@ -106,26 +141,34 @@ open BedtimeBridge.xcodeproj
 
 In Xcode, choose your team under *Signing & Capabilities*, change the bundle ID if you need to,
 and run it on your phone. On first launch, tap **Preview plan** to grant calendar access.
-Tap **Plan and set alarms** once to grant alarm access. Then open the gear and set:
+Tap **Plan and set alarms** once to grant alarm access and notifications. Then open the gear and set:
 
 - your shift words and how long before each shift you want the first alarm
 - get-ready time (default 60 min) and arrive-early buffer (default 10 min)
 - drive-time service and API key, and your home address (required for TomTom and Google; with
   Apple Maps a blank address uses your current location)
 - which calendars hold shifts and appointments (none ticked = all calendars)
+- alarm style and snooze length
+- Home Assistant URL and a long-lived access token (HA → your profile → Security), then tap
+  **Test connection**. The helper names default to your existing ones (`wake_fade`,
+  `wake_mike`, `select_shift_override`, `current_shift`, `forecast_home`). Plain `http://`
+  works on your home network. Away from home, use your Nabu Casa or other `https` URL.
 
-The planning logic is in `BedtimeBridge/Core/WakePlanner.swift`. It has no EventKit, MapKit
-or AlarmKit code and is covered by `BedtimeBridgeTests` (⌘U).
+The planning logic (`WakePlanner.swift`, `PlanAdjustments.swift`, `DepartureSolver`) has no
+EventKit, MapKit, AlarmKit or network code and is covered by `BedtimeBridgeTests` (⌘U).
 
 ## Layout
 
 ```
 BedtimeBridge/
   App/        app entry point
-  Core/       settings, WakePlanner (pure logic), calendar, AlarmKit, coordinator
+  Core/       settings, WakePlanner + PlanAdjustments (pure logic), calendar, AlarmKit,
+              Home Assistant client, leave-by reminder, coordinator
     DriveTime/  Apple Maps, TomTom and Google drive-time providers
-  Intents/    Shortcuts actions and the Wake Plan result type
+  Intents/    Shortcuts actions, Snooze/Stop button actions, Wake Plan result type
   Views/      main screen and settings
+BedtimeBridgeWidgets/  Live Activity that shows the snooze countdown
+Shared/       alarm metadata used by the app and the widget
 BedtimeBridgeTests/
 project.yml   XcodeGen spec (the .xcodeproj is generated, not committed)
 ```

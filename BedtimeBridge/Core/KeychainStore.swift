@@ -1,15 +1,21 @@
 import Foundation
 import Security
 
-/// API keys live in the Keychain, not UserDefaults, so they aren't in plain-text backups.
+/// API keys and the Home Assistant token live in the Keychain, not UserDefaults, so they
+/// aren't in plain-text backups.
 enum KeychainStore {
     private static let service = "BedtimeBridge.apiKeys"
+    static let homeAssistantAccount = "homeAssistant"
 
-    static func apiKey(for source: DriveTimeSource) -> String {
+    static func apiKey(for source: DriveTimeSource) -> String { secret(source.rawValue) }
+
+    static func setAPIKey(_ key: String, for source: DriveTimeSource) { setSecret(key, account: source.rawValue) }
+
+    static func secret(_ account: String) -> String {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: source.rawValue,
+            kSecAttrAccount as String: account,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
@@ -18,18 +24,18 @@ enum KeychainStore {
         return String(decoding: data, as: UTF8.self)
     }
 
-    static func setAPIKey(_ key: String, for source: DriveTimeSource) {
+    static func setSecret(_ value: String, account: String) {
         let match: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: source.rawValue,
+            kSecAttrAccount as String: account,
         ]
         SecItemDelete(match as CFDictionary)
-        let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         var item = match
         item[kSecValueData as String] = Data(trimmed.utf8)
-        // Shortcuts may run the bedtime action while the phone is locked.
+        // Shortcuts and the alarm buttons may run while the phone is locked.
         item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         SecItemAdd(item as CFDictionary, nil)
     }

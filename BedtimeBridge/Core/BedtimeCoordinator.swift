@@ -2,8 +2,8 @@ import EventKit
 import Foundation
 import MapKit
 
-/// Glues calendar, drive time and alarms together. Used by both the app UI and the
-/// Shortcuts actions, so the bedtime shortcut and the "Preview" button behave the same.
+/// Glues calendar, drive time, Home Assistant and alarms together. Used by the app UI,
+/// the Shortcuts actions and the alarm buttons, so they all behave the same.
 @MainActor
 final class BedtimeCoordinator {
     static let shared = BedtimeCoordinator()
@@ -11,13 +11,18 @@ final class BedtimeCoordinator {
     let calendar = CalendarService()
     let travel = TravelTimeService()
     let alarms = AlarmScheduler()
+    let leaveReminder = LeaveReminder()
+
+    // MARK: Planning
 
     /// Works out tonight's wake-up without touching any alarms.
     func buildPlan(settings: BridgeSettings, now: Date = .now) async throws -> WakePlan {
         try await calendar.ensureAccess()
         let end = now.addingTimeInterval(Double(settings.lookAheadHours) * 3600)
+        let homeAssistant = HomeAssistantClient.configured(settings)
+        var extraWarnings: [String] = []
 
-        let shift = calendar.events(from: now, to: end, calendarIDs: settings.shiftCalendarIDs)
+        var shift = calendar.events(from: now, to: end, calendarIDs: settings.shiftCalendarIDs)
             .lazy
             .compactMap { event -> ShiftCandidate? in
                 guard let rule = WakePlanner.matchingRule(forTitle: event.title ?? "", rules: settings.shiftRules) else { return nil }
@@ -30,37 +35,54 @@ final class BedtimeCoordinator {
             }
             .first
 
-        let appointmentEvents = calendar.events(from: now, to: end, calendarIDs: settings.appointmentCalendarIDs)
-            .filter { event in
-                WakePlanner.notesRequestWakeUp(event.notes, keyword: settings.appointmentKeyword)
-                    && !(event.location ?? "").trimmingCharacters(in: .whitespaces).isEmpty
-            }
-
-        var appointments: [AppointmentCandidate] = []
-        if !appointmentEvents.isEmpty {
-            // A missing origin or API key becomes the fallback reason on each appointment.
-            let route: Result<(MKMapItem, DriveTimeProvider), Error>
+        if let homeAssistant {
             do {
-                route = .success((try await travel.origin(homeAddress: settings.homeAddress), try travel.provider(for: settings)))
+                let override = try await homeAssistant.state(of: settings.shiftOverrideEntity).state
+                let result = PlanAdjustments.applyShiftOverride(override, to: shift, rules: settings.shiftRules)
+                shift = result.shift
+                extraWarnings += [result.warning].compactMap { $0 }
+                if override.caseInsensitiveCompare("auto") == .orderedSame {
+                    let sensor = try await homeAssistant.state(of: settings.shiftSensorEntity)
+                    let haStart = (sensor.attributes["next_shift_start"] as? String).flatMap { ISO8601DateFormatter().date(from: $0) }
+                    extraWarnings += [PlanAdjustments.shiftMismatchWarning(calendarShift: shift, haNextShiftStart: haStart, lookAheadEnd: end)].compactMap { $0 }
+                }
             } catch {
-                route = .failure(error)
-            }
-            for event in appointmentEvents {
-                appointments.append(await appointmentCandidate(for: event, route: route, settings: settings))
+                extraWarnings.append("Couldn't read the shift override from Home Assistant: \(error.localizedDescription)")
             }
         }
 
-        return WakePlanner.plan(shift: shift, appointments: appointments, settings: settings, now: now)
+        let appointments = await appointmentCandidates(from: now, to: end, settings: settings)
+
+        var plan = WakePlanner.plan(shift: shift, appointments: appointments, settings: settings, now: now)
+
+        // Weather depends on the plan (wake-up until arrival), so check it second and re-plan.
+        if let homeAssistant, settings.weatherExtraMinutes > 0, let window = travelWindow(for: plan) {
+            do {
+                async let forecast = homeAssistant.hourlyForecast(for: settings.weatherEntity)
+                async let weatherState = homeAssistant.state(of: settings.weatherEntity)
+                let unit = try await weatherState.attributes["temperature_unit"] as? String ?? "°F"
+                let freezing: Double? = settings.addTimeWhenFreezing ? (unit.contains("C") ? 0 : 32) : nil
+                if let adjustment = PlanAdjustments.weather(
+                    forecast: try await forecast,
+                    window: window,
+                    conditions: settings.badWeatherConditions,
+                    freezingAt: freezing,
+                    extraMinutes: settings.weatherExtraMinutes
+                ) {
+                    plan = WakePlanner.plan(shift: shift, appointments: appointments, settings: settings, now: now, weather: adjustment)
+                }
+            } catch {
+                extraWarnings.append("Couldn't check the weather: \(error.localizedDescription)")
+            }
+        }
+
+        plan.warnings = extraWarnings + plan.warnings
+        return plan
     }
 
     func planAndSchedule(settings: BridgeSettings) async throws -> WakePlan {
         let plan = try await buildPlan(settings: settings)
-        if plan.hasAlarm {
-            try await alarms.replaceAlarms(with: plan.alarmTimes, title: alarmTitle(for: plan))
-        } else {
-            // Don't leave last night's alarms ringing on a day off.
-            try alarms.cancelAll()
-        }
+        try await apply(plan, settings: settings)
         return plan
     }
 
@@ -68,15 +90,142 @@ final class BedtimeCoordinator {
     func scheduleManual(firstAlarm: Date, settings: BridgeSettings) async throws -> WakePlan {
         let first = Self.nextOccurrence(ofTimeIn: firstAlarm)
         let times = WakePlanner.alarmTimes(first: first, count: settings.alarmCount, spacingMinutes: settings.alarmSpacingMinutes)
-        try await alarms.replaceAlarms(with: times, title: "Wake up")
-        return WakePlan(source: .manual, alarmTimes: times, reason: "Day off alarm")
+        let plan = WakePlan(source: .manual, alarmTimes: times, reason: "Day off alarm")
+        try await apply(plan, settings: settings)
+        return plan
     }
+
+    func cancelAlarms(settings: BridgeSettings) async throws {
+        try alarms.cancelAll()
+        leaveReminder.clear()
+        await publish(state: nil, cause: AlarmCause.none, alarmTimes: [], reason: "Cancelled", event: "cancelled", settings: settings)
+    }
+
+    /// Sets (or clears) alarms, the leave-by reminder and the HA sensor for a plan.
+    private func apply(_ plan: WakePlan, settings: BridgeSettings) async throws {
+        if plan.hasAlarm, settings.alarmStyle == .app {
+            try await alarms.replaceAlarms(
+                with: plan.alarmTimes,
+                title: alarmTitle(for: plan),
+                cause: plan.cause,
+                snoozeMinutes: settings.snoozeMinutes
+            )
+        } else {
+            // No alarm, or the shortcut is making Clock alarms: don't leave old app alarms ringing.
+            try alarms.cancelAll()
+        }
+
+        if settings.leaveReminderEnabled, let appointment = plan.appointment, plan.source == .appointment {
+            await leaveReminder.schedule(
+                PendingTrip(
+                    title: appointment.title,
+                    location: appointment.location,
+                    start: appointment.start,
+                    arriveBy: appointment.arriveBy(bufferMinutes: settings.arrivalBufferMinutes),
+                    plannedTravelSeconds: appointment.travelSeconds,
+                    latitude: appointment.latitude,
+                    longitude: appointment.longitude
+                ),
+                leadMinutes: settings.leaveReminderLeadMinutes
+            )
+        } else {
+            leaveReminder.clear()
+        }
+
+        await publish(
+            state: plan.firstAlarm,
+            cause: plan.cause,
+            alarmTimes: plan.alarmTimes,
+            reason: plan.reason,
+            event: "planned",
+            settings: settings
+        )
+    }
+
+    // MARK: Alarm buttons (app alarms only)
+
+    func alarmSnoozed(id: UUID, settings: BridgeSettings) async {
+        alarms.snooze(id)
+        let ringsAgain = Date.now.addingTimeInterval(Double(settings.snoozeMinutes) * 60)
+        if let homeAssistant = HomeAssistantClient.configured(settings) {
+            try? await homeAssistant.turnOn(settings.snoozeHelper)
+        }
+        await publish(state: ringsAgain, cause: lastCause, alarmTimes: alarms.scheduledAlarmTimes(), reason: "Snoozed", event: "snoozed", settings: settings)
+    }
+
+    func alarmStopped(id: UUID, settings: BridgeSettings) async {
+        alarms.stop(id)
+        if settings.stopCancelsRemaining {
+            alarms.cancelAll(except: id)
+        }
+        if let homeAssistant = HomeAssistantClient.configured(settings) {
+            try? await homeAssistant.turnOn(settings.stopHelper)
+        }
+        let remaining = alarms.scheduledAlarmTimes().filter { $0 > .now }
+        await publish(
+            state: remaining.first,
+            cause: remaining.isEmpty ? AlarmCause.none : lastCause,
+            alarmTimes: remaining,
+            reason: "Stopped",
+            event: "stopped",
+            settings: settings
+        )
+
+        if settings.leaveReminderEnabled, leaveReminder.pendingTrip != nil,
+           let provider = try? travel.provider(for: settings),
+           let origin = try? await travel.origin(homeAddress: settings.homeAddress) {
+            await leaveReminder.recheck(using: provider, origin: origin, travel: travel, leadMinutes: settings.leaveReminderLeadMinutes)
+        }
+    }
+
+    // MARK: Other
 
     func drivingMinutes(to destination: String, arrivingAt arrival: Date, settings: BridgeSettings) async throws -> Int {
         let origin = try await travel.origin(homeAddress: settings.homeAddress)
         let target = try await travel.destination(locationText: destination, coordinates: nil)
         let seconds = try await travel.provider(for: settings).drivingTime(from: origin, to: target, arrivingBy: arrival)
         return Int((seconds / 60).rounded())
+    }
+
+    /// Shortcuts' "Ask for Input" with a time often returns today's date; a time that has
+    /// already passed today means tomorrow morning.
+    nonisolated static func nextOccurrence(ofTimeIn date: Date, now: Date = .now, calendar: Calendar = .current) -> Date {
+        guard date <= now else { return date }
+        let parts = calendar.dateComponents([.hour, .minute], from: date)
+        return calendar.nextDate(after: now, matching: parts, matchingPolicy: .nextTime) ?? date
+    }
+
+    // MARK: Private
+
+    private static let lastCauseKey = "lastAlarmCause"
+
+    /// Cause of the alarms currently set, remembered for snooze/stop updates in the morning.
+    private var lastCause: String {
+        get { UserDefaults.standard.string(forKey: Self.lastCauseKey) ?? AlarmCause.none }
+        set { UserDefaults.standard.set(newValue, forKey: Self.lastCauseKey) }
+    }
+
+    private func appointmentCandidates(from now: Date, to end: Date, settings: BridgeSettings) async -> [AppointmentCandidate] {
+        let events = calendar.events(from: now, to: end, calendarIDs: settings.appointmentCalendarIDs)
+            .filter { event in
+                WakePlanner.notesRequestWakeUp(event.notes, keyword: settings.appointmentKeyword)
+                    && !(event.location ?? "").trimmingCharacters(in: .whitespaces).isEmpty
+            }
+        guard !events.isEmpty else { return [] }
+
+        // A missing origin or API key becomes the fallback reason on each appointment.
+        let route: Result<(MKMapItem, DriveTimeProvider), Error>
+        do {
+            route = .success((try await travel.origin(homeAddress: settings.homeAddress), try travel.provider(for: settings)))
+        } catch {
+            route = .failure(error)
+        }
+
+        var candidates: [AppointmentCandidate] = []
+        for event in events {
+            candidates.append(await appointmentCandidate(for: event, route: route, settings: settings))
+        }
+        return candidates
     }
 
     private func appointmentCandidate(
@@ -93,6 +242,8 @@ final class BedtimeCoordinator {
         do {
             let (origin, provider) = try route.get()
             let destination = try await travel.destination(locationText: candidate.location, coordinates: event.structuredLocation?.geoLocation)
+            candidate.latitude = destination.placemark.coordinate.latitude
+            candidate.longitude = destination.placemark.coordinate.longitude
             candidate.travelSeconds = try await provider.drivingTime(
                 from: origin,
                 to: destination,
@@ -104,19 +255,40 @@ final class BedtimeCoordinator {
         return candidate
     }
 
+    /// From the first alarm until you need to be there: the hours worth checking the weather for.
+    private func travelWindow(for plan: WakePlan) -> ClosedRange<Date>? {
+        guard let first = plan.firstAlarm else { return nil }
+        let arrival = plan.source == .appointment ? plan.appointment?.start : plan.shift?.start
+        guard let arrival, arrival > first else { return nil }
+        return first...arrival
+    }
+
     private func alarmTitle(for plan: WakePlan) -> String {
         switch plan.source {
-        case .shift: "Wake up for \(plan.shift?.title ?? "work")"
+        case .shift: "Wake up for \(plan.shift?.cause ?? "work")"
         case .appointment: "Wake up for \(plan.appointment?.title ?? "your appointment")"
         case .manual, .none: "Wake up"
         }
     }
 
-    /// Shortcuts' "Ask for Input" with a time often returns today's date; a time that has
-    /// already passed today means tomorrow morning.
-    nonisolated static func nextOccurrence(ofTimeIn date: Date, now: Date = .now, calendar: Calendar = .current) -> Date {
-        guard date <= now else { return date }
-        let parts = calendar.dateComponents([.hour, .minute], from: date)
-        return calendar.nextDate(after: now, matching: parts, matchingPolicy: .nextTime) ?? date
+    /// Updates the next-alarm sensor in Home Assistant. Best effort: HA being down never
+    /// stops alarms from being set.
+    private func publish(state: Date?, cause: String, alarmTimes: [Date], reason: String, event: String, settings: BridgeSettings) async {
+        if event == "planned" || event == "cancelled" { lastCause = cause }
+        guard let homeAssistant = HomeAssistantClient.configured(settings), !settings.nextAlarmSensor.isEmpty else { return }
+        let iso = ISO8601DateFormatter()
+        iso.timeZone = .current
+        let attributes: [String: Any] = [
+            "friendly_name": "Bedtime Bridge Next Alarm",
+            "device_class": "timestamp",
+            "icon": "mdi:alarm",
+            "alarm_cause": cause,
+            "alarm_times": alarmTimes.map { iso.string(from: $0) },
+            "alarm_style": settings.alarmStyle.rawValue,
+            "reason": reason,
+            "last_event": event,
+            "updated": iso.string(from: .now),
+        ]
+        try? await homeAssistant.setState(settings.nextAlarmSensor, state: state.map { iso.string(from: $0) } ?? "unknown", attributes: attributes)
     }
 }

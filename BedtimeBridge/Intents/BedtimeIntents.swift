@@ -51,11 +51,11 @@ struct SetWakeAlarmsIntent: AppIntent {
 
 struct CancelWakeAlarmsIntent: AppIntent {
     static var title: LocalizedStringResource = "Cancel Wake-Up Alarms"
-    static var description = IntentDescription("Removes every alarm Bedtime Bridge has set.")
+    static var description = IntentDescription("Removes every alarm Bedtime Bridge has set and the leave-by reminder.")
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        try BedtimeCoordinator.shared.alarms.cancelAll()
+        try await BedtimeCoordinator.shared.cancelAlarms(settings: SettingsStore.shared.settings)
         return .result()
     }
 }

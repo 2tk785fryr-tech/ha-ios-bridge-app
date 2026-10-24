@@ -20,6 +20,9 @@ struct AppointmentCandidate: Equatable {
     var travelSeconds: TimeInterval
     /// Set when the drive time could not be calculated and the fallback was used.
     var fallbackReason: String? = nil
+    /// Where the appointment is, kept so the leave-by reminder can recheck traffic.
+    var latitude: Double? = nil
+    var longitude: Double? = nil
 
     var usedFallbackTravel: Bool { fallbackReason != nil }
 
@@ -57,6 +60,7 @@ struct WakePlan: Equatable {
     var reason: String
     var shift: ShiftCandidate?
     var appointment: AppointmentCandidate?
+    var weather: WeatherAdjustment? = nil
     var warnings: [String] = []
 
     var firstAlarm: Date? { alarmTimes.first }
@@ -93,13 +97,26 @@ enum WakePlanner {
     }
 
     /// Picks the wake time: the shift's wake time, unless an appointment needs you up earlier.
+    /// Bad weather moves a shift alarm earlier and adds to appointment drive times.
     static func plan(
         shift: ShiftCandidate?,
         appointments: [AppointmentCandidate],
         settings: BridgeSettings,
-        now: Date
+        now: Date,
+        weather: WeatherAdjustment? = nil
     ) -> WakePlan {
         var warnings: [String] = []
+        let extra = Double(weather?.minutes ?? 0) * 60
+        let shift = shift.map { shift -> ShiftCandidate in
+            var shift = shift
+            shift.wakeMinutesBefore += weather?.minutes ?? 0
+            return shift
+        }
+        let appointments = appointments.map { appointment -> AppointmentCandidate in
+            var appointment = appointment
+            appointment.travelSeconds += extra
+            return appointment
+        }
 
         var shiftWake: Date?
         if let shift {
@@ -128,6 +145,8 @@ enum WakePlanner {
             alarmTimes(first: first, count: settings.alarmCount, spacingMinutes: settings.alarmSpacingMinutes)
         }
 
+        let weatherNote = weather.map { " +\($0.minutes) min for \($0.reason)" } ?? ""
+
         if let best = earliestAppointment, shiftWake.map({ best.1 < $0 }) ?? true {
             let (appointment, wake) = best
             let minutes = Int((appointment.travelSeconds / 60).rounded())
@@ -135,9 +154,10 @@ enum WakePlanner {
             return WakePlan(
                 source: .appointment,
                 alarmTimes: makeTimes(wake),
-                reason: "\(appointment.title) at \(format(appointment.start)). Leave by \(format(leaveBy)) (\(minutes) min drive, \(settings.arrivalBufferMinutes) min early)",
+                reason: "\(appointment.title) at \(format(appointment.start)). Leave by \(format(leaveBy)) (\(minutes) min drive, \(settings.arrivalBufferMinutes) min early)\(weatherNote)",
                 shift: shift,
                 appointment: appointment,
+                weather: weather,
                 warnings: warnings
             )
         }
@@ -146,9 +166,10 @@ enum WakePlanner {
             return WakePlan(
                 source: .shift,
                 alarmTimes: makeTimes(shiftWake),
-                reason: "\(shift.cause) shift at \(format(shift.start))",
+                reason: "\(shift.cause) shift at \(format(shift.start))\(weatherNote)",
                 shift: shift,
                 appointment: earliestAppointment?.0,
+                weather: weather,
                 warnings: warnings
             )
         }

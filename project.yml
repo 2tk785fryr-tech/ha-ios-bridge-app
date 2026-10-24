@@ -16,6 +16,9 @@ targets:
     platform: iOS
     sources:
       - BedtimeBridge
+      - Shared
+    dependencies:
+      - target: BedtimeBridgeWidgets
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.BedtimeBridge
@@ -29,6 +32,28 @@ targets:
         NSCalendarsFullAccessUsageDescription: Bedtime Bridge reads your shift and appointment events to work out when you need to wake up.
         NSAlarmKitUsageDescription: Bedtime Bridge sets your wake-up alarms for work shifts and appointments.
         NSLocationWhenInUseUsageDescription: If no home address is set, your current location is used as the starting point for drive times.
+        NSSupportsLiveActivities: true
+        # Lets the app reach Home Assistant on your home network over plain http.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        NSLocalNetworkUsageDescription: Bedtime Bridge talks to Home Assistant on your home network to run your wake-up routines.
+  BedtimeBridgeWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - BedtimeBridgeWidgets
+      - Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.BedtimeBridge.Widgets
+        TARGETED_DEVICE_FAMILY: "1"
+        GENERATE_INFOPLIST_FILE: YES
+    info:
+      path: BedtimeBridgeWidgets/Info.plist
+      properties:
+        CFBundleDisplayName: Bedtime Bridge
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
   BedtimeBridgeTests:
     type: bundle.unit-test
     platform: iOS

@@ -37,6 +37,60 @@ struct BridgeSettings: Codable, Equatable {
     var lookAheadHours = 24
     /// Starting point for drive times. Empty means current location.
     var homeAddress = ""
+
+    // MARK: Alarms
+
+    var alarmStyle: AlarmStyle = .app
+    /// App alarms only. Clock app snooze is fixed at 9 minutes by Apple.
+    var snoozeMinutes = 9
+    /// App alarms only: stopping one alarm cancels the rest of tonight's series.
+    var stopCancelsRemaining = true
+
+    // MARK: Home Assistant
+
+    /// e.g. http://homeassistant.local:8123 or your Nabu Casa URL. The token is in the Keychain.
+    var homeAssistantURL = ""
+    /// Turned on when you tap Snooze (starts Wake Snooze Fade).
+    var snoozeHelper = "input_boolean.wake_fade"
+    /// Turned on when you tap Stop (starts Wake Sequence).
+    var stopHelper = "input_boolean.wake_mike"
+    /// "Off" skips the work alarm; "Days"/"Swings" overrides the shift type.
+    var shiftOverrideEntity = "input_select.select_shift_override"
+    /// Its next_shift_start is compared with the calendar as a sanity check.
+    var shiftSensorEntity = "sensor.current_shift"
+    /// Kept up to date with the next alarm time and cause.
+    var nextAlarmSensor = "sensor.bedtime_bridge_next_alarm"
+
+    // MARK: Weather
+
+    var weatherEntity = "weather.forecast_home"
+    /// Added when the forecast between waking and arriving matches a bad-weather condition.
+    var weatherExtraMinutes = 15
+    var badWeatherConditions: Set<String> = ["pouring", "lightning-rainy", "snowy", "snowy-rainy", "hail"]
+    /// Also count any rain or snow at or below freezing.
+    var addTimeWhenFreezing = true
+
+    // MARK: Leave-by reminder
+
+    var leaveReminderEnabled = true
+    /// Notification this many minutes before leave-by time.
+    var leaveReminderLeadMinutes = 15
+}
+
+enum AlarmStyle: String, Codable, CaseIterable, Identifiable {
+    /// AlarmKit alarms with adjustable snooze; Snooze/Stop tell Home Assistant directly.
+    case app
+    /// The app only works out the times; your shortcut creates Clock app alarms.
+    case clock
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .app: "Bedtime Bridge alarms"
+        case .clock: "Clock app (via shortcut)"
+        }
+    }
 }
 
 @Observable

@@ -19,6 +19,14 @@ struct WakePlanEntity: TransientAppEntity {
     @Property(title: "Alarm Times")
     var alarmTimesText: String
 
+    /// The individual times, for "Repeat with Each → Create Alarm" in Clock app mode.
+    @Property(title: "Alarm Dates")
+    var alarmDates: [Date]
+
+    /// True when Settings uses Clock app alarms, so the shortcut should create them.
+    @Property(title: "Needs Clock Alarms")
+    var needsClockAlarms: Bool
+
     @Property(title: "Reason")
     var reason: String
 
@@ -34,6 +42,8 @@ struct WakePlanEntity: TransientAppEntity {
         alarmCause = AlarmCause.none
         firstAlarm = nil
         alarmTimesText = ""
+        alarmDates = []
+        needsClockAlarms = false
         reason = ""
         warnings = ""
         homeAssistantJSON = "{}"
@@ -45,6 +55,8 @@ struct WakePlanEntity: TransientAppEntity {
         alarmCause = plan.cause
         firstAlarm = plan.firstAlarm
         alarmTimesText = plan.alarmTimes.map(WakePlanner.format).joined(separator: ", ")
+        alarmDates = plan.alarmTimes
+        needsClockAlarms = plan.hasAlarm && SettingsStore.shared.settings.alarmStyle == .clock
         reason = plan.reason
         warnings = plan.warnings.joined(separator: "\n")
         homeAssistantJSON = Self.homeAssistantJSON(for: plan)
@@ -76,6 +88,9 @@ struct WakePlanEntity: TransientAppEntity {
                 "drive_minutes": Int((appointment.travelSeconds / 60).rounded()),
                 "drive_time_estimated": appointment.usedFallbackTravel,
             ]
+        }
+        if let weather = plan.weather {
+            body["weather_extra"] = ["minutes": weather.minutes, "reason": weather.reason]
         }
         if let shift = plan.shift {
             body["shift"] = ["title": shift.title, "start": iso.string(from: shift.start)]

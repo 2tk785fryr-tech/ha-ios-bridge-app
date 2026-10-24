@@ -32,15 +32,19 @@ struct ContentView: View {
                 .disabled(isWorking)
 
                 Section("Alarms set by this app") {
-                    if scheduled.isEmpty {
+                    if store.settings.alarmStyle == .clock {
+                        Text("Clock app mode: your shortcut creates the alarms.").foregroundStyle(.secondary)
+                    } else if scheduled.isEmpty {
                         Text("None").foregroundStyle(.secondary)
                     } else {
                         ForEach(scheduled, id: \.self) { time in
                             Text(time.formatted(date: .abbreviated, time: .shortened))
                         }
                         Button("Cancel all", systemImage: "trash", role: .destructive) {
-                            try? coordinator.alarms.cancelAll()
-                            refreshScheduled()
+                            Task {
+                                try? await coordinator.cancelAlarms(settings: store.settings)
+                                refreshScheduled()
+                            }
                         }
                     }
                 }
