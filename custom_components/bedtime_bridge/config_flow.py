@@ -10,7 +10,8 @@ from homeassistant.components import webhook
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import selector
-from homeassistant.helpers.network import NoURLAvailableError
+
+from .pairing import async_placeholders
 
 from .const import shift_types as parse_shift_types
 from .const import (
@@ -61,6 +62,22 @@ OPTION_KEYS = [
 ]
 
 
+def _suggested_phone(hass: HomeAssistant) -> str | None:
+    """The iPhone's mobile_app notify service, ahead of any Mac or iPad on the account
+    (mobile_app_michaels_macbook_pro sorts before mobile_app_mikes_iphone)."""
+    services = sorted(s for s in hass.services.async_services_for_domain("notify") if s.startswith("mobile_app_"))
+    for hint in ("iphone", "phone"):
+        if match := next((s for s in services if hint in s), None):
+            return match
+    return services[0] if services else None
+
+
+def _with_cleared_keys(user_input: dict[str, Any]) -> dict[str, Any]:
+    """Store a cleared optional field as None, so it stays cleared. Options the entry has never
+    stored (e.g. added by an update) are absent, and Configure suggests a value for them."""
+    return {**{key: None for key in OPTION_KEYS}, **user_input}
+
+
 def _schema(hass: HomeAssistant, current: dict[str, Any]) -> vol.Schema:
     """Same fields for setup and options. Suggests your existing entities when they exist."""
 
@@ -87,8 +104,8 @@ def _schema(hass: HomeAssistant, current: dict[str, Any]) -> vol.Schema:
     def notify_suggestion() -> dict[str, Any]:
         if CONF_NOTIFY in current:
             return {"suggested_value": current[CONF_NOTIFY]} if current[CONF_NOTIFY] else {}
-        phones = sorted(s for s in hass.services.async_services_for_domain("notify") if s.startswith("mobile_app_"))
-        return {"suggested_value": f"notify.{phones[0]}"} if phones else {}
+        phone = _suggested_phone(hass)
+        return {"suggested_value": f"notify.{phone}"} if phone else {}
     return vol.Schema(
         {
             vol.Optional(CONF_PRESENCE, description=presence_suggestion()): selector.EntitySelector(
@@ -119,14 +136,6 @@ def _schema(hass: HomeAssistant, current: dict[str, Any]) -> vol.Schema:
     )
 
 
-def webhook_url(hass: HomeAssistant, webhook_id: str) -> str:
-    """Prefer the external URL so pairing works away from home too."""
-    try:
-        return webhook.async_generate_url(hass, webhook_id, prefer_external=True)
-    except NoURLAvailableError:
-        return f"<your Home Assistant URL>{webhook.async_generate_path(webhook_id)}"
-
-
 class BedtimeBridgeConfigFlow(ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
@@ -138,7 +147,7 @@ class BedtimeBridgeConfigFlow(ConfigFlow, domain=DOMAIN):
         await self.async_set_unique_id(DOMAIN)
         self._abort_if_unique_id_configured()
         if user_input is not None:
-            self._options = user_input
+            self._options = _with_cleared_keys(user_input)
             self._webhook_id = webhook.async_generate_id()
             return await self.async_step_pair()
         return self.async_show_form(step_id="user", data_schema=_schema(self.hass, {}))
@@ -152,7 +161,7 @@ class BedtimeBridgeConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="pair",
             data_schema=vol.Schema({}),
-            description_placeholders={"webhook_url": webhook_url(self.hass, self._webhook_id)},
+            description_placeholders=await async_placeholders(self.hass, self._webhook_id),
         )
 
     @staticmethod
@@ -164,10 +173,11 @@ class BedtimeBridgeConfigFlow(ConfigFlow, domain=DOMAIN):
 class BedtimeBridgeOptionsFlow(OptionsFlow):
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:
-            return self.async_create_entry(data=user_input)
+            return self.async_create_entry(data=_with_cleared_keys(user_input))
         return self.async_show_form(
             step_id="init",
-            # Every key present (None when cleared), so a helper you removed isn't suggested again.
-            data_schema=_schema(self.hass, {key: self.config_entry.options.get(key) for key in OPTION_KEYS}),
-            description_placeholders={"webhook_url": webhook_url(self.hass, self.config_entry.data[CONF_WEBHOOK_ID])},
+            # Only what the entry has stored: cleared fields (None) stay empty, options it has
+            # never had get a suggestion.
+            data_schema=_schema(self.hass, dict(self.config_entry.options)),
+            description_placeholders=await async_placeholders(self.hass, self.config_entry.data[CONF_WEBHOOK_ID]),
         )

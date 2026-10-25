@@ -105,6 +105,21 @@ final class PlanAdjustmentsTests: XCTestCase {
         XCTAssertNil(PlanAdjustments.isUp(latchState: nil, bedState: nil, bedUnchangedFor: nil))
     }
 
+    // MARK: Pairing link
+
+    func testPairingLinkGivesBothAddresses() {
+        let link = URL(string: "bedtimebridge://pair?remote=https%3A%2F%2Fhooks.nabu.casa%2Fabc&local=http%3A%2F%2F192.168.1.10%3A8123%2Fapi%2Fwebhook%2Fxyz")!
+        let addresses = HomeAssistantLinks.addresses(in: link)
+        XCTAssertEqual(addresses?.remote, "https://hooks.nabu.casa/abc")
+        XCTAssertEqual(addresses?.local, "http://192.168.1.10:8123/api/webhook/xyz")
+    }
+
+    func testOtherLinksAreNotPairingLinks() {
+        XCTAssertNil(HomeAssistantLinks.addresses(in: URL(string: "bedtimebridge://replan")!))
+        XCTAssertNil(HomeAssistantLinks.addresses(in: URL(string: "https://hooks.nabu.casa/abc")!))
+        XCTAssertNil(HomeAssistantLinks.addresses(in: URL(string: "bedtimebridge://pair")!))
+    }
+
     // MARK: Settings from the Home Assistant integration
 
     func testHomeAssistantSettingsOverridePhone() {
