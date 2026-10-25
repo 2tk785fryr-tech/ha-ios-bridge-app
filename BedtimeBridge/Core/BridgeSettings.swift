@@ -82,6 +82,8 @@ struct BridgeSettings: Codable, Equatable {
     var getReadyMinutes = 60
     /// Arrive this long before an appointment starts.
     var arrivalBufferMinutes = 10
+    /// Arrive this long before a shift starts.
+    var workArrivalBufferMinutes = 10
     var driveTimeSource: DriveTimeSource = .apple
     /// Google only: plan for a bad-traffic day instead of a typical one.
     var googlePessimisticTraffic = false

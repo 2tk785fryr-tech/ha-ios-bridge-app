@@ -28,6 +28,28 @@ final class PlanAdjustmentsTests: XCTestCase {
         XCTAssertEqual(PlanAdjustments.skipping(plan, morning: nil), plan)
     }
 
+    // MARK: Shift drive
+
+    func testShiftLeaveByCountsBackFromTheShift() {
+        var plan = WakePlanner.plan(shift: daysShift, appointments: [], settings: settings, now: now)
+        XCTAssertNil(plan.leaveBy(settings: settings), "No location on the shift, no leave-by")
+        plan.commute = Commute(travelSeconds: 25 * 60)
+        var work = settings
+        work.workArrivalBufferMinutes = 10
+        // Shift at +9 h, arrive 10 min early, 25 min drive: leave 35 min before the shift.
+        XCTAssertEqual(plan.leaveBy(settings: work), hours(9).addingTimeInterval(-35 * 60))
+    }
+
+    func testOverrideKeepsTheShiftsLocation() {
+        var shift = daysShift
+        shift.location = "General Hospital, 1 Main St"
+        shift.latitude = 37.8
+        shift.longitude = -122.4
+        let result = PlanAdjustments.applyShiftOverride("Swings", to: shift, rules: settings.shiftRules)
+        XCTAssertEqual(result.shift?.location, shift.location)
+        XCTAssertEqual(result.shift?.latitude, 37.8)
+    }
+
     // MARK: Shift override
 
     func testAutoLeavesCalendarShift() {

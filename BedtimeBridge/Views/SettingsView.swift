@@ -28,10 +28,11 @@ struct SettingsView: View {
                 Button("Add shift type", systemImage: "plus") {
                     store.settings.shiftRules.append(ShiftRule(keyword: ""))
                 }
+                Stepper("Arrive at work early: \(store.settings.workArrivalBufferMinutes) min", value: $store.settings.workArrivalBufferMinutes, in: 0...60, step: 5)
             } header: {
                 Text("Shifts")
             } footer: {
-                Text("A calendar event whose title contains the word counts as a shift. Each shift has its own timing and alarm series.")
+                Text("A calendar event whose title contains the word counts as a shift. Each shift has its own timing and alarm series. When the event has a location, Tonight shows when to leave to get there this early.")
             }
 
             Section {
@@ -47,13 +48,13 @@ struct SettingsView: View {
                     SettingsPage(title: "Alarms") { AlarmSettingsSection(settings: $store.settings) }
                 }
                 SettingsLink(title: "Appointments", icon: "calendar.badge.clock", value: "Notes say \"\(settings.appointmentKeyword)\"") {
-                    SettingsPage(title: "Appointments") {
-                        AppointmentsSection(settings: $store.settings)
-                        LeaveReminderSection(settings: $store.settings)
-                    }
+                    SettingsPage(title: "Appointments") { AppointmentsSection(settings: $store.settings) }
                 }
                 SettingsLink(title: "Drive time", icon: "car", value: settings.driveTimeSource.displayName) {
-                    SettingsPage(title: "Drive time") { DriveTimeSection(settings: $store.settings) }
+                    SettingsPage(title: "Drive time") {
+                        DriveTimeSection(settings: $store.settings)
+                        LeaveReminderSection(settings: $store.settings)
+                    }
                 }
                 SettingsLink(title: "Home Assistant", icon: "house", value: homeAssistantSummary(settings)) {
                     SettingsPage(title: "Home Assistant") { HomeAssistantSection(settings: $store.settings) }
@@ -150,7 +151,7 @@ private struct LeaveReminderSection: View {
                 Stepper("\(settings.leaveReminderLeadMinutes) min before leave-by", value: $settings.leaveReminderLeadMinutes, in: 0...60, step: 5)
             }
         } footer: {
-            Text("Appointment mornings only. Set at bedtime; when you stop a Bedtime Bridge alarm, traffic is rechecked and the reminder moves if it changed.")
+            Text("For shifts and appointments with a location. Set at bedtime; when you stop a Bedtime Bridge alarm, traffic is rechecked and the reminder moves if it changed.")
         }
     }
 }
