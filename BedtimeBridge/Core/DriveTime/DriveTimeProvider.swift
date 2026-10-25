@@ -5,6 +5,8 @@ enum DriveTimeSource: String, Codable, CaseIterable, Identifiable {
     case apple
     case tomTom
     case google
+    /// Every service you have a key for (and Apple Maps); the longest drive wins.
+    case longest
 
     var id: String { rawValue }
 
@@ -13,10 +15,11 @@ enum DriveTimeSource: String, Codable, CaseIterable, Identifiable {
         case .apple: "Apple Maps"
         case .tomTom: "TomTom"
         case .google: "Google"
+        case .longest: "Longest of all"
         }
     }
 
-    var needsAPIKey: Bool { self != .apple }
+    var needsAPIKey: Bool { self == .tomTom || self == .google }
 }
 
 protocol DriveTimeProvider {

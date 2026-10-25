@@ -22,6 +22,8 @@ struct GoogleDriveTime: DriveTimeProvider {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(apiKey, forHTTPHeaderField: "X-Goog-Api-Key")
+        // Lets a key restricted to this iOS app in Google Cloud accept the request.
+        request.setValue(Bundle.main.bundleIdentifier, forHTTPHeaderField: "X-Ios-Bundle-Identifier")
         request.setValue("routes.duration", forHTTPHeaderField: "X-Goog-FieldMask")
 
         let body: [String: Any] = [

@@ -2,17 +2,19 @@ import CoreLocation
 import MapKit
 
 final class TravelTimeService {
-    /// The drive-time service chosen in Settings.
-    func provider(for settings: BridgeSettings) throws -> DriveTimeProvider {
+    /// The drive-time service chosen in Settings, asked alongside the others you have keys
+    /// for so the plan can compare them.
+    func provider(for settings: BridgeSettings) throws -> DriveTimeComparison {
         let source = settings.driveTimeSource
-        guard source.needsAPIKey else { return AppleDriveTime() }
-        let key = KeychainStore.apiKey(for: source)
-        guard !key.isEmpty else { throw BridgeError.apiKeyMissing(source.displayName) }
-        switch source {
-        case .tomTom: return TomTomDriveTime(apiKey: key)
-        case .google: return GoogleDriveTime(apiKey: key, pessimistic: settings.googlePessimisticTraffic)
-        case .apple: return AppleDriveTime()
+        if source.needsAPIKey, KeychainStore.apiKey(for: source).isEmpty {
+            throw BridgeError.apiKeyMissing(source.displayName)
         }
+        return DriveTimeComparison(
+            source: source,
+            tomTomKey: KeychainStore.apiKey(for: .tomTom),
+            googleKey: KeychainStore.apiKey(for: .google),
+            googlePessimistic: settings.googlePessimisticTraffic
+        )
     }
 
     /// The home address from settings, or the current location when it is blank.

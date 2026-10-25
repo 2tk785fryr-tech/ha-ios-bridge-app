@@ -8,6 +8,26 @@ final class PlanAdjustmentsTests: XCTestCase {
     private func hours(_ h: Double) -> Date { now.addingTimeInterval(h * 3600) }
     private var daysShift: ShiftCandidate { ShiftCandidate(title: "Days", start: hours(9), wakeMinutesBefore: 60, cause: "Days") }
 
+    // MARK: Skipped morning
+
+    func testSkippedMorningDropsItsAlarms() {
+        let plan = WakePlanner.plan(shift: daysShift, appointments: [], settings: settings, now: now)
+        XCTAssertTrue(plan.hasAlarm)
+        let skipped = PlanAdjustments.skipping(plan, morning: plan.firstAlarm)
+        XCTAssertFalse(skipped.hasAlarm)
+        XCTAssertEqual(skipped.source, .none)
+        XCTAssertEqual(skipped.cause, AlarmCause.none)
+        XCTAssertEqual(skipped.shift, daysShift)
+        XCTAssertTrue(skipped.warnings.first?.contains("turned off") == true)
+    }
+
+    func testOtherMorningsKeepTheirAlarms() {
+        let plan = WakePlanner.plan(shift: daysShift, appointments: [], settings: settings, now: now)
+        let dayBefore = plan.firstAlarm!.addingTimeInterval(-86400)
+        XCTAssertEqual(PlanAdjustments.skipping(plan, morning: dayBefore), plan)
+        XCTAssertEqual(PlanAdjustments.skipping(plan, morning: nil), plan)
+    }
+
     // MARK: Shift override
 
     func testAutoLeavesCalendarShift() {

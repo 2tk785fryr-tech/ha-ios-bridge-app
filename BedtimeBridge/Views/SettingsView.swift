@@ -1,16 +1,16 @@
 import EventKit
 import SwiftUI
 
+/// The settings you'll change most (shifts, home address) up top, and the rest grouped
+/// into their own pages.
 struct SettingsView: View {
     @Environment(SettingsStore.self) private var store
-    @State private var calendars: [EKCalendar] = []
-    @State private var apiKey = ""
 
     var body: some View {
         @Bindable var store = store
+        let settings = store.settings
 
-        Form {
-            Group {
+        SettingsPage(title: "Settings") {
             Section {
                 ForEach($store.settings.shiftRules) { $rule in
                     NavigationLink {
@@ -35,71 +35,205 @@ struct SettingsView: View {
             }
 
             Section {
-                TextField("Notes contain", text: $store.settings.appointmentKeyword)
-                Stepper("Get ready: \(store.settings.getReadyMinutes) min", value: $store.settings.getReadyMinutes, in: 0...240, step: 5)
-                Stepper("Arrive early: \(store.settings.arrivalBufferMinutes) min", value: $store.settings.arrivalBufferMinutes, in: 0...60, step: 5)
-                Toggle("Ask about missing locations", isOn: $store.settings.askAboutMissingLocations)
-            } header: {
-                Text("Appointments")
-            } footer: {
-                Text("Wake time = start − arrive-early buffer − drive time − get-ready time. Only used when it's earlier than your shift alarm. A \"wake up\" appointment without a location is planned with the fallback drive until you answer the notification about it.")
-            }
-
-            Section {
-                Picker("Service", selection: $store.settings.driveTimeSource) {
-                    ForEach(DriveTimeSource.allCases) { Text($0.displayName).tag($0) }
-                }
-                if store.settings.driveTimeSource.needsAPIKey {
-                    SecureField("\(store.settings.driveTimeSource.displayName) API key", text: $apiKey)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .onChange(of: apiKey) { _, key in
-                            KeychainStore.setAPIKey(key, for: store.settings.driveTimeSource)
-                        }
-                }
-                if store.settings.driveTimeSource == .google {
-                    Toggle("Plan for heavy traffic", isOn: $store.settings.googlePessimisticTraffic)
-                }
                 HomeAddressField(address: $store.settings.homeAddress)
-                Stepper("If no drive time: \(store.settings.fallbackTravelMinutes) min", value: $store.settings.fallbackTravelMinutes, in: 0...180, step: 5)
             } header: {
-                Text("Drive time")
+                Text("Home")
             } footer: {
-                Text(driveTimeFooter(for: store.settings.driveTimeSource))
+                Text("Where drives to appointments start. Blank uses your current location (Apple Maps only).")
             }
-
-            AlarmSettingsSection(settings: $store.settings)
-            HomeAssistantSection(settings: $store.settings)
-            WeatherSection(settings: $store.settings)
 
             Section {
-                Toggle("Leave-by reminder", isOn: $store.settings.leaveReminderEnabled)
-                if store.settings.leaveReminderEnabled {
-                    Stepper("\(store.settings.leaveReminderLeadMinutes) min before leave-by", value: $store.settings.leaveReminderLeadMinutes, in: 0...60, step: 5)
+                SettingsLink(title: "Alarms", icon: "alarm", value: "\(settings.alarmCount) alarms, \(settings.alarmSpacingMinutes) min apart") {
+                    SettingsPage(title: "Alarms") { AlarmSettingsSection(settings: $store.settings) }
                 }
-            } footer: {
-                Text("Appointment mornings only. Set at bedtime; when you stop a Bedtime Bridge alarm, traffic is rechecked and the reminder moves if it changed.")
+                SettingsLink(title: "Appointments", icon: "calendar.badge.clock", value: "Notes say \"\(settings.appointmentKeyword)\"") {
+                    SettingsPage(title: "Appointments") {
+                        AppointmentsSection(settings: $store.settings)
+                        LeaveReminderSection(settings: $store.settings)
+                    }
+                }
+                SettingsLink(title: "Drive time", icon: "car", value: settings.driveTimeSource.displayName) {
+                    SettingsPage(title: "Drive time") { DriveTimeSection(settings: $store.settings) }
+                }
+                SettingsLink(title: "Home Assistant", icon: "house", value: homeAssistantSummary(settings)) {
+                    SettingsPage(title: "Home Assistant") { HomeAssistantSection(settings: $store.settings) }
+                }
+                SettingsLink(title: "Bad weather", icon: "cloud.rain", value: settings.weatherExtraMinutes > 0 ? "+\(settings.weatherExtraMinutes) min" : "Off") {
+                    SettingsPage(title: "Bad weather") { WeatherSection(settings: $store.settings) }
+                }
+                SettingsLink(title: "Calendars", icon: "calendar", value: calendarSummary(settings)) {
+                    CalendarsPage(settings: $store.settings)
+                }
+                SettingsLink(title: "App icon", icon: "app.badge", value: AppIconChoice.current.title) {
+                    SettingsPage(title: "App icon") { AppIconSection() }
+                }
             }
+        }
+    }
 
-            AppIconSection()
+    private func homeAssistantSummary(_ settings: BridgeSettings) -> String {
+        switch HomeAssistantLinks.current(settings) {
+        case is IntegrationLink: "Paired"
+        case is TokenLink: "Token"
+        default: "Not set up"
+        }
+    }
 
-            Section("Shift calendars") {
-                CalendarPicker(calendars: calendars, selection: $store.settings.shiftCalendarIDs)
-            }
-            Section("Appointment calendars") {
-                CalendarPicker(calendars: calendars, selection: $store.settings.appointmentCalendarIDs)
-            }
-            }
-            .listRowBackground(Theme.surface)
-            .listRowSeparatorTint(Theme.divider)
+    private func calendarSummary(_ settings: BridgeSettings) -> String {
+        let count = settings.shiftCalendarIDs.union(settings.appointmentCalendarIDs).count
+        return settings.shiftCalendarIDs.isEmpty && settings.appointmentCalendarIDs.isEmpty ? "All" : "\(count) chosen"
+    }
+}
+
+/// A settings screen in the Nightfall style.
+struct SettingsPage<Content: View>: View {
+    let title: String
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        Form {
+            Group { content }
+                .listRowBackground(Theme.surface)
+                .listRowSeparatorTint(Theme.divider)
         }
         .scrollContentBackground(.hidden)
         .background(Theme.ground.ignoresSafeArea())
         .toolbarBackground(Theme.ground, for: .navigationBar)
-        .navigationTitle("Settings")
-        .onAppear { apiKey = KeychainStore.apiKey(for: store.settings.driveTimeSource) }
-        .onChange(of: store.settings.driveTimeSource) { _, source in
-            apiKey = KeychainStore.apiKey(for: source)
+        .navigationTitle(title)
+    }
+}
+
+/// A row on the main page that opens a group, with its current state on the right.
+private struct SettingsLink<Destination: View>: View {
+    let title: String
+    let icon: String
+    let value: String
+    @ViewBuilder let destination: Destination
+
+    var body: some View {
+        NavigationLink {
+            destination
+        } label: {
+            LabeledContent {
+                Text(value).foregroundStyle(Theme.textMuted).lineLimit(1)
+            } label: {
+                Label(title, systemImage: icon)
+            }
+        }
+    }
+}
+
+private struct AppointmentsSection: View {
+    @Binding var settings: BridgeSettings
+
+    var body: some View {
+        Section {
+            TextField("Notes contain", text: $settings.appointmentKeyword)
+            Stepper("Get ready: \(settings.getReadyMinutes) min", value: $settings.getReadyMinutes, in: 0...240, step: 5)
+            Stepper("Arrive early: \(settings.arrivalBufferMinutes) min", value: $settings.arrivalBufferMinutes, in: 0...60, step: 5)
+            Toggle("Ask about missing locations", isOn: $settings.askAboutMissingLocations)
+        } header: {
+            Text("Appointments")
+        } footer: {
+            Text("Wake time = start − arrive-early buffer − drive time − get-ready time. Only used when it's earlier than your shift alarm. A \"wake up\" appointment without a location is planned with the fallback drive until you answer the notification about it.")
+        }
+    }
+}
+
+private struct LeaveReminderSection: View {
+    @Binding var settings: BridgeSettings
+
+    var body: some View {
+        Section {
+            Toggle("Leave-by reminder", isOn: $settings.leaveReminderEnabled)
+            if settings.leaveReminderEnabled {
+                Stepper("\(settings.leaveReminderLeadMinutes) min before leave-by", value: $settings.leaveReminderLeadMinutes, in: 0...60, step: 5)
+            }
+        } footer: {
+            Text("Appointment mornings only. Set at bedtime; when you stop a Bedtime Bridge alarm, traffic is rechecked and the reminder moves if it changed.")
+        }
+    }
+}
+
+private struct DriveTimeSection: View {
+    @Binding var settings: BridgeSettings
+    @State private var googleKeySaved = !KeychainStore.apiKey(for: .google).isEmpty
+
+    var body: some View {
+        Section {
+            Picker("Use", selection: $settings.driveTimeSource) {
+                ForEach(DriveTimeSource.allCases) { Text($0.displayName).tag($0) }
+            }
+            if googleKeySaved || settings.driveTimeSource == .google {
+                Picker("Google plans for", selection: $settings.googlePessimisticTraffic) {
+                    Text("A typical day").tag(false)
+                    Text("Worst case").tag(true)
+                }
+            }
+            Stepper("If no drive time: \(settings.fallbackTravelMinutes) min", value: $settings.fallbackTravelMinutes, in: 0...180, step: 5)
+        } header: {
+            Text("Drive time")
+        } footer: {
+            Text(driveTimeFooter(for: settings.driveTimeSource))
+        }
+
+        Section {
+            APIKeyField(source: .tomTom) { _ in }
+            APIKeyField(source: .google) { googleKeySaved = $0 }
+        } header: {
+            Text("API keys")
+        } footer: {
+            Text("Each key is saved in your Keychain as soon as you paste it, whichever service you use. Every service with a key is asked each time and shown on the morning timeline; with a Google key, its worst case is always shown too. TomTom: developer.tomtom.com › Dashboard › Keys. Google: a Routes API key from Google Cloud.")
+        }
+    }
+}
+
+/// A drive-time service's key, saved to the Keychain on every change.
+private struct APIKeyField: View {
+    let source: DriveTimeSource
+    let changed: (Bool) -> Void
+    @State private var key: String
+
+    init(source: DriveTimeSource, changed: @escaping (Bool) -> Void) {
+        self.source = source
+        self.changed = changed
+        _key = State(initialValue: KeychainStore.apiKey(for: source))
+    }
+
+    var body: some View {
+        LabeledContent {
+            HStack(spacing: 8) {
+                SecureField("Paste key", text: $key)
+                    .multilineTextAlignment(.trailing)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                Image(systemName: key.isEmpty ? "circle.dashed" : "checkmark.circle.fill")
+                    .foregroundStyle(key.isEmpty ? Theme.textFaint : Theme.good)
+                    .accessibilityLabel(key.isEmpty ? "Not saved" : "Saved")
+            }
+        } label: {
+            Text(source.displayName)
+        }
+        .onChange(of: key) { _, value in
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            KeychainStore.setAPIKey(trimmed, for: source)
+            changed(!trimmed.isEmpty)
+        }
+    }
+}
+
+private struct CalendarsPage: View {
+    @Binding var settings: BridgeSettings
+    @State private var calendars: [EKCalendar] = []
+
+    var body: some View {
+        SettingsPage(title: "Calendars") {
+            Section("Shift calendars") {
+                CalendarPicker(calendars: calendars, selection: $settings.shiftCalendarIDs)
+            }
+            Section("Appointment calendars") {
+                CalendarPicker(calendars: calendars, selection: $settings.appointmentCalendarIDs)
+            }
         }
         .task {
             let service = BedtimeCoordinator.shared.calendar
@@ -419,11 +553,13 @@ private struct EntityField: View {
 private func driveTimeFooter(for source: DriveTimeSource) -> String {
     switch source {
     case .apple:
-        "Free, no key. Asks Apple Maps for the traffic it expects when you'd arrive. A blank home address uses your current location."
+        "Free, no key. Asks Apple Maps for the traffic it expects when you'd arrive."
     case .tomTom:
-        "Uses TomTom's typical traffic for your arrival time. Needs a home address and a key from developer.tomtom.com."
+        "Uses TomTom's typical traffic for your arrival time. Needs a home address and a TomTom key."
     case .google:
-        "Google only plans from a departure time, so the app tries a few departure times until the trip lands on time. Heavy traffic plans for a bad day, not a typical one. Needs a home address and a Routes API key."
+        "Google only plans from a departure time, so the app tries a few departure times until the trip lands on time. Needs a home address and a Google key."
+    case .longest:
+        "Asks Apple Maps and every service with a key below, and plans with the longest drive, so you're never late because one service was optimistic. Google counts with the day it plans for."
     }
 }
 

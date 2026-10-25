@@ -10,6 +10,8 @@ struct ContentView: View {
     @State private var isWorking = false
     @State private var pairingMessage: String?
     @State private var needsALookCount: Int?
+    @State private var skippedMorning: Date?
+    @State private var stoppingAlarm: SnoozedAlarm?
 
     private let coordinator = BedtimeCoordinator.shared
 
@@ -21,6 +23,10 @@ struct ContentView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     header
+
+                    if let skippedMorning {
+                        SkippedMorningCard(morning: skippedMorning, undo: unskip)
+                    }
 
                     if let count = needsALookCount, count > 0 {
                         NavigationLink {
@@ -68,12 +74,9 @@ struct ContentView: View {
                         .padding(.horizontal, 4)
                     }
 
-                    if store.settings.alarmStyle == .app, !scheduled.isEmpty {
-                        ScheduledAlarmsCard(times: scheduled) {
-                            Task {
-                                try? await coordinator.cancelAlarms(settings: store.settings)
-                                refreshScheduled()
-                            }
+                    if skippedMorning == nil, let morning = scheduled.first ?? plan?.firstAlarm {
+                        ScheduledAlarmsCard(times: store.settings.alarmStyle == .app ? scheduled : [], morning: morning) {
+                            skip(morning)
                         }
                     }
 
@@ -102,6 +105,17 @@ struct ContentView: View {
                     pairingMessage = HomeAssistantLinks.pair(with: url)
                         ? "Paired with Home Assistant."
                         : "That pairing link didn't contain an address."
+                }
+                // bedtimebridge://stop?id=…, from Stop on the snooze countdown.
+                if url.host == "stop",
+                   let id = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "id" })?.value.flatMap(UUID.init) {
+                    stoppingAlarm = SnoozedAlarm(id: id)
+                }
+            }
+            .fullScreenCover(item: $stoppingAlarm) { alarm in
+                SlideToStopView {
+                    await coordinator.alarmStopped(id: alarm.id, settings: store.settings)
+                    refreshScheduled()
                 }
             }
             .alert(pairingMessage ?? "", isPresented: Binding(get: { pairingMessage != nil }, set: { if !$0 { pairingMessage = nil } })) {
@@ -212,7 +226,37 @@ struct ContentView: View {
 
     private func refreshScheduled() {
         scheduled = coordinator.scheduledAlarmTimes()
+        skippedMorning = coordinator.skippedMorning
         refreshUpcoming()
+    }
+
+    /// "Something changed": that morning's alarms go, and stay gone when bedtime plans again.
+    private func skip(_ morning: Date) {
+        Task {
+            do {
+                try await coordinator.skipMorning(of: morning, settings: store.settings)
+                if let plan { self.plan = PlanAdjustments.skipping(plan, morning: morning) }
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            refreshScheduled()
+        }
+    }
+
+    private func unskip() {
+        isWorking = true
+        errorMessage = nil
+        Task {
+            defer { isWorking = false }
+            do {
+                plan = try await coordinator.unskipMorning(settings: store.settings)
+            } catch {
+                errorMessage = error.localizedDescription
+                // The skip is gone either way, so show what the plan is now.
+                plan = try? await coordinator.buildPlan(settings: store.settings)
+            }
+            refreshScheduled()
+        }
     }
 
     /// Counted only once calendar access is allowed, so opening the app never prompts for it.
@@ -377,7 +421,7 @@ private struct MorningTimeline: View {
             TimelineStep(
                 title: "Leave by",
                 value: WakePlanner.format(leaveBy),
-                detail: "\(driveMinutes) min drive with expected traffic",
+                detail: "\(driveMinutes) min drive with expected traffic" + Self.comparison(appointment.driveEstimates),
                 dot: .filled(Theme.leaveBy),
                 bold: true,
                 highlight: Theme.appointmentChip.text
@@ -394,6 +438,13 @@ private struct MorningTimeline: View {
             }
         }
         .nightfallCard(padding: 20)
+    }
+
+    /// "\nApple 28 · TomTom 30 · Google 29 · Google worst case 41 min", when there's more than one answer.
+    private static func comparison(_ estimates: [DriveEstimate]) -> String {
+        guard estimates.count > 1 else { return "" }
+        let parts = estimates.map { "\($0.service.displayName) \(Int(($0.seconds / 60).rounded()))" }
+        return "\n" + parts.joined(separator: " · ") + " min"
     }
 }
 
@@ -568,24 +619,68 @@ private struct StatusRow: View {
     }
 }
 
+/// The alarm whose snooze the slide-to-stop screen ends.
+private struct SnoozedAlarm: Identifiable {
+    let id: UUID
+}
+
+/// The alarms set on this iPhone, and turning off that morning when plans change.
 private struct ScheduledAlarmsCard: View {
     let times: [Date]
-    let cancel: () -> Void
+    let morning: Date
+    let skip: () -> Void
+    @State private var confirming = false
+
+    private var day: String { morning.formatted(.dateTime.weekday(.wide)) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Set on this iPhone")
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(Theme.textMuted)
-            Text(times.map { $0.formatted(.dateTime.weekday(.abbreviated).hour().minute()) }.joined(separator: " · "))
-                .font(.system(size: 15))
-                .foregroundStyle(Theme.text)
-            Button(role: .destructive, action: cancel) {
-                Label("Cancel all", systemImage: "trash")
+            if !times.isEmpty {
+                Text("Set on this iPhone")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Theme.textMuted)
+                Text(times.map { $0.formatted(.dateTime.weekday(.abbreviated).hour().minute()) }.joined(separator: " · "))
+                    .font(.system(size: 15))
+                    .foregroundStyle(Theme.text)
+            }
+            Button(role: .destructive) { confirming = true } label: {
+                Label("Turn off alarms for \(day) morning", systemImage: "bell.slash")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Theme.danger)
                     .frame(minHeight: 44)
             }
+            .confirmationDialog("Turn off alarms for \(day) morning?", isPresented: $confirming, titleVisibility: .visible) {
+                Button("Turn off", role: .destructive, action: skip)
+            } message: {
+                Text("Cancels these alarms, and bedtime planning won't set them again for \(day) morning. You can undo it here.")
+            }
+        }
+        .nightfallCard()
+    }
+}
+
+/// Shown while a morning's alarms are turned off, with the way back.
+private struct SkippedMorningCard: View {
+    let morning: Date
+    let undo: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "bell.slash")
+                .font(.system(size: 20))
+                .foregroundStyle(Theme.accentIcon)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Alarms off for \(morning.formatted(.dateTime.weekday(.wide))) morning")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Theme.text)
+                Text("Bedtime planning won't set them for that morning.")
+                    .font(.footnote)
+                    .foregroundStyle(Theme.textMuted)
+            }
+            Spacer(minLength: 4)
+            Button("Undo", action: undo)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Theme.accentText)
         }
         .nightfallCard()
     }

@@ -18,7 +18,36 @@ final class BedtimeCoordinator {
 
     /// Works out tonight's wake-up without touching any alarms.
     func buildPlan(settings: BridgeSettings, now: Date = .now) async throws -> WakePlan {
-        try await makePlan(settings: settings, now: now).plan
+        PlanAdjustments.skipping(try await makePlan(settings: settings, now: now).plan, morning: skippedMorning)
+    }
+
+    // MARK: Skipped morning
+
+    private static let skippedMorningKey = "skippedMorning"
+
+    /// A morning you turned the alarms off for ("something changed"), so bedtime planning
+    /// doesn't set them again. Forgotten once that morning has passed.
+    var skippedMorning: Date? {
+        get {
+            guard let day = UserDefaults.standard.object(forKey: Self.skippedMorningKey) as? Date,
+                  day >= Calendar.current.startOfDay(for: .now) else { return nil }
+            return day
+        }
+        set {
+            UserDefaults.standard.set(newValue.map { Calendar.current.startOfDay(for: $0) }, forKey: Self.skippedMorningKey)
+        }
+    }
+
+    /// Cancels the alarms set for that morning and keeps later plans from bringing them back.
+    func skipMorning(of alarm: Date, settings: BridgeSettings) async throws {
+        skippedMorning = alarm
+        try await cancelAlarms(settings: settings)
+    }
+
+    /// Undoes the skip and plans again, so the alarms come back if they still apply.
+    func unskipMorning(settings: BridgeSettings) async throws -> WakePlan {
+        skippedMorning = nil
+        return try await planAndSchedule(settings: settings)
     }
 
     /// Plans and sets alarms. If planning fails (calendar access off, an error), it falls
@@ -35,8 +64,9 @@ final class BedtimeCoordinator {
             }
             result = fallback
         }
-        try await apply(result.0, settings: result.1)
-        return result.0
+        let plan = PlanAdjustments.skipping(result.0, morning: skippedMorning)
+        try await apply(plan, settings: result.1)
+        return plan
     }
 
     /// The work alarm from Home Assistant's next shift, for when the calendar can't be read.
@@ -140,6 +170,8 @@ final class BedtimeCoordinator {
         let wake = Self.nextOccurrence(ofTimeIn: wakeTime)
         let times = WakePlanner.alarmTimes(wakeTime: wake, count: settings.alarmCount, spacingMinutes: settings.alarmSpacingMinutes, wakeIs: settings.wakeTimeIs)
         let plan = WakePlan(source: .manual, wakeTime: wake, alarmTimes: times, reason: "Day off alarm")
+        // Picking a time yourself is a decision for that morning, so it wins over a skip.
+        skippedMorning = nil
         try await apply(plan, settings: settings)
         return plan
     }
@@ -437,7 +469,7 @@ final class BedtimeCoordinator {
         guard !events.isEmpty else { return candidates }
 
         // A missing origin or API key becomes the fallback reason on each appointment.
-        let route: Result<(MKMapItem, DriveTimeProvider), Error>
+        let route: Result<(MKMapItem, DriveTimeComparison), Error>
         do {
             route = .success((try await travel.origin(homeAddress: settings.homeAddress), try travel.provider(for: settings)))
         } catch {
@@ -452,7 +484,7 @@ final class BedtimeCoordinator {
 
     private func appointmentCandidate(
         for event: EKEvent,
-        route: Result<(MKMapItem, DriveTimeProvider), Error>,
+        route: Result<(MKMapItem, DriveTimeComparison), Error>,
         settings: BridgeSettings
     ) async -> AppointmentCandidate {
         var candidate = AppointmentCandidate(
@@ -467,11 +499,13 @@ final class BedtimeCoordinator {
             let destination = try await travel.destination(locationText: candidate.location, coordinates: event.structuredLocation?.geoLocation)
             candidate.latitude = destination.location.coordinate.latitude
             candidate.longitude = destination.location.coordinate.longitude
-            candidate.travelSeconds = try await provider.drivingTime(
+            let drive = try await provider.compare(
                 from: origin,
                 to: destination,
                 arrivingBy: candidate.arriveBy(bufferMinutes: settings.arrivalBufferMinutes)
             )
+            candidate.travelSeconds = drive.seconds
+            candidate.driveEstimates = drive.estimates
         } catch {
             candidate.fallbackReason = error.localizedDescription
         }
