@@ -7,6 +7,7 @@ struct ContentView: View {
     @State private var scheduled: [Date] = []
     @State private var errorMessage: String?
     @State private var isWorking = false
+    @State private var pairingMessage: String?
 
     private let coordinator = BedtimeCoordinator.shared
 
@@ -85,6 +86,15 @@ struct ContentView: View {
             // "missing plan" notifications.
             .onOpenURL { url in
                 if url.host == "replan" { run(schedule: true) }
+                // bedtimebridge://pair?…, tapped on the integration's pairing screen.
+                if url.host == "pair" {
+                    pairingMessage = HomeAssistantLinks.pair(with: url)
+                        ? "Paired with Home Assistant."
+                        : "That pairing link didn't contain an address."
+                }
+            }
+            .alert(pairingMessage ?? "", isPresented: Binding(get: { pairingMessage != nil }, set: { if !$0 { pairingMessage = nil } })) {
+                Button("OK", role: .cancel) {}
             }
         }
     }

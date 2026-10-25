@@ -13,6 +13,7 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 
 from .bridge import BedtimeBridge
+from .pairing import async_delete_cloudhook
 from .const import CONF_WEBHOOK_ID, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
@@ -54,6 +55,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: BedtimeBridgeConfigEntry
 
 async def async_unload_entry(hass: HomeAssistant, entry: BedtimeBridgeConfigEntry) -> bool:
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: BedtimeBridgeConfigEntry) -> None:
+    """Deleting the integration also deletes its Nabu Casa cloudhook, if it made one."""
+    await async_delete_cloudhook(hass, entry.data[CONF_WEBHOOK_ID])
 
 
 async def _async_reload(hass: HomeAssistant, entry: BedtimeBridgeConfigEntry) -> None:

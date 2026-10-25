@@ -36,7 +36,7 @@
       },
       "pair": {
         "title": "Pair your iPhone",
-        "description": "In the Bedtime Bridge app, open Settings › Home Assistant › Integration address and paste:\n\n`{webhook_url}`\n\nKeep it private: anyone with this address can send alarm updates. You can see it again later under this integration's Configure."
+        "description": "To pair your iPhone, open this step in the Home Assistant app on the iPhone and tap:\n\n**[Pair Bedtime Bridge]({pair_link})**\n\nThat saves both addresses in the app. If the link doesn't open, copy it into the app's address field (Settings › Home Assistant):\n\n`{pair_link}`\n\nOr paste the addresses one by one:\n\n- **Anywhere** (Nabu Casa): `{remote_url}`\n- **At home only**: `{local_url}`\n\nThe app uses the first and falls back to the second if your internet is down at home. Keep them private: anyone with them can send alarm updates.\n\nYou can see this again under the integration's Configure."
       }
     },
     "abort": {
@@ -47,7 +47,7 @@
     "step": {
       "init": {
         "title": "Bedtime Bridge",
-        "description": "Pairing address for the app: `{webhook_url}`",
+        "description": "To pair your iPhone, open this step in the Home Assistant app on the iPhone and tap:\n\n**[Pair Bedtime Bridge]({pair_link})**\n\nThat saves both addresses in the app. If the link doesn't open, copy it into the app's address field (Settings › Home Assistant):\n\n`{pair_link}`\n\nOr paste the addresses one by one:\n\n- **Anywhere** (Nabu Casa): `{remote_url}`\n- **At home only**: `{local_url}`\n\nThe app uses the first and falls back to the second if your internet is down at home. Keep them private: anyone with them can send alarm updates.",
         "data": {
           "presence_entities": "You (person or tracker)",
           "home_only": "Only run routines when you're home",

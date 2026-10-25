@@ -10,7 +10,8 @@ from homeassistant.components import webhook
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import selector
-from homeassistant.helpers.network import NoURLAvailableError
+
+from .pairing import async_placeholders
 
 from .const import shift_types as parse_shift_types
 from .const import (
@@ -119,14 +120,6 @@ def _schema(hass: HomeAssistant, current: dict[str, Any]) -> vol.Schema:
     )
 
 
-def webhook_url(hass: HomeAssistant, webhook_id: str) -> str:
-    """Prefer the external URL so pairing works away from home too."""
-    try:
-        return webhook.async_generate_url(hass, webhook_id, prefer_external=True)
-    except NoURLAvailableError:
-        return f"<your Home Assistant URL>{webhook.async_generate_path(webhook_id)}"
-
-
 class BedtimeBridgeConfigFlow(ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
@@ -152,7 +145,7 @@ class BedtimeBridgeConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="pair",
             data_schema=vol.Schema({}),
-            description_placeholders={"webhook_url": webhook_url(self.hass, self._webhook_id)},
+            description_placeholders=await async_placeholders(self.hass, self._webhook_id),
         )
 
     @staticmethod
@@ -169,5 +162,5 @@ class BedtimeBridgeOptionsFlow(OptionsFlow):
             step_id="init",
             # Every key present (None when cleared), so a helper you removed isn't suggested again.
             data_schema=_schema(self.hass, {key: self.config_entry.options.get(key) for key in OPTION_KEYS}),
-            description_placeholders={"webhook_url": webhook_url(self.hass, self.config_entry.data[CONF_WEBHOOK_ID])},
+            description_placeholders=await async_placeholders(self.hass, self.config_entry.data[CONF_WEBHOOK_ID]),
         )

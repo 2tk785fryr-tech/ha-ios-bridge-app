@@ -40,15 +40,40 @@ func presenceCountsAsHome(_ state: String?) -> Bool {
 }
 
 enum HomeAssistantLinks {
+    /// Works from anywhere: the Nabu Casa cloudhook (or your external URL).
     static let webhookAccount = "homeAssistantWebhook"
+    /// Home network only: the fallback when the internet is down at home.
+    static let localWebhookAccount = "homeAssistantWebhookLocal"
 
     /// The integration if paired, otherwise the token connection, otherwise nil.
     static func current(_ settings: BridgeSettings) -> HomeAssistantLink? {
-        let webhook = KeychainStore.secret(webhookAccount)
-        if !webhook.isEmpty, let url = URL(string: webhook) {
-            return IntegrationLink(webhookURL: url)
+        let urls = [webhookAccount, localWebhookAccount]
+            .map { KeychainStore.secret($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .compactMap(URL.init(string:))
+        if !urls.isEmpty {
+            return IntegrationLink(webhookURLs: urls)
         }
         return HomeAssistantClient.configured(settings).map(TokenLink.init)
+    }
+
+    /// Saves the addresses from the integration's pairing link
+    /// (bedtimebridge://pair?remote=…&local=…). Returns false if it isn't one.
+    @discardableResult
+    static func pair(with link: URL) -> Bool {
+        guard let addresses = addresses(in: link) else { return false }
+        KeychainStore.setSecret(addresses.remote, account: webhookAccount)
+        KeychainStore.setSecret(addresses.local, account: localWebhookAccount)
+        return true
+    }
+
+    /// The two addresses in a pairing link; nil if it isn't one or has neither.
+    static func addresses(in link: URL) -> (remote: String, local: String)? {
+        guard link.scheme == "bedtimebridge", link.host == "pair",
+              let items = URLComponents(url: link, resolvingAgainstBaseURL: false)?.queryItems else { return nil }
+        let remote = items.first { $0.name == "remote" }?.value ?? ""
+        let local = items.first { $0.name == "local" }?.value ?? ""
+        return remote.isEmpty && local.isEmpty ? nil : (remote, local)
     }
 
     private static let cachedSettingsKey = "homeAssistantSettings.v1"
@@ -69,7 +94,8 @@ enum HomeAssistantLinks {
 // MARK: Bedtime Bridge integration
 
 struct IntegrationLink: HomeAssistantLink {
-    let webhookURL: URL
+    /// Tried in order: the anywhere address first, then the home-network one.
+    let webhookURLs: [URL]
     var session: URLSession = {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 10
@@ -124,8 +150,27 @@ struct IntegrationLink: HomeAssistantLink {
         throw lastError ?? URLError(.unknown)
     }
 
+    /// Tries each address in turn. A connection or HTTP failure moves on to the next one (off
+    /// home Wi-Fi the local address can't work; with the internet down at home the Nabu Casa
+    /// one can't). An error Home Assistant itself reports is final.
     private func send(_ type: String, data: [String: Any] = [:]) async throws -> [String: Any] {
-        var request = URLRequest(url: webhookURL)
+        var lastError: Error = URLError(.badURL)
+        for url in webhookURLs {
+            do {
+                return try await send(type, data: data, to: url)
+            } catch let error as HomeAssistantReplyError {
+                throw BridgeError.homeAssistant(200, error.message)
+            } catch {
+                lastError = error
+            }
+        }
+        throw lastError
+    }
+
+    private struct HomeAssistantReplyError: Error { let message: String }
+
+    private func send(_ type: String, data: [String: Any], to url: URL) async throws -> [String: Any] {
+        var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: ["type": type, "data": data])
@@ -135,7 +180,7 @@ struct IntegrationLink: HomeAssistantLink {
         }
         let reply = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any] ?? [:]
         if let error = reply["error"] as? String {
-            throw BridgeError.homeAssistant(200, error)
+            throw HomeAssistantReplyError(message: error)
         }
         if let settings = reply["settings"] as? [String: Any] {
             HomeAssistantLinks.cachedSettings = settings

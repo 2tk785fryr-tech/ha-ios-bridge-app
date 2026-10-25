@@ -89,9 +89,17 @@ Bedtime Bridge. Or copy `custom_components/bedtime_bridge` into your config fold
 | Shift override, shift sensor, weather | `input_select.select_shift_override`, `sensor.current_shift`, `weather.forecast_home` |
 | Shift types | `Days, Swings` |
 
-The last step shows a **pairing address**. Paste it into the app under Settings → Home Assistant →
-Integration address and tap **Test connection**. You can see it again later under the
-integration's **Configure**. Keep it private.
+The last step shows two addresses and a **pairing link**:
+- **Anywhere:** with Home Assistant Cloud (Nabu Casa), a `https://hooks.nabu.casa/…` cloudhook,
+  like the Companion app uses. It works on cellular and doesn't need remote UI turned on.
+  Without Nabu Casa, your external URL if one is set.
+- **At home only:** your local address, used as a fallback if your internet is down at home.
+
+Open that step in the Home Assistant app on your iPhone and tap **Pair Bedtime Bridge**: the app
+saves both. If the link doesn't open, copy it (or the addresses) into Settings → Home Assistant.
+Then tap **Test connection**. The app tries the anywhere address first and falls back to the home
+one. You can see all of this again under the integration's **Configure**. Keep the addresses
+private. Deleting the integration also deletes its Nabu Casa cloudhook.
 
 **Entities** (all keep their values through HA restarts):
 

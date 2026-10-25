@@ -288,18 +288,34 @@ private struct TestAlarmButton: View {
 private struct HomeAssistantSection: View {
     @Binding var settings: BridgeSettings
     @State private var webhook = KeychainStore.secret(HomeAssistantLinks.webhookAccount)
+    @State private var localWebhook = KeychainStore.secret(HomeAssistantLinks.localWebhookAccount)
     @State private var token = KeychainStore.secret(KeychainStore.homeAssistantAccount)
     @State private var testResult: String?
 
-    private var usesIntegration: Bool { !webhook.trimmingCharacters(in: .whitespaces).isEmpty }
+    private var usesIntegration: Bool {
+        !webhook.trimmingCharacters(in: .whitespaces).isEmpty || !localWebhook.trimmingCharacters(in: .whitespaces).isEmpty
+    }
 
     var body: some View {
         Section {
-            SecureField("Integration address (…/api/webhook/…)", text: $webhook)
+            SecureField("Anywhere address (Nabu Casa) or pairing link", text: $webhook)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .onChange(of: webhook) { _, value in
+                    // Pasting the whole pairing link fills in both addresses.
+                    if let link = URL(string: value.trimmingCharacters(in: .whitespacesAndNewlines)),
+                       HomeAssistantLinks.pair(with: link) {
+                        webhook = KeychainStore.secret(HomeAssistantLinks.webhookAccount)
+                        localWebhook = KeychainStore.secret(HomeAssistantLinks.localWebhookAccount)
+                        return
+                    }
                     KeychainStore.setSecret(value, account: HomeAssistantLinks.webhookAccount)
+                }
+            SecureField("Home address (local, optional)", text: $localWebhook)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .onChange(of: localWebhook) { _, value in
+                    KeychainStore.setSecret(value, account: HomeAssistantLinks.localWebhookAccount)
                 }
             if !usesIntegration {
                 TextField("URL, e.g. http://homeassistant.local:8123", text: $settings.homeAssistantURL)
@@ -331,7 +347,7 @@ private struct HomeAssistantSection: View {
             Text("Home Assistant")
         } footer: {
             if usesIntegration {
-                Text("Using the Bedtime Bridge integration. Helpers, events, \"only when home\", the shift override and weather entity are chosen in Home Assistant (Settings › Devices & services › Bedtime Bridge › Configure), and times you change there override these settings.")
+                Text("Using the Bedtime Bridge integration. The anywhere address is tried first, then the home one. Tap the pairing link on the integration's setup screen (in the Home Assistant app) to fill both in. Helpers, events, \"only when home\", the shift override and weather entity are chosen in Home Assistant (Settings › Devices & services › Bedtime Bridge › Configure), and times you change there override these settings.")
             } else {
                 Text("Recommended: install the Bedtime Bridge integration in Home Assistant and paste the address it shows above. Without it, the app uses a long-lived token (profile › Security) and writes a sensor that reads unavailable after an HA restart until the next update.")
             }
