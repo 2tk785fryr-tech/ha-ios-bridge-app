@@ -25,7 +25,7 @@ final class TravelTimeService {
     /// and falls back to searching the location text.
     func destination(locationText: String, coordinates: CLLocation?) async throws -> MKMapItem {
         if let coordinates {
-            let item = MKMapItem(placemark: MKPlacemark(coordinate: coordinates.coordinate))
+            let item = MKMapItem(location: coordinates, address: nil)
             item.name = locationText
             return item
         }

@@ -41,7 +41,6 @@ final class AlarmScheduler {
 
         let alert = AlarmPresentation.Alert(
             title: LocalizedStringResource(stringLiteral: title),
-            stopButton: AlarmButton(text: "Stop", textColor: .white, systemImageName: "stop.circle"),
             secondaryButton: AlarmButton(text: "Snooze", textColor: .white, systemImageName: "zzz"),
             // Snooze starts a countdown of `postAlert` seconds, then the alarm rings again.
             secondaryButtonBehavior: .countdown
@@ -76,7 +75,6 @@ final class AlarmScheduler {
         try await ensureAccess()
         let alert = AlarmPresentation.Alert(
             title: "Test alarm",
-            stopButton: AlarmButton(text: "Stop", textColor: .white, systemImageName: "stop.circle"),
             secondaryButton: AlarmButton(text: "Snooze", textColor: .white, systemImageName: "zzz"),
             secondaryButtonBehavior: .countdown
         )
