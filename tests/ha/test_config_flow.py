@@ -7,7 +7,10 @@ from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from pytest_homeassistant_custom_component.common import async_mock_service
+
 from custom_components.bedtime_bridge.const import (
+    CONF_NOTIFY,
     CONF_SHIFT_TYPES,
     CONF_SNOOZE_HELPER,
     CONF_WAKE_ACTION,
@@ -89,5 +92,45 @@ async def test_options_change_wake_action_and_add_shift(hass: HomeAssistant):
     await hass.async_block_till_done()
 
     assert entry.options[CONF_WAKE_ACTION] == WAKE_EVENTS
-    assert CONF_SNOOZE_HELPER not in entry.options
+    assert entry.options[CONF_SNOOZE_HELPER] is None  # cleared, and stays cleared
     assert hass.states.get("number.bedtime_bridge_nights_lead_time") is not None
+
+
+def suggested(result, key):
+    for marker in result["data_schema"].schema:
+        if marker == key:
+            return (marker.description or {}).get("suggested_value")
+    raise KeyError(key)
+
+
+async def test_notify_suggests_the_iphone_not_the_mac(hass: HomeAssistant):
+    async_mock_service(hass, "notify", "mobile_app_michaels_macbook_pro")
+    async_mock_service(hass, "notify", "mobile_app_mikes_iphone")
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+    assert suggested(result, CONF_NOTIFY) == "notify.mobile_app_mikes_iphone"
+
+
+async def test_configure_suggests_options_the_entry_never_had(hass: HomeAssistant):
+    async_mock_service(hass, "notify", "mobile_app_michaels_macbook_pro")
+    async_mock_service(hass, "notify", "mobile_app_mikes_iphone")
+    entry = make_entry()  # set up before the notify option existed
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert suggested(result, CONF_NOTIFY) == "notify.mobile_app_mikes_iphone"
+
+
+async def test_cleared_option_stays_cleared(hass: HomeAssistant):
+    async_mock_service(hass, "notify", "mobile_app_mikes_iphone")
+    entry = make_entry()
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    # Save without a notify action (the field cleared).
+    await hass.config_entries.options.async_configure(result["flow_id"], {CONF_WAKE_ACTION: "both", CONF_SHIFT_TYPES: "Days, Swings"})
+    await hass.async_block_till_done()
+    assert entry.options[CONF_NOTIFY] is None
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert suggested(result, CONF_NOTIFY) is None

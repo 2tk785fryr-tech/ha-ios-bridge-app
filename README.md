@@ -136,6 +136,12 @@ snoozed/stopped aren't fired.
 What it can't do: HA can't push commands to the phone. Settings changed in HA reach the app
 the next time it runs (bedtime, snooze or stop).
 
+**Updates through HACS:** every time the `version` in
+`custom_components/bedtime_bridge/manifest.json` changes on `main`, a GitHub Action
+(`.github/workflows/release.yml`) publishes a release named after it (for example `v0.2.0`).
+HACS offers that as an update, the same way your washer-and-dryer card does. So a change ships
+by bumping the version and merging. After updating in HACS, restart Home Assistant.
+
 The integration has its own tests (`pytest`, with `pytest-homeassistant-custom-component`).
 
 ## Only when you're home
