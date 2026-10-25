@@ -26,6 +26,7 @@ from .const import (
     CMD_DISARM,
     CMD_MORNING,
     COMMAND_TAG,
+    COMMANDS,
     CONF_AWAKE_HELPER,
     CONF_BED_SENSOR,
     CONF_BEDTIME_HELPER,
@@ -62,6 +63,7 @@ from .const import (
     HOME_STATES,
     MSG_BEDTIME,
     MSG_BEDTIME_UNDONE,
+    MSG_COMMAND_RAN,
     MSG_CANCELLED,
     MSG_CONTEXT,
     MSG_FORECAST,
@@ -156,6 +158,10 @@ def pending_record() -> dict[str, Any]:
     }
 
 
+def _command_tag(message: str) -> str:
+    return f"{COMMAND_TAG}_{message.lower()}"
+
+
 def _time(value: Any) -> datetime | None:
     return dt_util.parse_datetime(value) if isinstance(value, str) else None
 
@@ -173,6 +179,8 @@ class BedtimeBridge:
         self._bed_unsubs: dict[str, list[Callable[[], None]]] = {}
         # When you got back into bed, per kind, carried across the sensor's short dropouts.
         self._in_bed_since: dict[str, datetime] = {}
+        # Command pushes still showing on the phone, cleared once the shortcut has run.
+        self._pending_commands: set[str] = set()
         self._restore_unsub: Callable[[], None] | None = None
 
     @property
@@ -259,6 +267,7 @@ class BedtimeBridge:
             MSG_TEMP_STOPPED: self._temporary_stopped,
             MSG_HOME_CHECK: self._home_check,
             MSG_BEDTIME_UNDONE: self._bedtime_undone,
+            MSG_COMMAND_RAN: self._command_ran,
         }.get(kind)
         if handler is None:
             return {"error": f"unknown message type: {kind}"}
@@ -710,27 +719,45 @@ class BedtimeBridge:
     async def _command(self, message: str) -> bool:
         """A push the phone's Shortcuts automation turns into a shortcut run (Set Disarm, Set
         Arm Stay, the morning shortcut). Off unless phone commands are turned on."""
+        sent = await self._push(
+            {
+                "title": "Bedtime Bridge",
+                "message": message,
+                # Time-sensitive like the bedtime nudge's RUN_BEDTIME, which reaches the
+                # Shortcuts trigger with the phone locked. One tag per command, so each can
+                # be cleared on its own once its shortcut has run.
+                "data": {"tag": _command_tag(message), "push": {"interruption-level": "time-sensitive"}},
+            },
+            message,
+        )
+        if sent:
+            self._pending_commands.add(message)
+        return sent
+
+    async def _clear_command(self, message: str) -> None:
+        """Takes a command's push off the phone once its shortcut has run."""
+        if message in self._pending_commands:
+            self._pending_commands.discard(message)
+            await self._push({"message": "clear_notification", "data": {"tag": _command_tag(message)}}, message)
+
+    async def _push(self, payload: dict[str, Any], what: str) -> bool:
         notify = (self.options.get(CONF_NOTIFY) or "").strip()
         if not notify or not self.options.get(CONF_PHONE_COMMANDS):
             return False
         domain, _, service = notify.partition(".")
         try:
-            await self.hass.services.async_call(
-                domain,
-                service,
-                {
-                    "title": "Bedtime Bridge",
-                    "message": message,
-                    # Time-sensitive like the bedtime nudge's RUN_BEDTIME, which reaches the
-                    # Shortcuts trigger with the phone locked.
-                    "data": {"tag": COMMAND_TAG, "push": {"interruption-level": "time-sensitive"}},
-                },
-                blocking=False,
-            )
+            await self.hass.services.async_call(domain, service, payload, blocking=False)
         except HomeAssistantError as err:
-            _LOGGER.warning("Bedtime Bridge couldn't send %s to the phone: %s", message, err)
+            _LOGGER.warning("Bedtime Bridge couldn't send %s to the phone: %s", what, err)
             return False
         return True
+
+    async def _command_ran(self, data: dict[str, Any]) -> None:
+        """The shortcut a command asked for has run (its Report Shortcut Ran step)."""
+        command = data.get("command")
+        if command in COMMANDS:
+            await self._clear_command(command)
+        self._event(MSG_COMMAND_RAN, command=command)
 
     async def _cancelled(self, data: dict[str, Any]) -> None:
         self.state.update(empty_state())
@@ -744,6 +771,8 @@ class BedtimeBridge:
         if helper and (at_home or not self.options.get(CONF_HOME_ONLY, True)):
             started = await self._turn_on(helper)
         self.state["skipped_away"] = bool(helper) and not started and not at_home
+        # The bedtime shortcut's own step, so a RUN_BEDTIME push has done its job.
+        await self._clear_command(CMD_BEDTIME)
         self._event(MSG_BEDTIME, started=started, at_home=at_home)
         return {"started": started, "at_home": at_home}
 

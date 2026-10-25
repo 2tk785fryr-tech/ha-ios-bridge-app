@@ -1,3 +1,4 @@
+import ActivityKit
 import AlarmKit
 import SwiftUI
 
@@ -36,7 +37,7 @@ final class AlarmScheduler {
     /// Replaces every alarm this app owns with the given times, so re-running the
     /// bedtime routine never leaves stale alarms behind. Alarms in `keeping` (temporary
     /// wake-ups, the test alarm) are left alone.
-    func replaceAlarms(with times: [Date], title: String, cause: String, snoozeMinutes: Int, keeping: Set<UUID> = []) async throws {
+    func replaceAlarms(with times: [Date], title: String, cause: String, snoozeMinutes: Int, sound: AlarmSound, keeping: Set<UUID> = []) async throws {
         try await ensureAccess()
         try cancelAll(keeping: keeping)
 
@@ -65,19 +66,19 @@ final class AlarmScheduler {
                 attributes: attributes,
                 stopIntent: StopWakeAlarmIntent(alarmID: id),
                 secondaryIntent: SnoozeWakeAlarmIntent(alarmID: id),
-                sound: .default
+                sound: alertSound(sound)
             )
             _ = try await manager.schedule(id: id, configuration: configuration)
         }
     }
 
     /// One alarm a couple of minutes out, alongside tonight's alarms (it doesn't replace them).
-    func scheduleTest(at time: Date, snoozeMinutes: Int) async throws -> UUID {
-        try await scheduleSingle(at: time, title: "Test alarm", cause: "test", snoozeMinutes: snoozeMinutes)
+    func scheduleTest(at time: Date, snoozeMinutes: Int, sound: AlarmSound) async throws -> UUID {
+        try await scheduleSingle(at: time, title: "Test alarm", cause: "test", snoozeMinutes: snoozeMinutes, sound: sound)
     }
 
     /// One alarm on its own, alongside the regular series, which it never replaces.
-    func scheduleSingle(at time: Date, title: String, cause: String, snoozeMinutes: Int) async throws -> UUID {
+    func scheduleSingle(at time: Date, title: String, cause: String, snoozeMinutes: Int, sound: AlarmSound) async throws -> UUID {
         try await ensureAccess()
         let alert = AlarmPresentation.Alert(
             title: LocalizedStringResource(stringLiteral: title),
@@ -96,10 +97,14 @@ final class AlarmScheduler {
             attributes: attributes,
             stopIntent: StopWakeAlarmIntent(alarmID: id),
             secondaryIntent: SnoozeWakeAlarmIntent(alarmID: id),
-            sound: .default
+            sound: alertSound(sound)
         )
         _ = try await manager.schedule(id: id, configuration: configuration)
         return id
+    }
+
+    private func alertSound(_ sound: AlarmSound) -> AlertConfiguration.AlertSound {
+        sound.fileName.map { .named($0) } ?? .default
     }
 
     func cancel(_ id: UUID) { try? manager.cancel(id: id) }

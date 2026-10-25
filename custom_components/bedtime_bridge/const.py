@@ -68,6 +68,7 @@ CMD_ARM = "RUN_ARM_STAY"
 CMD_MORNING = "RUN_GOOD_MORNING"
 # Same marker the bedtime nudge sends, so the existing phone automation runs bedtime.
 CMD_BEDTIME = "RUN_BEDTIME"
+COMMANDS = (CMD_DISARM, CMD_ARM, CMD_MORNING, CMD_BEDTIME)
 COMMAND_TAG = "bedtime_bridge_command"
 # Without getting back into bed by then (or before the regular alarms), it doesn't re-arm.
 REARM_GIVE_UP_HOURS = 6
@@ -101,6 +102,8 @@ MSG_TEMP_SNOOZED = "temporary_snoozed"
 MSG_TEMP_STOPPED = "temporary_stopped"
 MSG_HOME_CHECK = "home_check"
 MSG_BEDTIME_UNDONE = "bedtime_undone"
+# The phone ran the shortcut a command asked for (its last step reports back).
+MSG_COMMAND_RAN = "command_ran"
 EVENT_RERUN = "bedtime_rerun"
 EVENT_REARMED = "temporary_rearmed"
 # The bed sensor drops out for up to ~19 s while you're in it; "empty" must last longer.

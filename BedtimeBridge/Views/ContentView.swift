@@ -4,6 +4,7 @@ import SwiftUI
 /// "Tonight": the plan, the alarm series and the two main actions, in the Nightfall style.
 struct ContentView: View {
     @Environment(SettingsStore.self) private var store
+    @Environment(\.scenePhase) private var scenePhase
     @State private var plan: WakePlan?
     @State private var scheduled: [Date] = []
     @State private var errorMessage: String?
@@ -130,6 +131,14 @@ struct ContentView: View {
             .safeAreaInset(edge: .bottom) { actions }
             .toolbar(.hidden, for: .navigationBar)
             .onAppear(perform: refreshScheduled)
+            // The bedtime shortcut (or a phone command) may have set or cleared alarms while the
+            // app was in the background: show what's set now, not the plan from before.
+            .onChange(of: scenePhase) { _, phase in
+                guard phase == .active else { return }
+                let before = scheduled
+                refreshScheduled()
+                if scheduled != before { plan = coordinator.lastAppliedPlan }
+            }
             // bedtimebridge://replan, from Home Assistant's "plan out of date" and
             // "missing plan" notifications.
             .onOpenURL { url in

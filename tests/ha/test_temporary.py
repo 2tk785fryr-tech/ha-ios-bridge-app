@@ -293,3 +293,39 @@ async def test_a_new_plan_cancels_the_rerun(hass, hass_client_no_auth, freezer):
     async_fire_time_changed(hass)
     await hass.async_block_till_done()
     assert messages(notify) == ["RUN_DISARM"]
+
+
+async def test_command_push_clears_once_its_shortcut_ran(hass, hass_client_no_auth):
+    notify = async_mock_service(hass, "notify", "mobile_app_test")
+    await setup(hass, **COMMANDS)
+    await send(hass_client_no_auth, PLAN)
+    await send(hass_client_no_auth, {"type": "stopped", "data": {"alarm_times": []}})
+    await hass.async_block_till_done()
+    assert notify[-1].data["data"]["tag"] == "bedtime_bridge_command_run_good_morning"
+
+    await send(hass_client_no_auth, {"type": "command_ran", "data": {"command": "RUN_GOOD_MORNING"}})
+    await hass.async_block_till_done()
+    assert messages(notify) == ["RUN_GOOD_MORNING", "clear_notification"]
+    assert notify[-1].data["data"]["tag"] == "bedtime_bridge_command_run_good_morning"
+
+    # Only once: a second report (or one for a push never sent) sends nothing.
+    await send(hass_client_no_auth, {"type": "command_ran", "data": {"command": "RUN_GOOD_MORNING"}})
+    await send(hass_client_no_auth, {"type": "command_ran", "data": {"command": "RUN_DISARM"}})
+    await hass.async_block_till_done()
+    assert messages(notify) == ["RUN_GOOD_MORNING", "clear_notification"]
+
+
+async def test_bedtime_clears_the_rerun_push(hass, hass_client_no_auth, freezer):
+    notify = async_mock_service(hass, "notify", "mobile_app_test")
+    hass.states.async_set(BED, "off")
+    await setup(hass, bed_sensor=BED, rerun_minutes=1, **COMMANDS)
+    await send(hass_client_no_auth, {"type": "bedtime_undone", "data": {}})
+    hass.states.async_set(BED, "on")
+    await _wait(hass, freezer, minutes=2)
+    assert messages(notify) == ["RUN_DISARM", "RUN_BEDTIME"]
+
+    # The bedtime shortcut's Start Bedtime Routine step.
+    await send(hass_client_no_auth, {"type": "bedtime", "data": {}})
+    await hass.async_block_till_done()
+    assert messages(notify) == ["RUN_DISARM", "RUN_BEDTIME", "clear_notification"]
+    assert notify[-1].data["data"]["tag"] == "bedtime_bridge_command_run_bedtime"

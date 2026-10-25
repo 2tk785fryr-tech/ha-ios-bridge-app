@@ -154,6 +154,7 @@ Settings → Alarms chooses one of two styles:
 | Who makes the alarms | The app (AlarmKit). Rings through Silent and Focus. | Your shortcut, with *Create Alarm* for each item in `Wake Plan › Alarm Dates`. |
 | Snooze | Snooze button. **Length is adjustable** (default 9 min). The countdown shows on the Lock Screen and in the Dynamic Island. While snoozing, stopping takes a **slide**, like the Clock app, so a stray tap can't end it. | Apple's fixed 9 minutes. |
 | Morning routines | **Snooze** turns on `input_boolean.wake_fade` (Wake Snooze Fade). **Stop** turns on `input_boolean.wake_mike` (Wake Sequence). The app tells HA directly and retries if HA doesn't answer. | Your existing "Alarm is snoozed / stopped" Shortcuts automations, unchanged. |
+| Sound | **iPhone alarm** (default), or one of six sounds that ship with the app: Sunrise (builds slowly), Chimes, Marimba, Harp, Classic beeps, Pulse. Settings → Alarms, with a play button to hear each. | Whatever you pick in the Clock app. |
 | After Stop | **Keeps the later alarms until you're up** (default; see below), rechecks traffic for the leave-by reminder. | Whatever your shortcut does. |
 
 <p align="center"><img src="docs/images/slide-to-stop.gif" width="220" alt="Slide to stop while snoozing"></p>
@@ -329,6 +330,11 @@ automation (iOS 27) runs the matching shortcut:
 | `RUN_BEDTIME` | Back in bed after *Not going to sleep yet* (and the existing bedtime nudge) | The bedtime shortcut |
 
 Set each automation to *Run Immediately* and match on the message containing the marker.
+
+Each command has its own notification, and Home Assistant takes it off the phone once it
+knows the shortcut ran. For bedtime that's automatic (the shortcut's **Start Bedtime Routine**
+step tells it). For the others, add **Report Shortcut Ran** as the last step of each shortcut
+(Disarm, Arm Stay, Good Morning), with the matching command.
 The integration also keeps **Sleep In** in sync with the plan (while you're home): on when the
 first alarm is after the curtains would open (sunrise + **Curtains open after sunrise**,
 default 15 min), off when it's before. Skipping a morning with *Sleep in* turns it on.
@@ -476,6 +482,7 @@ them; re-render after editing a design.
 | **Away Bedtime Summary** | Text to speak at bedtime away from home: alarms, weather, house check. Changes nothing. |
 | **Start Bedtime Routine** | Turns on the bedtime helper through the integration, only if you're home. Returns *Started*. |
 | **Report Alarm Event** | For Clock app mode: reports a snooze or stop so the home check applies. |
+| **Report Shortcut Ran** | Last step of a shortcut a [phone command](#phone-commands) runs, so Home Assistant clears that command's notification. |
 | **Get Drive Time** | Drive minutes from home to a place, arriving by a given time. Useful in other shortcuts. |
 
 ## Alarm cause
