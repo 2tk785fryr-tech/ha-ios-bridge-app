@@ -1,9 +1,6 @@
-*.xcodeproj/
 DerivedData/
 xcuserdata/
 .DS_Store
-BedtimeBridge/Info.plist
-BedtimeBridgeWidgets/Info.plist
-*.entitlements
 __pycache__/
 .pytest_cache/
+*.xcodeproj/project.xcworkspace/xcuserdata/

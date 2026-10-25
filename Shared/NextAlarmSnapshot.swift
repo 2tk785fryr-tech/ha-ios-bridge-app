@@ -3,7 +3,10 @@ import Foundation
 /// What the Lock Screen widget shows. The app writes it to the shared App Group whenever
 /// alarms change (plan, snooze, stop, cancel); the widget only reads it.
 struct NextAlarmSnapshot: Codable, Equatable {
-    static let appGroup = "group.com.example.BedtimeBridge"
+    /// "group.<app ID>", from Info.plist (BedtimeBridgeAppGroup = group.$(APP_BUNDLE_ID)), so the
+    /// app and widget always agree with the entitlements without a hard-coded ID.
+    static let appGroup = Bundle.main.object(forInfoDictionaryKey: "BedtimeBridgeAppGroup") as? String
+        ?? "group.io.github.2tk785fryr-tech.bedtimebridge"
     private static let key = "nextAlarmSnapshot.v1"
 
     var alarmTimes: [Date] = []
