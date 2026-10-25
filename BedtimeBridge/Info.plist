@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDisplayName</key>
+	<string>Bedtime Bridge</string>
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string>LaunchBackground</string>
+	</dict>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Bedtime Bridge reads your shift and appointment events to work out when you need to wake up.</string>
+	<key>NSAlarmKitUsageDescription</key>
+	<string>Bedtime Bridge sets your wake-up alarms for work shifts and appointments.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>If no home address is set, your current location is used as the starting point for drive times.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Bedtime Bridge talks to Home Assistant on your home network to run your wake-up routines.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>$(APP_BUNDLE_ID)</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>bedtimebridge</string>
+			</array>
+		</dict>
+	</array>
+	<key>UIAppFonts</key>
+	<array>
+		<string>Sora-Light.ttf</string>
+		<string>Sora-Regular.ttf</string>
+		<string>Sora-Medium.ttf</string>
+		<string>Sora-SemiBold.ttf</string>
+		<string>Sora-Bold.ttf</string>
+	</array>
+	<key>BedtimeBridgeAppGroup</key>
+	<string>group.$(APP_BUNDLE_ID)</string>
+</dict>
+</plist>

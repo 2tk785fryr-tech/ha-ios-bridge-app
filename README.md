@@ -234,8 +234,7 @@ Home Screen widget.
 The app updates it whenever alarms change (plan, snooze, stop, cancel). It moves on to the next
 alarm by itself as each one passes. In Clock app mode it shows the planned times but can't
 see Clock snoozes. The app and widget share data through the App Group
-`group.com.example.BedtimeBridge`. If you change the bundle ID, change the group in
-`project.yml` and `Shared/NextAlarmSnapshot.swift` to match.
+`group.<bundle ID>`, which follows `APP_BUNDLE_ID` automatically.
 
 ## Leave-by reminder and bad weather
 
@@ -343,16 +342,22 @@ alarm time and sends back the spoken readout.
 
 ## Building
 
-Requires Xcode 26 and an iPhone on iOS 26 or later (AlarmKit is iOS 26+).
+Requires Xcode 26 (free from the Mac App Store) and an iPhone on iOS 26 or later (AlarmKit is
+iOS 26+). No Homebrew or Terminal needed; the Xcode project is in the repo.
 
-```sh
-brew install xcodegen
-xcodegen generate
-open BedtimeBridge.xcodeproj
-```
+1. Get the code: on GitHub, **Code → Download ZIP** and double-click the ZIP, or in Xcode
+   **Clone Git Repository…** with `https://github.com/2tk785fryr-tech/ha-ios-bridge-app`.
+2. Open `BedtimeBridge.xcodeproj`.
+3. Click the blue **BedtimeBridge** project at the top of the sidebar. For each of the three
+   targets (BedtimeBridge, BedtimeBridgeWidgets, BedtimeBridgeTests), open *Signing &
+   Capabilities* and pick your Apple ID under **Team** (Xcode → Settings → Accounts to add it).
+   If Xcode says the bundle ID is taken, change `APP_BUNDLE_ID` under the project's *Build
+   Settings* (the widget, tests and App Group follow it).
+4. Plug in your iPhone, trust the Mac, and turn on Settings → Privacy & Security → Developer Mode.
+5. Pick your iPhone at the top of Xcode and press ⌘R. The first time, allow the developer
+   certificate on the phone under Settings → General → VPN & Device Management.
 
-In Xcode, choose your team under *Signing & Capabilities*, change the bundle ID if you need to,
-and run it on your phone. On first launch, tap **Preview plan** to grant calendar access.
+On first launch, tap **Preview plan** to grant calendar access.
 Tap **Plan and set alarms** once to grant alarm access and notifications. Then open the gear and set:
 
 - your shift words and how long before each shift you want the first alarm
@@ -385,5 +390,5 @@ BedtimeBridgeTests/
 custom_components/bedtime_bridge/  Home Assistant integration (HACS)
 blueprints/automation/bedtime_bridge/  "Bedtime Bridge alarm event" blueprint
 tests/ha/     integration tests
-project.yml   XcodeGen spec (the .xcodeproj is generated, not committed)
+BedtimeBridge.xcodeproj  Xcode project (open this)
 ```
