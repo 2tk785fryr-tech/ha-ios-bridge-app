@@ -435,8 +435,8 @@ final class BedtimeCoordinator {
         do {
             let (origin, provider) = try route.get()
             let destination = try await travel.destination(locationText: candidate.location, coordinates: event.structuredLocation?.geoLocation)
-            candidate.latitude = destination.placemark.coordinate.latitude
-            candidate.longitude = destination.placemark.coordinate.longitude
+            candidate.latitude = destination.location.coordinate.latitude
+            candidate.longitude = destination.location.coordinate.longitude
             candidate.travelSeconds = try await provider.drivingTime(
                 from: origin,
                 to: destination,

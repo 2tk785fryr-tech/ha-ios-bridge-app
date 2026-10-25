@@ -29,7 +29,7 @@ extension DriveTimeProvider {
     /// Web services need coordinates, which "current location" doesn't have until it's resolved.
     func coordinate(of item: MKMapItem) throws -> CLLocationCoordinate2D {
         guard !item.isCurrentLocation else { throw BridgeError.homeAddressRequired }
-        return item.placemark.coordinate
+        return item.location.coordinate
     }
 
     func checkHTTP(_ response: URLResponse, data: Data, service: String) throws {

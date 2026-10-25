@@ -7,28 +7,20 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		53F85E2D092373A8A32EB350 = {
-			isa = PBXBuildFile;
-			fileRef = 0FD7488223EA0E20BD335592;
-			settings = {
-				ATTRIBUTES = (
-					RemoveHeadersOnCopy,
-				);
-			};
-		};
+		53F85E2D092373A8A32EB350 /* BedtimeBridgeWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 0FD7488223EA0E20BD335592 /* BedtimeBridgeWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
-		967B465884D1348373F240E6 = {
+		967B465884D1348373F240E6 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
-			containerPortal = 46F86FAA6BBF9AC94A7E4595;
+			containerPortal = 46F86FAA6BBF9AC94A7E4595 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = D627CACEBFAAA465612B83CD;
 			remoteInfo = BedtimeBridgeWidgets;
 		};
-		C7AC556714D86857163D9CD9 = {
+		C7AC556714D86857163D9CD9 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
-			containerPortal = 46F86FAA6BBF9AC94A7E4595;
+			containerPortal = 46F86FAA6BBF9AC94A7E4595 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = F01C2E624E08A72BC055B46F;
 			remoteInfo = BedtimeBridge;
@@ -36,13 +28,13 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
-		6B461CD41EA51ABC93F86EC9 = {
+		6B461CD41EA51ABC93F86EC9 /* Embed Foundation Extensions */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
-				53F85E2D092373A8A32EB350,
+				53F85E2D092373A8A32EB350 /* BedtimeBridgeWidgets.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -50,71 +42,51 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		0FD7488223EA0E20BD335592 = {
-			isa = PBXFileReference;
-			explicitFileType = "wrapper.app-extension";
-			includeInIndex = 0;
-			path = BedtimeBridgeWidgets.appex;
-			sourceTree = BUILT_PRODUCTS_DIR;
-		};
-		996AD237BC284D463E664FFE = {
-			isa = PBXFileReference;
-			explicitFileType = wrapper.application;
-			includeInIndex = 0;
-			path = BedtimeBridge.app;
-			sourceTree = BUILT_PRODUCTS_DIR;
-		};
-		BD5FEB36355BB38F98691943 = {
-			isa = PBXFileReference;
-			explicitFileType = wrapper.cfbundle;
-			includeInIndex = 0;
-			path = BedtimeBridgeTests.xctest;
-			sourceTree = BUILT_PRODUCTS_DIR;
-		};
+		0FD7488223EA0E20BD335592 /* BedtimeBridgeWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BedtimeBridgeWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		996AD237BC284D463E664FFE /* BedtimeBridge.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BedtimeBridge.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		BD5FEB36355BB38F98691943 /* BedtimeBridgeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BedtimeBridgeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		43C305F773C82B8B0D14F19F = {
+		43C305F773C82B8B0D14F19F /* Exceptions for "BedtimeBridge" folder in "BedtimeBridge" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				BedtimeBridge.entitlements,
 				Info.plist,
 			);
-			target = F01C2E624E08A72BC055B46F;
+			target = F01C2E624E08A72BC055B46F /* BedtimeBridge */;
 		};
-		6C92C92ADE9347568E83229A = {
+		6C92C92ADE9347568E83229A /* Exceptions for "BedtimeBridgeWidgets" folder in "BedtimeBridgeWidgets" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				BedtimeBridgeWidgets.entitlements,
 				Info.plist,
 			);
-			target = D627CACEBFAAA465612B83CD;
+			target = D627CACEBFAAA465612B83CD /* BedtimeBridgeWidgets */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		36D4366D5C287D6D684A6517 = {
+		36D4366D5C287D6D684A6517 /* BedtimeBridgeWidgets */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				6C92C92ADE9347568E83229A,
+				6C92C92ADE9347568E83229A /* Exceptions for "BedtimeBridgeWidgets" folder in "BedtimeBridgeWidgets" target */,
 			);
 			path = BedtimeBridgeWidgets;
 			sourceTree = "<group>";
 		};
-		74C516F54B64C6B29F4F3717 = {
+		74C516F54B64C6B29F4F3717 /* BedtimeBridgeTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = BedtimeBridgeTests;
 			sourceTree = "<group>";
 		};
-		824531B164FE9D1B85185C31 = {
+		824531B164FE9D1B85185C31 /* Shared */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = Shared;
 			sourceTree = "<group>";
 		};
-		C77E3C2BD92658F710989DA6 = {
+		C77E3C2BD92658F710989DA6 /* BedtimeBridge */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				43C305F773C82B8B0D14F19F,
+				43C305F773C82B8B0D14F19F /* Exceptions for "BedtimeBridge" folder in "BedtimeBridge" target */,
 			);
 			path = BedtimeBridge;
 			sourceTree = "<group>";
@@ -122,21 +94,21 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		72082DD4E71E6113920FF5C4 = {
+		72082DD4E71E6113920FF5C4 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		91153B500AF636521FCA70EF = {
+		91153B500AF636521FCA70EF /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		B70231D47D9ECAE99834503F = {
+		B70231D47D9ECAE99834503F /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -146,12 +118,12 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		113236722DEE1DC96F378B9D = {
+		113236722DEE1DC96F378B9D /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				996AD237BC284D463E664FFE,
-				0FD7488223EA0E20BD335592,
-				BD5FEB36355BB38F98691943,
+				996AD237BC284D463E664FFE /* BedtimeBridge.app */,
+				0FD7488223EA0E20BD335592 /* BedtimeBridgeWidgets.appex */,
+				BD5FEB36355BB38F98691943 /* BedtimeBridgeTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -159,111 +131,111 @@
 		71DC27D9F8E3B109C877BFC4 = {
 			isa = PBXGroup;
 			children = (
-				C77E3C2BD92658F710989DA6,
-				824531B164FE9D1B85185C31,
-				36D4366D5C287D6D684A6517,
-				74C516F54B64C6B29F4F3717,
-				113236722DEE1DC96F378B9D,
+				C77E3C2BD92658F710989DA6 /* BedtimeBridge */,
+				824531B164FE9D1B85185C31 /* Shared */,
+				36D4366D5C287D6D684A6517 /* BedtimeBridgeWidgets */,
+				74C516F54B64C6B29F4F3717 /* BedtimeBridgeTests */,
+				113236722DEE1DC96F378B9D /* Products */,
 			);
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		C706FA839F4C1F2316B35783 = {
+		C706FA839F4C1F2316B35783 /* BedtimeBridgeTests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = F2B3EBA12D45501240AF7129;
+			buildConfigurationList = F2B3EBA12D45501240AF7129 /* Build configuration list for PBXNativeTarget "BedtimeBridgeTests" */;
 			buildPhases = (
-				451C3E1ECC12A5630925D94D,
-				91153B500AF636521FCA70EF,
-				0A81641FCAB8C1ECBDF9E85B,
+				451C3E1ECC12A5630925D94D /* Sources */,
+				91153B500AF636521FCA70EF /* Frameworks */,
+				0A81641FCAB8C1ECBDF9E85B /* Resources */,
 			);
 			buildRules = (
 			);
 			dependencies = (
-				3A09C2D0EF0B3F5F4DEFBC12,
+				3A09C2D0EF0B3F5F4DEFBC12 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
-				74C516F54B64C6B29F4F3717,
+				74C516F54B64C6B29F4F3717 /* BedtimeBridgeTests */,
 			);
 			name = BedtimeBridgeTests;
 			packageProductDependencies = (
 			);
 			productName = BedtimeBridgeTests;
-			productReference = BD5FEB36355BB38F98691943;
+			productReference = BD5FEB36355BB38F98691943 /* BedtimeBridgeTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
-		D627CACEBFAAA465612B83CD = {
+		D627CACEBFAAA465612B83CD /* BedtimeBridgeWidgets */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = A16DCA773FDC0D7CD6281918;
+			buildConfigurationList = A16DCA773FDC0D7CD6281918 /* Build configuration list for PBXNativeTarget "BedtimeBridgeWidgets" */;
 			buildPhases = (
-				E004A37D99E094CD4C5D5672,
-				B70231D47D9ECAE99834503F,
-				6D7102D8C9D91CDE06DA5BB3,
+				E004A37D99E094CD4C5D5672 /* Sources */,
+				B70231D47D9ECAE99834503F /* Frameworks */,
+				6D7102D8C9D91CDE06DA5BB3 /* Resources */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				36D4366D5C287D6D684A6517,
-				824531B164FE9D1B85185C31,
+				36D4366D5C287D6D684A6517 /* BedtimeBridgeWidgets */,
+				824531B164FE9D1B85185C31 /* Shared */,
 			);
 			name = BedtimeBridgeWidgets;
 			packageProductDependencies = (
 			);
 			productName = BedtimeBridgeWidgets;
-			productReference = 0FD7488223EA0E20BD335592;
+			productReference = 0FD7488223EA0E20BD335592 /* BedtimeBridgeWidgets.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
-		F01C2E624E08A72BC055B46F = {
+		F01C2E624E08A72BC055B46F /* BedtimeBridge */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = A25A21380B352A4D587DB751;
+			buildConfigurationList = A25A21380B352A4D587DB751 /* Build configuration list for PBXNativeTarget "BedtimeBridge" */;
 			buildPhases = (
-				FE1DC8A78FA8FF7181469B57,
-				72082DD4E71E6113920FF5C4,
-				E5D78221375C3625DCAFF221,
-				6B461CD41EA51ABC93F86EC9,
+				FE1DC8A78FA8FF7181469B57 /* Sources */,
+				72082DD4E71E6113920FF5C4 /* Frameworks */,
+				E5D78221375C3625DCAFF221 /* Resources */,
+				6B461CD41EA51ABC93F86EC9 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
-				4C2483963EDEDBCAE58B9EC4,
+				4C2483963EDEDBCAE58B9EC4 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
-				C77E3C2BD92658F710989DA6,
-				824531B164FE9D1B85185C31,
+				824531B164FE9D1B85185C31 /* Shared */,
+				C77E3C2BD92658F710989DA6 /* BedtimeBridge */,
 			);
 			name = BedtimeBridge;
 			packageProductDependencies = (
 			);
 			productName = BedtimeBridge;
-			productReference = 996AD237BC284D463E664FFE;
+			productReference = 996AD237BC284D463E664FFE /* BedtimeBridge.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
-		46F86FAA6BBF9AC94A7E4595 = {
+		46F86FAA6BBF9AC94A7E4595 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 2600;
 				LastUpgradeCheck = 2600;
 				TargetAttributes = {
-					F01C2E624E08A72BC055B46F = {
-						CreatedOnToolsVersion = 26.0;
-					};
-					D627CACEBFAAA465612B83CD = {
-						CreatedOnToolsVersion = 26.0;
-					};
 					C706FA839F4C1F2316B35783 = {
 						CreatedOnToolsVersion = 26.0;
 						TestTargetID = F01C2E624E08A72BC055B46F;
 					};
+					D627CACEBFAAA465612B83CD = {
+						CreatedOnToolsVersion = 26.0;
+					};
+					F01C2E624E08A72BC055B46F = {
+						CreatedOnToolsVersion = 26.0;
+					};
 				};
 			};
-			buildConfigurationList = 946392D46B65BE2E368A0D3B;
+			buildConfigurationList = 946392D46B65BE2E368A0D3B /* Build configuration list for PBXProject "BedtimeBridge" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -273,33 +245,33 @@
 			mainGroup = 71DC27D9F8E3B109C877BFC4;
 			minimizedProjectReferenceProxies = 1;
 			preferredProjectObjectVersion = 77;
-			productRefGroup = 113236722DEE1DC96F378B9D;
+			productRefGroup = 113236722DEE1DC96F378B9D /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				F01C2E624E08A72BC055B46F,
-				D627CACEBFAAA465612B83CD,
-				C706FA839F4C1F2316B35783,
+				F01C2E624E08A72BC055B46F /* BedtimeBridge */,
+				D627CACEBFAAA465612B83CD /* BedtimeBridgeWidgets */,
+				C706FA839F4C1F2316B35783 /* BedtimeBridgeTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		0A81641FCAB8C1ECBDF9E85B = {
+		0A81641FCAB8C1ECBDF9E85B /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		6D7102D8C9D91CDE06DA5BB3 = {
+		6D7102D8C9D91CDE06DA5BB3 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		E5D78221375C3625DCAFF221 = {
+		E5D78221375C3625DCAFF221 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -309,21 +281,21 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		451C3E1ECC12A5630925D94D = {
+		451C3E1ECC12A5630925D94D /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		E004A37D99E094CD4C5D5672 = {
+		E004A37D99E094CD4C5D5672 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		FE1DC8A78FA8FF7181469B57 = {
+		FE1DC8A78FA8FF7181469B57 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -333,20 +305,20 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		3A09C2D0EF0B3F5F4DEFBC12 = {
+		3A09C2D0EF0B3F5F4DEFBC12 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = F01C2E624E08A72BC055B46F;
-			targetProxy = C7AC556714D86857163D9CD9;
+			target = F01C2E624E08A72BC055B46F /* BedtimeBridge */;
+			targetProxy = C7AC556714D86857163D9CD9 /* PBXContainerItemProxy */;
 		};
-		4C2483963EDEDBCAE58B9EC4 = {
+		4C2483963EDEDBCAE58B9EC4 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = D627CACEBFAAA465612B83CD;
-			targetProxy = 967B465884D1348373F240E6;
+			target = D627CACEBFAAA465612B83CD /* BedtimeBridgeWidgets */;
+			targetProxy = 967B465884D1348373F240E6 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
-		0CF8206AA0B385A93D33097D = {
+		0CF8206AA0B385A93D33097D /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -376,7 +348,7 @@
 			};
 			name = Release;
 		};
-		1128DC3924065E477F3AFD8E = {
+		1128DC3924065E477F3AFD8E /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "AppIcon-Bridge AppIcon-Dial";
@@ -385,10 +357,15 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = BedtimeBridge/BedtimeBridge.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = E3P6U6KP7P;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = BedtimeBridge/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Bedtime Bridge";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Bedtime Bridge reads your shift and appointment events to work out when you need to wake up.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Bedtime Bridge talks to Home Assistant on your home network to run your wake-up routines.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "If no home address is set, your current location is used as the starting point for drive times.";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -400,7 +377,7 @@
 			};
 			name = Release;
 		};
-		12E625D84A0E3D927191375D = {
+		12E625D84A0E3D927191375D /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "AppIcon-Bridge AppIcon-Dial";
@@ -409,10 +386,15 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = BedtimeBridge/BedtimeBridge.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = E3P6U6KP7P;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = BedtimeBridge/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Bedtime Bridge";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Bedtime Bridge reads your shift and appointment events to work out when you need to wake up.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Bedtime Bridge talks to Home Assistant on your home network to run your wake-up routines.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "If no home address is set, your current location is used as the starting point for drive times.";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -424,7 +406,7 @@
 			};
 			name = Debug;
 		};
-		218037AB54AB59F5BE8E874E = {
+		218037AB54AB59F5BE8E874E /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -460,12 +442,12 @@
 			};
 			name = Debug;
 		};
-		92850F87C1B8666055FE2770 = {
+		92850F87C1B8666055FE2770 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = E3P6U6KP7P;
 				GENERATE_INFOPLIST_FILE = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_ID).Tests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -475,12 +457,12 @@
 			};
 			name = Debug;
 		};
-		B8EB4CEE4F03C0282D3601BC = {
+		B8EB4CEE4F03C0282D3601BC /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = BedtimeBridgeWidgets/BedtimeBridgeWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = E3P6U6KP7P;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = BedtimeBridgeWidgets/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -496,12 +478,12 @@
 			};
 			name = Release;
 		};
-		C71D832F7895BB7E39E9F8CC = {
+		C71D832F7895BB7E39E9F8CC /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = BedtimeBridgeWidgets/BedtimeBridgeWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = E3P6U6KP7P;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = BedtimeBridgeWidgets/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -517,12 +499,12 @@
 			};
 			name = Debug;
 		};
-		D4B32137D1D122054F26F938 = {
+		D4B32137D1D122054F26F938 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = E3P6U6KP7P;
 				GENERATE_INFOPLIST_FILE = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_ID).Tests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -535,44 +517,43 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		946392D46B65BE2E368A0D3B = {
+		946392D46B65BE2E368A0D3B /* Build configuration list for PBXProject "BedtimeBridge" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				218037AB54AB59F5BE8E874E,
-				0CF8206AA0B385A93D33097D,
+				218037AB54AB59F5BE8E874E /* Debug */,
+				0CF8206AA0B385A93D33097D /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		A16DCA773FDC0D7CD6281918 = {
+		A16DCA773FDC0D7CD6281918 /* Build configuration list for PBXNativeTarget "BedtimeBridgeWidgets" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				C71D832F7895BB7E39E9F8CC,
-				B8EB4CEE4F03C0282D3601BC,
+				C71D832F7895BB7E39E9F8CC /* Debug */,
+				B8EB4CEE4F03C0282D3601BC /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		A25A21380B352A4D587DB751 = {
+		A25A21380B352A4D587DB751 /* Build configuration list for PBXNativeTarget "BedtimeBridge" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				12E625D84A0E3D927191375D,
-				1128DC3924065E477F3AFD8E,
+				12E625D84A0E3D927191375D /* Debug */,
+				1128DC3924065E477F3AFD8E /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		F2B3EBA12D45501240AF7129 = {
+		F2B3EBA12D45501240AF7129 /* Build configuration list for PBXNativeTarget "BedtimeBridgeTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				92850F87C1B8666055FE2770,
-				D4B32137D1D122054F26F938,
+				92850F87C1B8666055FE2770 /* Debug */,
+				D4B32137D1D122054F26F938 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
-
 	};
-	rootObject = 46F86FAA6BBF9AC94A7E4595;
+	rootObject = 46F86FAA6BBF9AC94A7E4595 /* Project object */;
 }
