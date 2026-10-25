@@ -63,6 +63,8 @@ struct WakePlan: Equatable {
     var shift: ShiftCandidate?
     var appointment: AppointmentCandidate?
     var weather: WeatherAdjustment? = nil
+    /// From Home Assistant; nil when it couldn't tell.
+    var atHome: Bool? = nil
     var warnings: [String] = []
 
     var firstAlarm: Date? { alarmTimes.first }

@@ -91,6 +91,10 @@ final class BedtimeCoordinator {
             }
         }
 
+        plan.atHome = context?.atHome
+        if context?.atHome == false {
+            extraWarnings.append("You're not home, so Home Assistant won't run your wake-up or bedtime routines.")
+        }
         plan.warnings = extraWarnings + plan.warnings
         return (plan, settings)
     }
@@ -206,6 +210,30 @@ final class BedtimeCoordinator {
                 ], settings: settings)
             }
         }
+    }
+
+    // MARK: Bedtime and Clock app alarms
+
+    /// Starts the bedtime routine in Home Assistant unless you're away.
+    /// Returns whether it started, so the shortcut can branch.
+    func startBedtime(settings: BridgeSettings) async throws -> (started: Bool, atHome: Bool) {
+        guard let link = HomeAssistantLinks.current(settings) else { throw BridgeError.homeAssistantNotSetUp }
+        return try await link.startBedtime(settings: settings)
+    }
+
+    /// Clock app mode: the Shortcuts "Alarm is snoozed/stopped" automations call this instead
+    /// of flipping the helpers through HomeKit, so the home check and events still apply.
+    func clockAlarmEvent(_ event: BridgeEvent, settings phoneSettings: BridgeSettings) async {
+        let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
+        var data: [String: Any] = ["alarm_cause": lastCause]
+        if event == .snoozed {
+            let ringsAgain = Date.now.addingTimeInterval(9 * 60)  // Clock app snooze is fixed by Apple
+            data["rings_again"] = Self.iso(ringsAgain)
+            updateWidget { $0.snoozedUntil = ringsAgain }
+        } else {
+            updateWidget { $0.snoozedUntil = nil }
+        }
+        await report(event, data: data, settings: settings)
     }
 
     // MARK: Other

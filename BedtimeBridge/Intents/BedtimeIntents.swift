@@ -86,6 +86,54 @@ struct GetDriveTimeIntent: AppIntent {
     }
 }
 
+/// Replaces the shortcut's HomeKit "turn on Bedtime Routine" step: Home Assistant runs the
+/// bedtime routine only if you're home.
+struct StartBedtimeRoutineIntent: AppIntent {
+    static var title: LocalizedStringResource = "Start Bedtime Routine"
+    static var description = IntentDescription(
+        "Turns on your bedtime routine in Home Assistant, but only when you're home. Returns whether it started."
+    )
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ReturnsValue<Bool> {
+        let result = try await BedtimeCoordinator.shared.startBedtime(settings: SettingsStore.shared.settings)
+        return .result(value: result.started)
+    }
+}
+
+enum ClockAlarmEvent: String, AppEnum {
+    case snoozed
+    case stopped
+
+    static var typeDisplayRepresentation: TypeDisplayRepresentation = "Alarm Event"
+    static var caseDisplayRepresentations: [ClockAlarmEvent: DisplayRepresentation] = [
+        .snoozed: "Snoozed",
+        .stopped: "Stopped",
+    ]
+}
+
+/// Clock app mode: use in the "Alarm is snoozed/stopped" personal automations instead of
+/// setting the helpers through HomeKit, so the home check and HA events still apply.
+struct ReportAlarmEventIntent: AppIntent {
+    static var title: LocalizedStringResource = "Report Alarm Event"
+    static var description = IntentDescription(
+        "Tells Home Assistant a Clock app alarm was snoozed or stopped. It runs your wake-up routine only if you're home."
+    )
+
+    @Parameter(title: "Event")
+    var event: ClockAlarmEvent
+
+    static var parameterSummary: some ParameterSummary {
+        Summary("Report alarm \(\.$event)")
+    }
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        await BedtimeCoordinator.shared.clockAlarmEvent(event == .snoozed ? .snoozed : .stopped, settings: SettingsStore.shared.settings)
+        return .result()
+    }
+}
+
 struct BedtimeBridgeShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(

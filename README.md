@@ -102,6 +102,33 @@ the next time it runs (bedtime, snooze or stop).
 
 The integration has its own tests (`pytest`, with `pytest-homeassistant-custom-component`).
 
+## Only when you're home
+
+Wake-up and bedtime routines only run in Home Assistant while you're home, so a hotel night
+doesn't light up an empty house.
+
+- **Wake side:** when you snooze or stop, the integration checks your person entity. If you're
+  away, it doesn't turn on `wake_fade` / `wake_mike` and doesn't fire the snoozed/stopped
+  events. The state still updates, and `sensor.bedtime_bridge_last_event` shows
+  `skipped_away: true`.
+- **Bedtime side:** replace the shortcut's HomeKit "turn on Bedtime Routine" step with the app's
+  **Start Bedtime Routine** action. It asks the integration, which turns on
+  `input_boolean.bedtime_routine` only if you're home, and returns *Started* (true/false) so the
+  shortcut can skip or change later steps.
+- **Clock app mode:** in the Shortcuts "Alarm is snoozed" and "Alarm is stopped" personal
+  automations, replace the HomeKit helper steps with **Report Alarm Event** (Snoozed / Stopped),
+  so the same check applies.
+- **Wake Plan › At Home** is false when you're away, and the Tonight screen shows "away".
+
+Set it up in the integration's options: **You** (defaults to your person entity), **Only run
+routines when you're home** (on), and **Turn on to start the bedtime routine**
+(`input_boolean.bedtime_routine`). Unknown or unavailable presence counts as home, so a tracker
+glitch never skips your morning while you're in bed. Without the integration, the same three
+settings are in the app (token mode).
+
+Anything that still flips those helpers directly (an old HomeKit step, a dashboard button)
+bypasses the check. Route it through the app's actions instead.
+
 ## Lock Screen widget
 
 Add **Next Alarm** from the Lock Screen widget gallery (Bedtime Bridge). It shows the next
@@ -189,6 +216,7 @@ If  Wake Plan › Has Alarm  is  false
     End If
     Choose from Menu "Turn on Sleep In?"  …                 (your existing step)
 End If
+Start Bedtime Routine                    → Started      (replaces the HomeKit "Bedtime Routine on" step)
 If  Wake Plan › Needs Clock Alarms  is  true              (Clock app mode only)
     Repeat with Each item in Wake Plan › Alarm Dates
         Create Alarm at Repeat Item

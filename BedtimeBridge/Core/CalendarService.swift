@@ -8,6 +8,7 @@ enum BridgeError: LocalizedError {
     case apiKeyMissing(String)
     case driveTimeService(String, Int, String)
     case homeAssistant(Int, String)
+    case homeAssistantNotSetUp
 
     var errorDescription: String? {
         switch self {
@@ -25,6 +26,8 @@ enum BridgeError: LocalizedError {
             "\(service) returned an error (\(status)): \(body)"
         case .homeAssistant(let status, let body):
             "Home Assistant returned an error (\(status)): \(body)"
+        case .homeAssistantNotSetUp:
+            "Connect Home Assistant in Bedtime Bridge's settings first."
         }
     }
 }

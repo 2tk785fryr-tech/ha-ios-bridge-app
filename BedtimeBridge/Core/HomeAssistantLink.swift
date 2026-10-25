@@ -4,6 +4,8 @@ import Foundation
 struct HomeAssistantContext {
     var shiftOverride: String?
     var nextShiftStart: Date?
+    /// nil when Home Assistant didn't say (no presence entity set up).
+    var atHome: Bool?
     /// Settings adjusted in HA (Bedtime Bridge integration only); see `BridgeSettings.applying`.
     var settings: [String: Any] = [:]
 }
@@ -21,6 +23,15 @@ protocol HomeAssistantLink {
     func context(settings: BridgeSettings) async throws -> HomeAssistantContext
     func forecast(settings: BridgeSettings) async throws -> (hours: [ForecastHour], temperatureUnit: String?)
     func report(_ event: BridgeEvent, data: [String: Any], settings: BridgeSettings) async throws
+    /// Turns on the bedtime routine helper, only when you're home (if that's set).
+    func startBedtime(settings: BridgeSettings) async throws -> (started: Bool, atHome: Bool)
+}
+
+/// Presence states that count as home; unknown/unavailable also count, so a glitching
+/// tracker never skips your routine while you're actually in bed.
+func presenceCountsAsHome(_ state: String?) -> Bool {
+    guard let state else { return true }
+    return ["home", "on", "unknown", "unavailable"].contains(state)
 }
 
 enum HomeAssistantLinks {
@@ -65,8 +76,15 @@ struct IntegrationLink: HomeAssistantLink {
         return HomeAssistantContext(
             shiftOverride: reply["shift_override"] as? String,
             nextShiftStart: (reply["next_shift_start"] as? String).flatMap(Self.parseDate),
+            atHome: reply["at_home"] as? Bool,
             settings: reply["settings"] as? [String: Any] ?? [:]
         )
+    }
+
+    /// The integration checks presence and turns on its bedtime helper.
+    func startBedtime(settings: BridgeSettings) async throws -> (started: Bool, atHome: Bool) {
+        let reply = try await send("bedtime")
+        return (reply["started"] as? Bool ?? false, reply["at_home"] as? Bool ?? true)
     }
 
     func forecast(settings: BridgeSettings) async throws -> (hours: [ForecastHour], temperatureUnit: String?) {
@@ -131,7 +149,19 @@ struct TokenLink: HomeAssistantLink {
         let override = try await client.state(of: settings.shiftOverrideEntity).state
         let sensor = try? await client.state(of: settings.shiftSensorEntity)
         let start = (sensor?.attributes["next_shift_start"] as? String).flatMap { ISO8601DateFormatter().date(from: $0) }
-        return HomeAssistantContext(shiftOverride: override, nextShiftStart: start)
+        return HomeAssistantContext(shiftOverride: override, nextShiftStart: start, atHome: await isHome(settings))
+    }
+
+    func startBedtime(settings: BridgeSettings) async throws -> (started: Bool, atHome: Bool) {
+        let atHome = await isHome(settings)
+        guard !settings.bedtimeHelper.isEmpty, atHome || !settings.homeOnly else { return (false, atHome) }
+        try await client.turnOn(settings.bedtimeHelper)
+        return (true, atHome)
+    }
+
+    private func isHome(_ settings: BridgeSettings) async -> Bool {
+        guard !settings.presenceEntity.isEmpty else { return true }
+        return presenceCountsAsHome(try? await client.state(of: settings.presenceEntity).state)
     }
 
     func forecast(settings: BridgeSettings) async throws -> (hours: [ForecastHour], temperatureUnit: String?) {
@@ -143,10 +173,9 @@ struct TokenLink: HomeAssistantLink {
     /// Without the integration the app does the work itself: turns on the helpers and
     /// writes a state-only sensor.
     func report(_ event: BridgeEvent, data: [String: Any], settings: BridgeSettings) async throws {
-        switch event {
-        case .snoozed: try? await client.turnOn(settings.snoozeHelper)
-        case .stopped: try? await client.turnOn(settings.stopHelper)
-        default: break
+        let wakeHelper = event == .snoozed ? settings.snoozeHelper : event == .stopped ? settings.stopHelper : ""
+        if !wakeHelper.isEmpty, await isHome(settings) || !settings.homeOnly {
+            try? await client.turnOn(wakeHelper)
         }
         guard event != .leaveBy, !settings.nextAlarmSensor.isEmpty else { return }
         var attributes = data

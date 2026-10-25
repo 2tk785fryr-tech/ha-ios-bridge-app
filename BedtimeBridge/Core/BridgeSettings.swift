@@ -63,6 +63,12 @@ struct BridgeSettings: Codable, Equatable {
     var shiftSensorEntity = "sensor.current_shift"
     /// Kept up to date with the next alarm time and cause.
     var nextAlarmSensor = "sensor.bedtime_bridge_next_alarm"
+    /// Turned on by Start Bedtime Routine.
+    var bedtimeHelper = "input_boolean.bedtime_routine"
+    /// You, for "only when home". Unknown/unavailable counts as home.
+    var presenceEntity = "person.michael_perschy"
+    /// Skip the wake helpers and the bedtime routine while you're away.
+    var homeOnly = true
 
     // MARK: Weather
 

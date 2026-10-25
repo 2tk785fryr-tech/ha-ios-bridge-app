@@ -16,7 +16,7 @@ from .conftest import WEBHOOK_ID, make_entry
 async def setup(hass: HomeAssistant, **options):
     assert await async_setup_component(hass, "homeassistant", {})
     assert await async_setup_component(
-        hass, "input_boolean", {"input_boolean": {"wake_fade": {}, "wake_mike": {}}}
+        hass, "input_boolean", {"input_boolean": {"wake_fade": {}, "wake_mike": {}, "bedtime_routine": {}}}
     )
     entry = make_entry(**options)
     entry.add_to_hass(hass)
@@ -194,3 +194,65 @@ async def test_forecast_uses_configured_weather_entity(hass, hass_client_no_auth
     reply = await send(hass_client_no_auth, {"type": "forecast", "data": {}})
     assert reply["forecast"] == [{"datetime": "2026-10-26T10:00:00+00:00", "condition": "rainy", "temperature": 31.0}]
     assert reply["temperature_unit"]
+
+
+# MARK: Only when home
+
+async def setup_with_presence(hass, state, **options):
+    hass.states.async_set("person.me", state)
+    return await setup(
+        hass, presence_entities=["person.me"], bedtime_helper="input_boolean.bedtime_routine", **options
+    )
+
+
+async def test_away_skips_wake_helpers_and_events(hass, hass_client_no_auth):
+    await setup_with_presence(hass, "not_home")
+    events = async_capture_events(hass, "bedtime_bridge")
+    await send(hass_client_no_auth, {"type": "snoozed", "data": {}})
+    await send(hass_client_no_auth, {"type": "stopped", "data": {}})
+    await hass.async_block_till_done()
+    assert hass.states.get("input_boolean.wake_fade").state == "off"
+    assert hass.states.get("input_boolean.wake_mike").state == "off"
+    assert events == []
+    assert hass.states.get("sensor.bedtime_bridge_last_event").attributes["skipped_away"] is True
+
+
+async def test_home_runs_wake_helpers(hass, hass_client_no_auth):
+    await setup_with_presence(hass, "home")
+    await send(hass_client_no_auth, {"type": "stopped", "data": {}})
+    await hass.async_block_till_done()
+    assert hass.states.get("input_boolean.wake_mike").state == "on"
+
+
+async def test_unknown_presence_counts_as_home(hass, hass_client_no_auth):
+    await setup_with_presence(hass, "unavailable")
+    await send(hass_client_no_auth, {"type": "snoozed", "data": {}})
+    await hass.async_block_till_done()
+    assert hass.states.get("input_boolean.wake_fade").state == "on"
+
+
+async def test_home_only_off_runs_while_away(hass, hass_client_no_auth):
+    await setup_with_presence(hass, "not_home", home_only=False)
+    await send(hass_client_no_auth, {"type": "snoozed", "data": {}})
+    await hass.async_block_till_done()
+    assert hass.states.get("input_boolean.wake_fade").state == "on"
+
+
+async def test_bedtime_starts_only_when_home(hass, hass_client_no_auth):
+    await setup_with_presence(hass, "not_home")
+    reply = await send(hass_client_no_auth, {"type": "bedtime", "data": {}})
+    await hass.async_block_till_done()
+    assert reply["started"] is False and reply["at_home"] is False
+    assert hass.states.get("input_boolean.bedtime_routine").state == "off"
+
+    hass.states.async_set("person.me", "home")
+    reply = await send(hass_client_no_auth, {"type": "bedtime", "data": {}})
+    await hass.async_block_till_done()
+    assert reply["started"] is True
+    assert hass.states.get("input_boolean.bedtime_routine").state == "on"
+
+
+async def test_context_reports_presence(hass, hass_client_no_auth):
+    await setup_with_presence(hass, "not_home")
+    reply = await send(hass_client_no_auth, {"type": "context", "data": {}})
+    assert reply["at_home"] is False

@@ -5,6 +5,9 @@
         "title": "Bedtime Bridge",
         "description": "Choose what Snooze and Stop on your iPhone do in Home Assistant, and which entities the app should read when it plans your alarms.",
         "data": {
+          "presence_entities": "You (person or tracker)",
+          "home_only": "Only run routines when you're home",
+          "bedtime_helper": "Turn on to start the bedtime routine",
           "wake_action": "When you snooze or stop an alarm",
           "snooze_helper": "Turn on when snoozed",
           "stop_helper": "Turn on when stopped",
@@ -15,7 +18,9 @@
         },
         "data_description": {
           "wake_action": "Helpers: turn on the entities below, for blueprints that watch them (Wake Snooze Fade, Wake Sequence). Events: fire a bedtime_bridge event for automations and blueprints to trigger on. Both: do both.",
-          "shift_types": "Each one gets a lead-time setting, and its name is sent as the alarm cause."
+          "shift_types": "Each one gets a lead-time setting, and its name is sent as the alarm cause.",
+          "home_only": "Snooze, stop and Start Bedtime Routine skip the helpers and wake events while you're away. If your location is unknown, you count as home.",
+          "bedtime_helper": "Turned on by the app's Start Bedtime Routine action (e.g. input_boolean.bedtime_routine)."
         }
       },
       "pair": {
@@ -33,6 +38,9 @@
         "title": "Bedtime Bridge",
         "description": "Pairing address for the app: `{webhook_url}`",
         "data": {
+          "presence_entities": "You (person or tracker)",
+          "home_only": "Only run routines when you're home",
+          "bedtime_helper": "Turn on to start the bedtime routine",
           "wake_action": "When you snooze or stop an alarm",
           "snooze_helper": "Turn on when snoozed",
           "stop_helper": "Turn on when stopped",
@@ -43,7 +51,9 @@
         },
         "data_description": {
           "wake_action": "Helpers: turn on the entities below, for blueprints that watch them (Wake Snooze Fade, Wake Sequence). Events: fire a bedtime_bridge event for automations and blueprints to trigger on. Both: do both.",
-          "shift_types": "Each one gets a lead-time setting, and its name is sent as the alarm cause."
+          "shift_types": "Each one gets a lead-time setting, and its name is sent as the alarm cause.",
+          "home_only": "Snooze, stop and Start Bedtime Routine skip the helpers and wake events while you're away. If your location is unknown, you count as home.",
+          "bedtime_helper": "Turned on by the app's Start Bedtime Routine action (e.g. input_boolean.bedtime_routine)."
         }
       }
     }
@@ -59,26 +69,58 @@
   },
   "entity": {
     "sensor": {
-      "next_alarm": { "name": "Next alarm" },
-      "wake_time": { "name": "Wake-up time" },
-      "alarm_cause": { "name": "Alarm cause" },
-      "reason": { "name": "Reason" },
-      "leave_by": { "name": "Leave by" },
-      "drive_time": { "name": "Drive time" },
-      "weather_extra": { "name": "Bad-weather extra time" },
-      "snooze_count": { "name": "Snooze count" },
-      "last_event": { "name": "Last event" }
+      "next_alarm": {
+        "name": "Next alarm"
+      },
+      "wake_time": {
+        "name": "Wake-up time"
+      },
+      "alarm_cause": {
+        "name": "Alarm cause"
+      },
+      "reason": {
+        "name": "Reason"
+      },
+      "leave_by": {
+        "name": "Leave by"
+      },
+      "drive_time": {
+        "name": "Drive time"
+      },
+      "weather_extra": {
+        "name": "Bad-weather extra time"
+      },
+      "snooze_count": {
+        "name": "Snooze count"
+      },
+      "last_event": {
+        "name": "Last event"
+      }
     },
     "binary_sensor": {
-      "snoozing": { "name": "Snoozing" }
+      "snoozing": {
+        "name": "Snoozing"
+      }
     },
     "number": {
-      "get_ready_minutes": { "name": "Get-ready time" },
-      "arrival_buffer_minutes": { "name": "Arrive early" },
-      "snooze_minutes": { "name": "Snooze length" },
-      "weather_extra_minutes": { "name": "Bad-weather extra time setting" },
-      "leave_reminder_minutes": { "name": "Leave-by reminder lead" },
-      "shift_lead": { "name": "{shift} lead time" }
+      "get_ready_minutes": {
+        "name": "Get-ready time"
+      },
+      "arrival_buffer_minutes": {
+        "name": "Arrive early"
+      },
+      "snooze_minutes": {
+        "name": "Snooze length"
+      },
+      "weather_extra_minutes": {
+        "name": "Bad-weather extra time setting"
+      },
+      "leave_reminder_minutes": {
+        "name": "Leave-by reminder lead"
+      },
+      "shift_lead": {
+        "name": "{shift} lead time"
+      }
     }
   }
 }

@@ -13,6 +13,9 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    CONF_BEDTIME_HELPER,
+    CONF_HOME_ONLY,
+    CONF_PRESENCE,
     CONF_SHIFT_OVERRIDE,
     CONF_SHIFT_SENSOR,
     CONF_SHIFT_TYPES,
@@ -22,6 +25,8 @@ from .const import (
     CONF_WEATHER,
     DOMAIN,
     EVENT,
+    HOME_STATES,
+    MSG_BEDTIME,
     MSG_CANCELLED,
     MSG_CONTEXT,
     MSG_FORECAST,
@@ -31,6 +36,7 @@ from .const import (
     MSG_STOPPED,
     SETTINGS,
     SHIFT_LEAD_PREFIX,
+    UNKNOWN_STATES,
     WAKE_BOTH,
     WAKE_EVENTS,
     WAKE_HELPERS,
@@ -76,6 +82,7 @@ def empty_state() -> dict[str, Any]:
         "snooze_count": 0,
         "last_event": None,
         "last_event_time": None,
+        "skipped_away": False,
     }
 
 
@@ -154,6 +161,7 @@ class BedtimeBridge:
             MSG_STOPPED: self._stopped,
             MSG_CANCELLED: self._cancelled,
             MSG_LEAVE_BY: self._leave_by,
+            MSG_BEDTIME: self._bedtime,
         }.get(kind)
         if handler is None:
             return {"error": f"unknown message type: {kind}"}
@@ -167,6 +175,7 @@ class BedtimeBridge:
         return {
             "shift_override": override.state if override else None,
             "next_shift_start": sensor.attributes.get("next_shift_start") if sensor else None,
+            "at_home": self.is_home(),
         }
 
     async def _forecast(self, data: dict[str, Any]) -> dict[str, Any]:
@@ -222,6 +231,17 @@ class BedtimeBridge:
         self.state.update(empty_state())
         self._event(MSG_CANCELLED)
 
+    async def _bedtime(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Starts the bedtime routine by turning on its helper, only when you're home."""
+        at_home = self.is_home()
+        helper = self.options.get(CONF_BEDTIME_HELPER)
+        started = False
+        if helper and (at_home or not self.options.get(CONF_HOME_ONLY, True)):
+            started = await self._turn_on(helper)
+        self.state["skipped_away"] = bool(helper) and not started and not at_home
+        self._event(MSG_BEDTIME, started=started, at_home=at_home)
+        return {"started": started, "at_home": at_home}
+
     async def _leave_by(self, data: dict[str, Any]) -> None:
         self.state["leave_by"] = data.get("leave_by")
         if data.get("drive_minutes") is not None:
@@ -230,26 +250,48 @@ class BedtimeBridge:
 
     # MARK: Effects
 
+    def is_home(self) -> bool:
+        """True when any presence entity is home (or unknown); True when none are set."""
+        entity_ids = self.options.get(CONF_PRESENCE) or []
+        if isinstance(entity_ids, str):
+            entity_ids = [entity_ids]
+        if not entity_ids:
+            return True
+        for entity_id in entity_ids:
+            state = self.hass.states.get(entity_id)
+            if state is None or state.state in UNKNOWN_STATES or state.state in HOME_STATES:
+                return True
+        return False
+
+    def _away_blocks(self) -> bool:
+        return bool(self.options.get(CONF_HOME_ONLY, True)) and not self.is_home()
+
     async def _wake(self, helper_option: str) -> None:
-        """Turns on the snooze/stop helper unless the user picked events only."""
-        if self.options.get(CONF_WAKE_ACTION, WAKE_BOTH) == WAKE_EVENTS:
+        """Turns on the snooze/stop helper unless the user picked events only, or is away."""
+        self.state["skipped_away"] = self._away_blocks()
+        if self.state["skipped_away"] or self.options.get(CONF_WAKE_ACTION, WAKE_BOTH) == WAKE_EVENTS:
             return
         entity_id = self.options.get(helper_option)
-        if not entity_id:
-            return
+        if entity_id:
+            await self._turn_on(entity_id)
+
+    async def _turn_on(self, entity_id: str) -> bool:
         try:
             await self.hass.services.async_call("homeassistant", "turn_on", {"entity_id": entity_id}, blocking=False)
         except HomeAssistantError as err:
             # A renamed or deleted helper must not stop the event and state update.
             _LOGGER.warning("Bedtime Bridge couldn't turn on %s: %s", entity_id, err)
+            return False
+        return True
 
     def _event(self, kind: str, **extra: Any) -> None:
         self.state["last_event"] = kind
         self.state["last_event_time"] = dt_util.utcnow().isoformat()
-        # Fired unless the user picked helpers only; plan/cancel/leave-by always fire,
-        # since no helper replaces them.
+        # Snooze/stop events are skipped with "helpers only" and while you're away (so event
+        # automations don't light an empty house); plan/cancel/leave-by/bedtime always fire.
         helpers_only = self.options.get(CONF_WAKE_ACTION) == WAKE_HELPERS
-        if not (helpers_only and kind in (MSG_SNOOZED, MSG_STOPPED)):
+        wake_event = kind in (MSG_SNOOZED, MSG_STOPPED)
+        if not (wake_event and (helpers_only or self.state.get("skipped_away"))):
             self.hass.bus.async_fire(
                 EVENT,
                 {

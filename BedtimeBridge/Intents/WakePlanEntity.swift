@@ -34,6 +34,10 @@ struct WakePlanEntity: TransientAppEntity {
     @Property(title: "Reason")
     var reason: String
 
+    /// False when Home Assistant says you're away (routines won't run). True if unknown.
+    @Property(title: "At Home")
+    var atHome: Bool
+
     @Property(title: "Warnings")
     var warnings: String
 
@@ -50,6 +54,7 @@ struct WakePlanEntity: TransientAppEntity {
         alarmDates = []
         needsClockAlarms = false
         reason = ""
+        atHome = true
         warnings = ""
         homeAssistantJSON = "{}"
     }
@@ -64,6 +69,7 @@ struct WakePlanEntity: TransientAppEntity {
         alarmDates = plan.alarmTimes
         needsClockAlarms = plan.hasAlarm && SettingsStore.shared.settings.alarmStyle == .clock
         reason = plan.reason
+        atHome = plan.atHome ?? true
         warnings = plan.warnings.joined(separator: "\n")
         homeAssistantJSON = Self.homeAssistantJSON(for: plan)
     }

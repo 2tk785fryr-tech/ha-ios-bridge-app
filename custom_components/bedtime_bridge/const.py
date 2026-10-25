@@ -11,6 +11,9 @@ CONF_SHIFT_OVERRIDE = "shift_override_entity"
 CONF_SHIFT_SENSOR = "shift_sensor_entity"
 CONF_WEATHER = "weather_entity"
 CONF_SHIFT_TYPES = "shift_types"
+CONF_PRESENCE = "presence_entities"
+CONF_HOME_ONLY = "home_only"
+CONF_BEDTIME_HELPER = "bedtime_helper"
 
 # What Snooze/Stop on the phone do in Home Assistant.
 WAKE_BOTH = "both"
@@ -22,6 +25,7 @@ WAKE_ACTIONS = [WAKE_BOTH, WAKE_HELPERS, WAKE_EVENTS]
 SUGGESTED = {
     CONF_SNOOZE_HELPER: "input_boolean.wake_fade",
     CONF_STOP_HELPER: "input_boolean.wake_mike",
+    CONF_BEDTIME_HELPER: "input_boolean.bedtime_routine",
     CONF_SHIFT_OVERRIDE: "input_select.select_shift_override",
     CONF_SHIFT_SENSOR: "sensor.current_shift",
     CONF_WEATHER: "weather.forecast_home",
@@ -46,6 +50,12 @@ MSG_SNOOZED = "snoozed"
 MSG_STOPPED = "stopped"
 MSG_CANCELLED = "cancelled"
 MSG_LEAVE_BY = "leave_by"
+MSG_BEDTIME = "bedtime"
+
+# Presence states that count as home. Anything unknown/unavailable also counts as home, so a
+# glitching tracker never silently skips your morning routine while you're in bed.
+HOME_STATES = {"home", "on"}
+UNKNOWN_STATES = {"unknown", "unavailable"}
 
 
 def signal_update(entry_id: str) -> str:

@@ -174,6 +174,9 @@ private struct HomeAssistantSection: View {
                 EntityField(title: "Shift override", text: $settings.shiftOverrideEntity)
                 EntityField(title: "Shift sensor", text: $settings.shiftSensorEntity)
                 EntityField(title: "Next-alarm sensor", text: $settings.nextAlarmSensor)
+                EntityField(title: "Bedtime routine", text: $settings.bedtimeHelper)
+                EntityField(title: "You", text: $settings.presenceEntity)
+                Toggle("Only run routines when home", isOn: $settings.homeOnly)
             }
             Button("Test connection") { Task { await test() } }
             if let testResult {
@@ -183,7 +186,7 @@ private struct HomeAssistantSection: View {
             Text("Home Assistant")
         } footer: {
             if usesIntegration {
-                Text("Using the Bedtime Bridge integration. Helpers, events, the shift override and weather entity are chosen in Home Assistant (Settings › Devices & services › Bedtime Bridge › Configure), and times you change there override these settings.")
+                Text("Using the Bedtime Bridge integration. Helpers, events, \"only when home\", the shift override and weather entity are chosen in Home Assistant (Settings › Devices & services › Bedtime Bridge › Configure), and times you change there override these settings.")
             } else {
                 Text("Recommended: install the Bedtime Bridge integration in Home Assistant and paste the address it shows above. Without it, the app uses a long-lived token (profile › Security) and writes a sensor that reads unavailable after an HA restart until the next update.")
             }

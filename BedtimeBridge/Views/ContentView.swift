@@ -397,12 +397,16 @@ private struct StatusCard: View {
 
     private var haText: String {
         let link = link
-        if link is IntegrationLink { return "Paired" }
-        if link is TokenLink { return "Token" }
+        let away = plan?.atHome == false ? " · away" : ""
+        if link is IntegrationLink { return "Paired" + away }
+        if link is TokenLink { return "Token" + away }
         return "Not set up"
     }
 
-    private var haColor: Color { link == nil ? Theme.textMuted : Theme.good }
+    private var haColor: Color {
+        if link == nil { return Theme.textMuted }
+        return plan?.atHome == false ? Theme.warning.text : Theme.good
+    }
 
     private var weatherText: String {
         guard settings.weatherExtraMinutes > 0, link != nil else { return "Not checked" }

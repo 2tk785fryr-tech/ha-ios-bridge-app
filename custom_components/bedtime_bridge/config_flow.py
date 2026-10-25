@@ -13,6 +13,9 @@ from homeassistant.helpers import selector
 from homeassistant.helpers.network import NoURLAvailableError
 
 from .const import (
+    CONF_BEDTIME_HELPER,
+    CONF_HOME_ONLY,
+    CONF_PRESENCE,
     CONF_SHIFT_OVERRIDE,
     CONF_SHIFT_SENSOR,
     CONF_SHIFT_TYPES,
@@ -30,6 +33,9 @@ from .const import (
 
 HELPER_DOMAINS = ["input_boolean", "script", "automation", "switch", "scene"]
 OPTION_KEYS = [
+    CONF_PRESENCE,
+    CONF_HOME_ONLY,
+    CONF_BEDTIME_HELPER,
     CONF_WAKE_ACTION,
     CONF_SNOOZE_HELPER,
     CONF_STOP_HELPER,
@@ -52,8 +58,20 @@ def _schema(hass: HomeAssistant, current: dict[str, Any]) -> vol.Schema:
     def entity(domains: list[str]) -> selector.EntitySelector:
         return selector.EntitySelector(selector.EntitySelectorConfig(domain=domains))
 
+    def presence_suggestion() -> dict[str, Any]:
+        if CONF_PRESENCE in current:
+            return {"suggested_value": current[CONF_PRESENCE]} if current[CONF_PRESENCE] else {}
+        people = hass.states.async_entity_ids("person")
+        return {"suggested_value": people[:1]} if people else {}
+
+    home_only = current.get(CONF_HOME_ONLY)
     return vol.Schema(
         {
+            vol.Optional(CONF_PRESENCE, description=presence_suggestion()): selector.EntitySelector(
+                selector.EntitySelectorConfig(domain=["person", "device_tracker", "binary_sensor"], multiple=True)
+            ),
+            vol.Required(CONF_HOME_ONLY, default=True if home_only is None else home_only): selector.BooleanSelector(),
+            vol.Optional(CONF_BEDTIME_HELPER, description=suggested(CONF_BEDTIME_HELPER)): entity(HELPER_DOMAINS),
             vol.Required(CONF_WAKE_ACTION, default=current.get(CONF_WAKE_ACTION) or WAKE_BOTH): selector.SelectSelector(
                 selector.SelectSelectorConfig(options=WAKE_ACTIONS, translation_key=CONF_WAKE_ACTION)
             ),
