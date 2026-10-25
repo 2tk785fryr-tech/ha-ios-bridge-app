@@ -30,9 +30,14 @@ struct NextAlarmSnapshot: Codable, Equatable {
 
     /// "3 alarms set", counting the series still to ring.
     func setSummary(after date: Date) -> String? {
-        let count = alarmTimes.filter { $0 > date }.count
+        let count = setCount(after: date)
         guard count > 0 else { return nil }
         return count == 1 ? "1 alarm set" : "\(count) alarms set"
+    }
+
+    /// How many of the series' alarms are still to ring at `date`.
+    func setCount(after date: Date) -> Int {
+        alarmTimes.filter { $0 > date }.count
     }
 
     /// The next alarm at `date`: a running snooze first, then the series or a temporary one.

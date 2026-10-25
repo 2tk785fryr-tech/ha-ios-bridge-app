@@ -11,10 +11,17 @@ struct NextAlarmEntry: TimelineEntry {
 }
 
 struct NextAlarmProvider: TimelineProvider {
+    /// A typical Days morning, so the gallery shows every line: 3 alarms and a leave-by.
     func placeholder(in context: Context) -> NextAlarmEntry {
-        NextAlarmEntry(
+        let wake = Date.now.addingTimeInterval(8 * 3600)
+        return NextAlarmEntry(
             date: .now,
-            snapshot: NextAlarmSnapshot(alarmTimes: [.now.addingTimeInterval(8 * 3600)], cause: "Days", label: "Days shift")
+            snapshot: NextAlarmSnapshot(
+                alarmTimes: [-600, -300, 0].map { wake.addingTimeInterval($0) },
+                cause: "Days",
+                label: "Days shift",
+                leaveBy: wake.addingTimeInterval(89 * 60)
+            )
         )
     }
 
@@ -76,24 +83,37 @@ struct NextAlarmView: View {
             NightfallSmallView(entry: entry)
 
         default:
+            // Three short lines, each fitting the Lock Screen's narrow rectangle: the time with
+            // how many alarms are set, why, and when to leave.
             VStack(alignment: .leading, spacing: 1) {
                 if let alarm = entry.nextAlarm {
-                    Label(time(alarm), systemImage: entry.isSnoozing ? "zzz" : "alarm")
-                        .font(.sora(fixed: 17, .semibold))
-                        .widgetAccentable()
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        Label(time(alarm), systemImage: entry.isSnoozing ? "zzz" : "alarm")
+                            .font(.sora(fixed: 17, .semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                            .widgetAccentable()
+                        Spacer(minLength: 0)
+                        // That they're really set, not just planned.
+                        if entry.snapshot.alarmStyle != "clock", entry.snapshot.setCount(after: entry.date) > 0 {
+                            Text("\(entry.snapshot.setCount(after: entry.date)) set")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .fixedSize()
+                        }
+                    }
                     Text(entry.isSnoozing ? "Snoozing · \(entry.label)" : entry.label)
                         .font(.caption)
                         .lineLimit(1)
-                    if entry.snapshot.alarmStyle == "clock" {
-                        Text("Clock app alarms").font(.caption2).foregroundStyle(.secondary)
-                    } else {
-                        // "3 alarms set · Leave by 5:26 AM": that they're really set, not just planned.
-                        Text([entry.snapshot.setSummary(after: entry.date), entry.snapshot.leaveBy.flatMap { $0 > entry.date ? "Leave by \(time($0))" : nil }]
-                            .compactMap { $0 }.joined(separator: " · "))
+                        .minimumScaleFactor(0.8)
+                    if let leaveBy = entry.snapshot.leaveBy, leaveBy > entry.date {
+                        Text("Leave by \(time(leaveBy))")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
+                    } else if entry.snapshot.alarmStyle == "clock" {
+                        Text("Clock app alarms").font(.caption2).foregroundStyle(.secondary)
                     }
                 } else {
                     Label("No alarm", systemImage: "alarm")

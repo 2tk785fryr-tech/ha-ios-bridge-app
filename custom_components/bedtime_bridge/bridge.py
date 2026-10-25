@@ -171,6 +171,8 @@ class BedtimeBridge:
         self.settings: dict[str, int | None] = {}
         self._store: Store[dict[str, Any]] = Store(hass, STORAGE_VERSION, f"{DOMAIN}.{entry.entry_id}")
         self._bed_unsubs: dict[str, list[Callable[[], None]]] = {}
+        # When you got back into bed, per kind, carried across the sensor's short dropouts.
+        self._in_bed_since: dict[str, datetime] = {}
         self._restore_unsub: Callable[[], None] | None = None
 
     @property
@@ -484,8 +486,9 @@ class BedtimeBridge:
 
     @callback
     def _watch_bed(self, kind: str) -> None:
-        """Waits for you to be back in bed (occupied, without a break, for the kind's delay)
-        before its deadline: "rearm" re-arms the house, "rerun" runs bedtime again."""
+        """Waits for you to be back in bed (occupied for the kind's delay, not counting the
+        sensor's short dropouts) before its deadline: "rearm" re-arms the house, "rerun" runs
+        bedtime again."""
         self._cancel_bed(kind)
         since = _time(self.state.get(f"{kind}_since"))
         until = _time(self.state.get(f"{kind}_until"))
@@ -515,12 +518,24 @@ class BedtimeBridge:
             self._end_bed(kind)
             return
         bed = self.hass.states.get(self.options.get(CONF_BED_SENSOR) or "")
-        if bed is None or bed.state != "on":
+        if bed is None:
             return
+        if bed.state != "on":
+            # Out of bed only once it has been empty for a while: the sensor drops out for up
+            # to ~19 s while you're in it, which mustn't start the wait over.
+            empty_at = bed.last_changed + timedelta(seconds=BED_EMPTY_SECONDS)
+            if now >= empty_at:
+                self._in_bed_since.pop(kind, None)
+            elif kind in self._in_bed_since:
+                self._bed_unsubs.setdefault(kind, []).append(
+                    async_track_point_in_utc_time(self.hass, callback(lambda _now: self._bed_check(kind)), empty_at)
+                )
+            return
+        started = self._in_bed_since.setdefault(kind, max(bed.last_changed, since))
         minutes = self.options.get(CONF_REARM_MINUTES) if kind == "rearm" else self.options.get(CONF_RERUN_MINUTES)
         default = DEFAULT_REARM_MINUTES if kind == "rearm" else DEFAULT_RERUN_MINUTES
         delay = timedelta(minutes=int(minutes or default))
-        in_bed_for = now - max(bed.last_changed, since)
+        in_bed_for = now - started
         if in_bed_for >= delay:
             self._end_bed(kind)
             self.hass.async_create_task(self._back_in_bed(kind))
@@ -545,6 +560,7 @@ class BedtimeBridge:
 
     @callback
     def _cancel_bed(self, kind: str) -> None:
+        self._in_bed_since.pop(kind, None)
         for unsub in self._bed_unsubs.pop(kind, []):
             unsub()
 
