@@ -34,10 +34,11 @@ final class AlarmScheduler {
     }
 
     /// Replaces every alarm this app owns with the given times, so re-running the
-    /// bedtime routine never leaves stale alarms behind.
-    func replaceAlarms(with times: [Date], title: String, cause: String, snoozeMinutes: Int) async throws {
+    /// bedtime routine never leaves stale alarms behind. Alarms in `keeping` (temporary
+    /// wake-ups, the test alarm) are left alone.
+    func replaceAlarms(with times: [Date], title: String, cause: String, snoozeMinutes: Int, keeping: Set<UUID> = []) async throws {
         try await ensureAccess()
-        try cancelAll()
+        try cancelAll(keeping: keeping)
 
         let alert = AlarmPresentation.Alert(
             title: LocalizedStringResource(stringLiteral: title),
@@ -72,15 +73,20 @@ final class AlarmScheduler {
 
     /// One alarm a couple of minutes out, alongside tonight's alarms (it doesn't replace them).
     func scheduleTest(at time: Date, snoozeMinutes: Int) async throws -> UUID {
+        try await scheduleSingle(at: time, title: "Test alarm", cause: "test", snoozeMinutes: snoozeMinutes)
+    }
+
+    /// One alarm on its own, alongside the regular series, which it never replaces.
+    func scheduleSingle(at time: Date, title: String, cause: String, snoozeMinutes: Int) async throws -> UUID {
         try await ensureAccess()
         let alert = AlarmPresentation.Alert(
-            title: "Test alarm",
+            title: LocalizedStringResource(stringLiteral: title),
             secondaryButton: AlarmButton(text: "Snooze", textColor: .white, systemImageName: "zzz"),
             secondaryButtonBehavior: .countdown
         )
         let attributes = AlarmAttributes<WakeAlarmMetadata>(
             presentation: AlarmPresentation(alert: alert, countdown: AlarmPresentation.Countdown(title: "Snoozing", pauseButton: nil), paused: nil),
-            metadata: WakeAlarmMetadata(cause: "test"),
+            metadata: WakeAlarmMetadata(cause: cause),
             tintColor: Theme.accent
         )
         let id = UUID()
@@ -98,15 +104,15 @@ final class AlarmScheduler {
 
     func cancel(_ id: UUID) { try? manager.cancel(id: id) }
 
-    func cancelAll() throws {
-        for alarm in try manager.alarms {
+    func cancelAll(keeping: Set<UUID> = []) throws {
+        for alarm in try manager.alarms where !keeping.contains(alarm.id) {
             try manager.cancel(id: alarm.id)
         }
     }
 
     /// Cancels the rest of the series once you're up.
-    func cancelAll(except keep: UUID) {
-        for alarm in (try? manager.alarms) ?? [] where alarm.id != keep {
+    func cancelAll(except keep: UUID, keeping: Set<UUID> = []) {
+        for alarm in (try? manager.alarms) ?? [] where alarm.id != keep && !keeping.contains(alarm.id) {
             try? manager.cancel(id: alarm.id)
         }
     }

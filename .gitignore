@@ -4,3 +4,6 @@ xcuserdata/
 __pycache__/
 .pytest_cache/
 *.xcodeproj/project.xcworkspace/xcuserdata/
+
+# Signed shortcuts built for your phone; they contain your HA server and ecobee home IDs.
+shortcuts/

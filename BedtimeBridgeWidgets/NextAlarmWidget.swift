@@ -7,6 +7,7 @@ struct NextAlarmEntry: TimelineEntry {
 
     var nextAlarm: Date? { snapshot.nextAlarm(after: date) }
     var isSnoozing: Bool { snapshot.snoozedUntil.map { $0 > date } ?? false }
+    var label: String { snapshot.label(after: date) }
 }
 
 struct NextAlarmProvider: TimelineProvider {
@@ -52,7 +53,7 @@ struct NextAlarmView: View {
         switch family {
         case .accessoryInline:
             if let alarm = entry.nextAlarm {
-                Label("\(time(alarm)) · \(entry.snapshot.label)", systemImage: entry.isSnoozing ? "zzz" : "alarm")
+                Label("\(time(alarm)) · \(entry.label)", systemImage: entry.isSnoozing ? "zzz" : "alarm")
             } else {
                 Label("No alarm", systemImage: "alarm")
             }
@@ -80,7 +81,7 @@ struct NextAlarmView: View {
                     Label(time(alarm), systemImage: entry.isSnoozing ? "zzz" : "alarm")
                         .font(.sora(fixed: 17, .semibold))
                         .widgetAccentable()
-                    Text(entry.isSnoozing ? "Snoozing · \(entry.snapshot.label)" : entry.snapshot.label)
+                    Text(entry.isSnoozing ? "Snoozing · \(entry.label)" : entry.label)
                         .font(.caption)
                         .lineLimit(1)
                     if let leaveBy = entry.snapshot.leaveBy, leaveBy > entry.date {
@@ -119,7 +120,7 @@ private struct NightfallSmallView: View {
                     .font(.sora(fixed: 40, .light))
                     .foregroundStyle(Theme.accentText)
                     .minimumScaleFactor(0.7)
-                Text(entry.snapshot.label)
+                Text(entry.label)
                     .font(.caption.weight(.bold))
                     .foregroundStyle(Theme.shiftChip.text)
                     .padding(.horizontal, 8)

@@ -12,6 +12,14 @@ struct ContentView: View {
     @State private var needsALookCount: Int?
     @State private var skippedMorning: Date?
     @State private var stoppingAlarm: SnoozedAlarm?
+    @State private var skipReplacement: SkipReplacement?
+    @State private var temporaryAlarms: [TemporaryAlarm] = []
+    @State private var sheet: Sheet?
+
+    private enum Sheet: String, Identifiable {
+        case temporary, dayOff, skipToTime
+        var id: String { rawValue }
+    }
 
     private let coordinator = BedtimeCoordinator.shared
 
@@ -25,7 +33,7 @@ struct ContentView: View {
                     header
 
                     if let skippedMorning {
-                        SkippedMorningCard(morning: skippedMorning, undo: unskip)
+                        SkippedMorningCard(morning: skippedMorning, replacement: skipReplacement, undo: unskip)
                     }
 
                     if let count = needsALookCount, count > 0 {
@@ -83,8 +91,21 @@ struct ContentView: View {
                     }
 
                     if skippedMorning == nil, let morning = scheduled.first ?? plan?.firstAlarm {
-                        ScheduledAlarmsCard(times: store.settings.alarmStyle == .app ? scheduled : [], morning: morning) {
-                            skip(morning)
+                        ScheduledAlarmsCard(times: store.settings.alarmStyle == .app ? scheduled : [], morning: morning, isShift: plan?.source == .shift) {
+                            skip(morning, then: .sleepIn)
+                        } differentTime: {
+                            sheet = .skipToTime
+                        }
+                    } else if skippedMorning == nil, scheduled.isEmpty, plan?.hasAlarm != true {
+                        DayOffCard { sheet = .dayOff }
+                    }
+
+                    if store.settings.alarmStyle == .app {
+                        TemporaryAlarmsCard(alarms: temporaryAlarms) {
+                            sheet = .temporary
+                        } remove: { id in
+                            coordinator.cancelTemporaryAlarm(id)
+                            refreshScheduled()
                         }
                     }
 
@@ -118,6 +139,28 @@ struct ContentView: View {
                 if url.host == "stop",
                    let id = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "id" })?.value.flatMap(UUID.init) {
                     stoppingAlarm = SnoozedAlarm(id: id)
+                }
+            }
+            .sheet(item: $sheet) { which in
+                switch which {
+                case .temporary:
+                    TemporaryAlarmSheet { time, disarm in setTemporary(time, disarmHouse: disarm) }
+                case .dayOff:
+                    WakeTimeSheet(
+                        title: "Day off alarm",
+                        note: "Uses your usual number of alarms and spacing.",
+                        confirm: "Set",
+                        settings: settings
+                    ) { time, wakeIs in setDayOff(time, wakeIs: wakeIs) }
+                case .skipToTime:
+                    WakeTimeSheet(
+                        title: "Wake at a different time",
+                        note: "Replaces the planned wake-up. For a shift, the wake failsafe is off for that morning.",
+                        confirm: "Set",
+                        settings: settings
+                    ) { time, wakeIs in
+                        if let morning = scheduled.first ?? plan?.firstAlarm { skip(morning, then: .wakeAt(time, wakeIs)) }
+                    }
                 }
             }
             .fullScreenCover(item: $stoppingAlarm) { alarm in
@@ -235,15 +278,47 @@ struct ContentView: View {
     private func refreshScheduled() {
         scheduled = coordinator.scheduledAlarmTimes()
         skippedMorning = coordinator.skippedMorning
+        skipReplacement = coordinator.skipReplacement
+        temporaryAlarms = coordinator.temporaryAlarms
         refreshUpcoming()
     }
 
-    /// "Something changed": that morning's alarms go, and stay gone when bedtime plans again.
-    private func skip(_ morning: Date) {
+    /// The night before: that morning's wake-up doesn't happen (failsafe off for a shift), and
+    /// you sleep in or wake at your own time. Later plans don't bring it back.
+    private func skip(_ morning: Date, then choice: SkipChoice) {
+        isWorking = true
+        errorMessage = nil
+        Task {
+            defer { isWorking = false }
+            do {
+                let replacement = try await coordinator.skipMorning(plan, morning: morning, then: choice, settings: store.settings)
+                plan = replacement ?? plan.map { PlanAdjustments.skipping($0, morning: morning) }
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            refreshScheduled()
+        }
+    }
+
+    private func setDayOff(_ time: Date, wakeIs: WakeTimeAlarm) {
+        isWorking = true
+        errorMessage = nil
+        Task {
+            defer { isWorking = false }
+            do {
+                plan = try await coordinator.scheduleManual(wakeTime: time, wakeIs: wakeIs, settings: store.settings)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            refreshScheduled()
+        }
+    }
+
+    private func setTemporary(_ time: Date, disarmHouse: Bool) {
+        errorMessage = nil
         Task {
             do {
-                try await coordinator.skipMorning(of: morning, settings: store.settings)
-                if let plan { self.plan = PlanAdjustments.skipping(plan, morning: morning) }
+                _ = try await coordinator.setTemporaryAlarm(at: time, disarmHouse: disarmHouse, settings: store.settings)
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -727,11 +802,13 @@ private struct SnoozedAlarm: Identifiable {
     let id: UUID
 }
 
-/// The alarms set on this iPhone, and turning off that morning when plans change.
+/// The alarms set on this iPhone, and skipping that morning when plans change.
 private struct ScheduledAlarmsCard: View {
     let times: [Date]
     let morning: Date
-    let skip: () -> Void
+    let isShift: Bool
+    let sleepIn: () -> Void
+    let differentTime: () -> Void
     @State private var confirming = false
 
     private var day: String { morning.formatted(.dateTime.weekday(.wide)) }
@@ -747,16 +824,34 @@ private struct ScheduledAlarmsCard: View {
                     .foregroundStyle(Theme.text)
             }
             Button(role: .destructive) { confirming = true } label: {
-                Label("Turn off alarms for \(day) morning", systemImage: "bell.slash")
+                Label("Skip \(day)'s wake-up", systemImage: "bell.slash")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Theme.danger)
                     .frame(minHeight: 44)
             }
-            .confirmationDialog("Turn off alarms for \(day) morning?", isPresented: $confirming, titleVisibility: .visible) {
-                Button("Turn off", role: .destructive, action: skip)
+            .confirmationDialog("Skip \(day)'s wake-up?", isPresented: $confirming, titleVisibility: .visible) {
+                Button("Sleep in", role: .destructive, action: sleepIn)
+                Button("Wake at a different time…", action: differentTime)
             } message: {
-                Text("Cancels these alarms, and bedtime planning won't set them again for \(day) morning. You can undo it here.")
+                Text(isShift
+                     ? "As if the shift weren't there: these alarms go and the wake failsafe is off for \(day) morning. Temporary alarms stay. You can undo it here."
+                     : "These alarms go and bedtime planning won't set them again for \(day) morning. Temporary alarms stay. You can undo it here.")
             }
+        }
+        .nightfallCard()
+    }
+}
+
+/// No alarm planned: set one for a day off.
+private struct DayOffCard: View {
+    let setTime: () -> Void
+
+    var body: some View {
+        Button(action: setTime) {
+            Label("Set alarms for a time", systemImage: "alarm")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Theme.accentText)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
         }
         .nightfallCard()
     }
@@ -765,7 +860,13 @@ private struct ScheduledAlarmsCard: View {
 /// Shown while a morning's alarms are turned off, with the way back.
 private struct SkippedMorningCard: View {
     let morning: Date
+    let replacement: SkipReplacement?
     let undo: () -> Void
+
+    private var detail: String {
+        guard let replacement else { return "Sleeping in. Bedtime planning won't set alarms for that morning." }
+        return "Your own alarms instead, up by \(WakePlanner.format(replacement.wake)) (\(replacement.wakeIs.displayName.lowercased()))."
+    }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -773,10 +874,10 @@ private struct SkippedMorningCard: View {
                 .font(.system(size: 20))
                 .foregroundStyle(Theme.accentIcon)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Alarms off for \(morning.formatted(.dateTime.weekday(.wide))) morning")
+                Text("\(morning.formatted(.dateTime.weekday(.wide)))'s wake-up skipped")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Theme.text)
-                Text("Bedtime planning won't set them for that morning.")
+                Text(detail)
                     .font(.footnote)
                     .foregroundStyle(Theme.textMuted)
             }

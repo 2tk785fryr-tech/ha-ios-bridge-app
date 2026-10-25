@@ -17,8 +17,12 @@ final class TravelTimeService {
         )
     }
 
-    /// The home address from settings, or the current location when it is blank.
-    func origin(homeAddress: String) async throws -> MKMapItem {
+    /// The home address from settings, or the current location when it is blank. With
+    /// `fromHere` (you're away), where the phone is, falling back to home if it can't tell.
+    func origin(homeAddress: String, fromHere: Bool = false) async throws -> MKMapItem {
+        if fromHere, let here = try? await CurrentLocation.fetch() {
+            return MKMapItem(location: here, address: nil)
+        }
         let trimmed = homeAddress.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? MKMapItem.forCurrentLocation() : try await search(trimmed)
     }

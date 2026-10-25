@@ -101,6 +101,8 @@ struct BridgeSettings: Codable, Equatable {
     var lookAheadHours = 24
     /// Starting point for drive times. Empty means current location.
     var homeAddress = ""
+    /// When Home Assistant says you're away, drives start from where you are.
+    var driveFromHereWhenAway = true
 
     // MARK: Alarms
 

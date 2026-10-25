@@ -14,9 +14,11 @@ struct HomeAssistantContext {
 
 /// Alarm events reported to Home Assistant.
 enum BridgeEvent: String {
-    case planned, snoozed, stopped, cancelled
+    case planned, snoozed, stopped, cancelled, skipped, unskipped
     case leaveBy = "leave_by"
     case planFailed = "plan_failed"
+    case temporarySnoozed = "temporary_snoozed"
+    case temporaryStopped = "temporary_stopped"
 }
 
 /// The two ways the app can talk to Home Assistant: the Bedtime Bridge integration
@@ -30,6 +32,9 @@ protocol HomeAssistantLink {
     func startBedtime(settings: BridgeSettings) async throws -> (started: Bool, atHome: Bool)
     /// Are you really up (door opened, or bed empty a while)? nil when HA can't tell.
     func isUp(settings: BridgeSettings) async -> Bool?
+    /// Anything at home needing a look (door open, lock unlocked), for bedtime away from
+    /// home. nil when it can't be checked.
+    func homeIssues(settings: BridgeSettings) async -> [String]?
 }
 
 /// Presence states that count as home; unknown/unavailable also count, so a glitching
@@ -118,6 +123,11 @@ struct IntegrationLink: HomeAssistantLink {
         return reply["up"] as? Bool
     }
 
+    func homeIssues(settings: BridgeSettings) async -> [String]? {
+        guard let reply = try? await send("home_check") else { return nil }
+        return reply["issues"] as? [String]
+    }
+
     /// The integration checks presence and turns on its bedtime helper.
     func startBedtime(settings: BridgeSettings) async throws -> (started: Bool, atHome: Bool) {
         let reply = try await send("bedtime")
@@ -136,7 +146,7 @@ struct IntegrationLink: HomeAssistantLink {
     /// The integration turns on helpers and/or fires events for snooze and stop, as chosen
     /// in its options. Snooze/stop retry: a missed one means the morning routine doesn't run.
     func report(_ event: BridgeEvent, data: [String: Any], settings: BridgeSettings) async throws {
-        let attempts = (event == .snoozed || event == .stopped) ? 3 : 1
+        let attempts: Int = [.snoozed, .stopped, .temporaryStopped, .skipped].contains(event) ? 3 : 1
         var lastError: Error?
         for attempt in 0..<attempts {
             do {
@@ -230,6 +240,9 @@ struct TokenLink: HomeAssistantLink {
         )
     }
 
+    /// Token mode has no list of things to check.
+    func homeIssues(settings: BridgeSettings) async -> [String]? { nil }
+
     private func isHome(_ settings: BridgeSettings) async -> Bool {
         guard !settings.presenceEntity.isEmpty else { return true }
         return presenceCountsAsHome(try? await client.state(of: settings.presenceEntity).state)
@@ -248,7 +261,8 @@ struct TokenLink: HomeAssistantLink {
         if !wakeHelper.isEmpty, await isHome(settings) || !settings.homeOnly {
             try? await client.turnOn(wakeHelper)
         }
-        guard event != .leaveBy, !settings.nextAlarmSensor.isEmpty else { return }
+        // Token mode has no integration to disarm, re-arm or turn the failsafe off.
+        guard [.planned, .snoozed, .stopped, .cancelled].contains(event), !settings.nextAlarmSensor.isEmpty else { return }
         var attributes = data
         attributes["friendly_name"] = "Bedtime Bridge Next Alarm"
         attributes["device_class"] = "timestamp"

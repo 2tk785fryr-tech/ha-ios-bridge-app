@@ -17,26 +17,34 @@ from .const import shift_types as parse_shift_types
 from .const import (
     CONF_BED_SENSOR,
     CONF_BEDTIME_HELPER,
+    CONF_CURTAIN_OFFSET,
     CONF_EXIT_LATCH,
+    CONF_HOME_CHECKS,
     CONF_HOME_ONLY,
     CONF_NOTIFY,
+    CONF_PHONE_COMMANDS,
     CONF_PRESENCE,
+    CONF_REARM_MINUTES,
     CONF_REPLAN_ALERT,
     CONF_SAFETY_CAUSES,
     CONF_SAFETY_MINUTES,
     CONF_SHIFT_OVERRIDE,
     CONF_SHIFT_SENSOR,
     CONF_SHIFT_TYPES,
+    CONF_SLEEP_IN,
     CONF_SNOOZE_HELPER,
     CONF_STOP_HELPER,
     CONF_WAKE_ACTION,
     CONF_WEATHER,
     CONF_WEBHOOK_ID,
+    DEFAULT_CURTAIN_OFFSET,
+    DEFAULT_REARM_MINUTES,
     DEFAULT_SAFETY_CAUSES,
     DEFAULT_SAFETY_MINUTES,
     DEFAULT_SHIFT_TYPES,
     DOMAIN,
     SUGGESTED,
+    SUGGESTED_HOME_CHECKS,
     WAKE_ACTIONS,
     WAKE_BOTH,
 )
@@ -59,6 +67,11 @@ OPTION_KEYS = [
     CONF_REPLAN_ALERT,
     CONF_BED_SENSOR,
     CONF_EXIT_LATCH,
+    CONF_PHONE_COMMANDS,
+    CONF_REARM_MINUTES,
+    CONF_SLEEP_IN,
+    CONF_CURTAIN_OFFSET,
+    CONF_HOME_CHECKS,
 ]
 
 
@@ -98,6 +111,13 @@ def _schema(hass: HomeAssistant, current: dict[str, Any]) -> vol.Schema:
 
     home_only = current.get(CONF_HOME_ONLY)
     replan_alert = current.get(CONF_REPLAN_ALERT)
+    phone_commands = current.get(CONF_PHONE_COMMANDS)
+
+    def home_checks_suggestion() -> dict[str, Any]:
+        if CONF_HOME_CHECKS in current:
+            return {"suggested_value": current[CONF_HOME_CHECKS]} if current[CONF_HOME_CHECKS] else {}
+        found = [e for e in SUGGESTED_HOME_CHECKS if hass.states.get(e)]
+        return {"suggested_value": found} if found else {}
     shift_names = parse_shift_types(current.get(CONF_SHIFT_TYPES) or DEFAULT_SHIFT_TYPES)
     cause_options = ["calendar", "automade", *shift_names]
 
@@ -132,6 +152,17 @@ def _schema(hass: HomeAssistant, current: dict[str, Any]) -> vol.Schema:
             vol.Optional(CONF_BED_SENSOR, description=suggested(CONF_BED_SENSOR)): entity(["binary_sensor"]),
             vol.Optional(CONF_EXIT_LATCH, description=suggested(CONF_EXIT_LATCH)): entity(["input_boolean", "binary_sensor"]),
             vol.Required(CONF_REPLAN_ALERT, default=True if replan_alert is None else replan_alert): selector.BooleanSelector(),
+            vol.Required(CONF_PHONE_COMMANDS, default=bool(phone_commands)): selector.BooleanSelector(),
+            vol.Required(
+                CONF_REARM_MINUTES, default=current.get(CONF_REARM_MINUTES) or DEFAULT_REARM_MINUTES
+            ): selector.NumberSelector(selector.NumberSelectorConfig(min=1, max=30, step=1, unit_of_measurement="min")),
+            vol.Optional(CONF_SLEEP_IN, description=suggested(CONF_SLEEP_IN)): entity(["input_boolean"]),
+            vol.Optional(CONF_HOME_CHECKS, description=home_checks_suggestion()): selector.EntitySelector(
+                selector.EntitySelectorConfig(domain=["cover", "lock", "binary_sensor"], multiple=True)
+            ),
+            vol.Required(
+                CONF_CURTAIN_OFFSET, default=current.get(CONF_CURTAIN_OFFSET) or DEFAULT_CURTAIN_OFFSET
+            ): selector.NumberSelector(selector.NumberSelectorConfig(min=0, max=120, step=5, unit_of_measurement="min")),
         }
     )
 

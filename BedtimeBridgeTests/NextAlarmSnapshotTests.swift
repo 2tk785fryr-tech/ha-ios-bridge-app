@@ -17,4 +17,19 @@ final class NextAlarmSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.nextAlarm(after: now), now.addingTimeInterval(300))
         XCTAssertEqual(snapshot.changeDates(after: now), [now.addingTimeInterval(300), now.addingTimeInterval(600)])
     }
+
+    func testTemporaryAlarmShowsFirstWithItsOwnLabel() {
+        var snapshot = NextAlarmSnapshot(alarmTimes: [now.addingTimeInterval(7200)], label: "Swings shift")
+        snapshot.temporaryAlarms = [now.addingTimeInterval(1800)]
+        XCTAssertEqual(snapshot.nextAlarm(after: now), now.addingTimeInterval(1800))
+        XCTAssertEqual(snapshot.label(after: now), "Temporary wake-up")
+        // Once it has passed, the regular series is next again.
+        XCTAssertEqual(snapshot.label(after: now.addingTimeInterval(3600)), "Swings shift")
+    }
+
+    func testSnapshotsSavedBeforeTemporaryAlarmsStillLoad() throws {
+        let old = #"{"alarmTimes":[],"cause":"noalarm","label":"","alarmStyle":"app"}"#
+        let snapshot = try JSONDecoder().decode(NextAlarmSnapshot.self, from: Data(old.utf8))
+        XCTAssertNil(snapshot.temporaryAlarms)
+    }
 }
