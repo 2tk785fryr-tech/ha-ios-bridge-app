@@ -32,4 +32,11 @@ final class NextAlarmSnapshotTests: XCTestCase {
         let snapshot = try JSONDecoder().decode(NextAlarmSnapshot.self, from: Data(old.utf8))
         XCTAssertNil(snapshot.temporaryAlarms)
     }
+
+    func testSetSummaryCountsAlarmsStillToRing() {
+        let snapshot = NextAlarmSnapshot(alarmTimes: [now.addingTimeInterval(-60), now.addingTimeInterval(600), now.addingTimeInterval(1200)])
+        XCTAssertEqual(snapshot.setSummary(after: now), "2 alarms set")
+        XCTAssertEqual(snapshot.setSummary(after: now.addingTimeInterval(900)), "1 alarm set")
+        XCTAssertNil(snapshot.setSummary(after: now.addingTimeInterval(1800)))
+    }
 }

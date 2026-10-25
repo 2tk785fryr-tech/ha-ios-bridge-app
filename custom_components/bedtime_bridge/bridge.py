@@ -22,9 +22,11 @@ from homeassistant.util import dt as dt_util
 from .const import (
     BED_EMPTY_SECONDS,
     CMD_ARM,
+    CMD_BEDTIME,
     CMD_DISARM,
     CMD_MORNING,
     COMMAND_TAG,
+    CONF_AWAKE_HELPER,
     CONF_BED_SENSOR,
     CONF_BEDTIME_HELPER,
     CONF_CURTAIN_OFFSET,
@@ -36,6 +38,7 @@ from .const import (
     CONF_PRESENCE,
     CONF_REARM_MINUTES,
     CONF_REPLAN_ALERT,
+    CONF_RERUN_MINUTES,
     CONF_SAFETY_CAUSES,
     CONF_SAFETY_MINUTES,
     CONF_SHIFT_OVERRIDE,
@@ -48,14 +51,17 @@ from .const import (
     CONF_WEATHER,
     DEFAULT_CURTAIN_OFFSET,
     DEFAULT_REARM_MINUTES,
+    DEFAULT_RERUN_MINUTES,
     DEFAULT_SAFETY_CAUSES,
     DEFAULT_SAFETY_MINUTES,
     DOMAIN,
     EVENT,
     EVENT_PLAN_OUTDATED,
     EVENT_REARMED,
+    EVENT_RERUN,
     HOME_STATES,
     MSG_BEDTIME,
+    MSG_BEDTIME_UNDONE,
     MSG_CANCELLED,
     MSG_CONTEXT,
     MSG_FORECAST,
@@ -132,7 +138,7 @@ def empty_state() -> dict[str, Any]:
 
 def plan_record() -> dict[str, Any]:
     """Kept across new plans and cancels: when the phone last planned, and why it failed."""
-    return {"last_plan": None, "plan_error": None}
+    return {"last_plan": None, "plan_error": None, "undone_at": None}
 
 
 def pending_record() -> dict[str, Any]:
@@ -142,6 +148,8 @@ def pending_record() -> dict[str, Any]:
     return {
         "rearm_since": None,
         "rearm_until": None,
+        "rerun_since": None,
+        "rerun_until": None,
         "skip_restore_to": None,
         "skip_restore_at": None,
         "series_start": None,
@@ -162,7 +170,7 @@ class BedtimeBridge:
         # None means "not set yet"; filled from the app's own settings on its first plan.
         self.settings: dict[str, int | None] = {}
         self._store: Store[dict[str, Any]] = Store(hass, STORAGE_VERSION, f"{DOMAIN}.{entry.entry_id}")
-        self._rearm_unsubs: list[Callable[[], None]] = []
+        self._bed_unsubs: dict[str, list[Callable[[], None]]] = {}
         self._restore_unsub: Callable[[], None] | None = None
 
     @property
@@ -187,7 +195,8 @@ class BedtimeBridge:
             self.entry.async_on_unload(async_track_state_change_event(self.hass, watched, self._shift_changed))
         self.entry.async_on_unload(self._cancel_timers)
         # Picks up a re-arm or an override restore that was waiting when HA restarted.
-        self._watch_rearm()
+        self._watch_bed("rearm")
+        self._watch_bed("rerun")
         self._schedule_skip_restore()
     def _save(self) -> None:
         self._store.async_delay_save(lambda: {"state": self.state, "settings": self.settings}, 1)
@@ -247,6 +256,7 @@ class BedtimeBridge:
             MSG_TEMP_SNOOZED: self._temporary_snoozed,
             MSG_TEMP_STOPPED: self._temporary_stopped,
             MSG_HOME_CHECK: self._home_check,
+            MSG_BEDTIME_UNDONE: self._bedtime_undone,
         }.get(kind)
         if handler is None:
             return {"error": f"unknown message type: {kind}"}
@@ -295,6 +305,8 @@ class BedtimeBridge:
         self.state.update({key: data.get(key) for key in PLAN_FIELDS if key in data})
         self.state["last_plan"] = dt_util.utcnow().isoformat()
         self.state["plan_error"] = None
+        # Bedtime ran again (by hand, or the nudge): no need to wait for you to get into bed.
+        self._end_bed("rerun")
         self.state["planned_override"] = self._state_of(CONF_SHIFT_OVERRIDE)
         self.state["planned_shift_start"] = self._next_shift_start()
         times = sorted(t for t in (_time(v) for v in self.state.get("alarm_times") or []) if t)
@@ -465,75 +477,106 @@ class BedtimeBridge:
             give_up = now + timedelta(hours=REARM_GIVE_UP_HOURS)
             self.state["rearm_since"] = now.isoformat()
             self.state["rearm_until"] = min([give_up, *regular[:1]]).isoformat()
-            self._watch_rearm()
+            self._watch_bed("rearm")
         self._event(MSG_TEMP_STOPPED, house_alarm=house_alarm, disarmed=disarmed)
 
+    # MARK: Back in bed
+
     @callback
-    def _watch_rearm(self) -> None:
-        self._cancel_rearm()
-        since = _time(self.state.get("rearm_since"))
-        until = _time(self.state.get("rearm_until"))
+    def _watch_bed(self, kind: str) -> None:
+        """Waits for you to be back in bed (occupied, without a break, for the kind's delay)
+        before its deadline: "rearm" re-arms the house, "rerun" runs bedtime again."""
+        self._cancel_bed(kind)
+        since = _time(self.state.get(f"{kind}_since"))
+        until = _time(self.state.get(f"{kind}_until"))
         bed = self.options.get(CONF_BED_SENSOR)
         if since is None:
             return
         if not bed or until is None or until <= dt_util.utcnow():
-            self._end_rearm()
+            self._end_bed(kind)
             return
-        self._rearm_unsubs.append(async_track_state_change_event(self.hass, [bed], self._rearm_bed_changed))
-        self._rearm_unsubs.append(async_track_point_in_utc_time(self.hass, self._rearm_check, until))
-        self._rearm_check()
+        check = lambda *_: self._bed_check(kind)  # noqa: E731
+        self._bed_unsubs[kind] = [
+            async_track_state_change_event(self.hass, [bed], callback(check)),
+            async_track_point_in_utc_time(self.hass, callback(check), until),
+        ]
+        self._bed_check(kind)
 
     @callback
-    def _rearm_bed_changed(self, event: Event[EventStateChangedData]) -> None:
-        self._rearm_check()
-
-    @callback
-    def _rearm_check(self, _now: datetime | None = None) -> None:
-        """Re-arms once the bed has read occupied, without a break, for the re-arm delay."""
-        since = _time(self.state.get("rearm_since"))
-        until = _time(self.state.get("rearm_until"))
+    def _bed_check(self, kind: str) -> None:
+        since = _time(self.state.get(f"{kind}_since"))
+        until = _time(self.state.get(f"{kind}_until"))
         if since is None:
             return
         now = dt_util.utcnow()
         if until is None or now >= until:
-            # Not back in bed before the regular alarms (or within hours): leave it to the
-            # morning. Re-arming as you get up would be worse than not re-arming.
-            self._end_rearm()
+            # Not back in bed in time: leave it to the morning (re-arming or starting bedtime
+            # as you get up would be worse than doing nothing).
+            self._end_bed(kind)
             return
         bed = self.hass.states.get(self.options.get(CONF_BED_SENSOR) or "")
         if bed is None or bed.state != "on":
             return
-        delay = timedelta(minutes=int(self.options.get(CONF_REARM_MINUTES) or DEFAULT_REARM_MINUTES))
+        minutes = self.options.get(CONF_REARM_MINUTES) if kind == "rearm" else self.options.get(CONF_RERUN_MINUTES)
+        default = DEFAULT_REARM_MINUTES if kind == "rearm" else DEFAULT_RERUN_MINUTES
+        delay = timedelta(minutes=int(minutes or default))
         in_bed_for = now - max(bed.last_changed, since)
         if in_bed_for >= delay:
-            self._end_rearm()
-            self.hass.async_create_task(self._rearm())
+            self._end_bed(kind)
+            self.hass.async_create_task(self._back_in_bed(kind))
             return
-        self._rearm_unsubs.append(async_call_later(self.hass, delay - in_bed_for, self._rearm_check))
+        self._bed_unsubs.setdefault(kind, []).append(
+            async_call_later(self.hass, delay - in_bed_for, callback(lambda _now: self._bed_check(kind)))
+        )
 
-    async def _rearm(self) -> None:
-        armed = await self._command(CMD_ARM)
-        self._event(EVENT_REARMED, armed=armed)
+    async def _back_in_bed(self, kind: str) -> None:
+        if kind == "rearm":
+            self._event(EVENT_REARMED, armed=await self._command(CMD_ARM))
+        else:
+            self._event(EVENT_RERUN, sent=await self._command(CMD_BEDTIME))
 
     @callback
-    def _end_rearm(self) -> None:
-        self._cancel_rearm()
-        if self.state.get("rearm_since") is not None:
-            self.state["rearm_since"] = None
-            self.state["rearm_until"] = None
+    def _end_bed(self, kind: str) -> None:
+        self._cancel_bed(kind)
+        if self.state.get(f"{kind}_since") is not None:
+            self.state[f"{kind}_since"] = None
+            self.state[f"{kind}_until"] = None
             self._changed()
 
     @callback
-    def _cancel_rearm(self) -> None:
-        while self._rearm_unsubs:
-            self._rearm_unsubs.pop()()
+    def _cancel_bed(self, kind: str) -> None:
+        for unsub in self._bed_unsubs.pop(kind, []):
+            unsub()
 
     @callback
     def _cancel_timers(self) -> None:
-        self._cancel_rearm()
+        for kind in list(self._bed_unsubs):
+            self._cancel_bed(kind)
         if self._restore_unsub:
             self._restore_unsub()
             self._restore_unsub = None
+
+    # MARK: Undo bedtime
+
+    async def _bedtime_undone(self, data: dict[str, Any]) -> None:
+        """Up again after bedtime ran: alarms are off on the phone; here the house is
+        disarmed, Awake For Day goes back on and Sleep In off. Once you're back in bed, bedtime
+        runs again (RUN_BEDTIME, the same push the bedtime nudge sends)."""
+        self.state.update(empty_state())
+        now = dt_util.utcnow()
+        self.state["undone_at"] = now.isoformat()
+        self._end_bed("rearm")
+        at_home = self.is_home()
+        disarmed = await self._command(CMD_DISARM) if at_home else False
+        awake = self.options.get(CONF_AWAKE_HELPER)
+        if awake and at_home:
+            await self._turn_on(awake)
+        await self._set_sleep_in(False)
+        if at_home:
+            self.state["rerun_since"] = now.isoformat()
+            self.state["rerun_until"] = (now + timedelta(hours=REARM_GIVE_UP_HOURS)).isoformat()
+            self._watch_bed("rerun")
+        self._event(MSG_BEDTIME_UNDONE, disarmed=disarmed)
 
     # MARK: Skipped mornings
 

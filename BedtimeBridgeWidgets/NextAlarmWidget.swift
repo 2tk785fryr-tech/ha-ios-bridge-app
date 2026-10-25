@@ -84,17 +84,21 @@ struct NextAlarmView: View {
                     Text(entry.isSnoozing ? "Snoozing · \(entry.label)" : entry.label)
                         .font(.caption)
                         .lineLimit(1)
-                    if let leaveBy = entry.snapshot.leaveBy, leaveBy > entry.date {
-                        Text("Leave by \(time(leaveBy))")
+                    if entry.snapshot.alarmStyle == "clock" {
+                        Text("Clock app alarms").font(.caption2).foregroundStyle(.secondary)
+                    } else {
+                        // "3 alarms set · Leave by 5:26 AM": that they're really set, not just planned.
+                        Text([entry.snapshot.setSummary(after: entry.date), entry.snapshot.leaveBy.flatMap { $0 > entry.date ? "Leave by \(time($0))" : nil }]
+                            .compactMap { $0 }.joined(separator: " · "))
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                    } else if entry.snapshot.alarmStyle == "clock" {
-                        Text("Clock app alarms").font(.caption2).foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
                     }
                 } else {
                     Label("No alarm", systemImage: "alarm")
                         .font(.headline)
-                    Text("Nothing planned").font(.caption).foregroundStyle(.secondary)
+                    Text("Nothing set").font(.caption).foregroundStyle(.secondary)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -132,6 +136,10 @@ private struct NightfallSmallView: View {
                     Text("Leave by \(leaveBy.formatted(date: .omitted, time: .shortened))")
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(Theme.appointmentChip.text)
+                } else if let summary = entry.snapshot.setSummary(after: entry.date) {
+                    Label(summary, systemImage: "checkmark.circle.fill")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(Theme.good)
                 }
             } else {
                 Text("No alarm")

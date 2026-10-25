@@ -23,6 +23,17 @@ struct NextAlarmSnapshot: Codable, Equatable {
     /// Temporary wake-ups beside the series. Optional so snapshots saved before they
     /// existed still load.
     var temporaryAlarms: [Date]? = nil
+    /// When you need to be up, and why ("Days shift at 6:00 AM"), for Tonight to show what
+    /// the bedtime shortcut set. Optional for the same reason.
+    var wakeTime: Date? = nil
+    var reason: String? = nil
+
+    /// "3 alarms set", counting the series still to ring.
+    func setSummary(after date: Date) -> String? {
+        let count = alarmTimes.filter { $0 > date }.count
+        guard count > 0 else { return nil }
+        return count == 1 ? "1 alarm set" : "\(count) alarms set"
+    }
 
     /// The next alarm at `date`: a running snooze first, then the series or a temporary one.
     func nextAlarm(after date: Date) -> Date? {

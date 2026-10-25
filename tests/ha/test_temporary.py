@@ -197,3 +197,52 @@ async def test_home_check_reports_whats_open(hass, hass_client_no_auth):
     await hass.async_block_till_done()
     reply = await send(hass_client_no_auth, {"type": "home_check", "data": {}})
     assert reply["issues"] == ["lock.gone isn't responding"]
+
+
+async def test_snooze_turns_on_the_ramp_without_a_phone_command(hass, hass_client_no_auth):
+    notify = async_mock_service(hass, "notify", "mobile_app_test")
+    await setup(hass, **COMMANDS)
+    await send(hass_client_no_auth, PLAN)
+    await send(hass_client_no_auth, {"type": "snoozed", "data": {"rings_again": "2026-10-26T09:25:00+00:00"}})
+    await hass.async_block_till_done()
+    assert hass.states.get("input_boolean.wake_fade").state == "on"
+    assert notify == []
+
+
+async def test_undo_bedtime_resets_the_house_then_runs_again_back_in_bed(hass, hass_client_no_auth, freezer):
+    assert await async_setup_component(hass, "input_boolean", {"input_boolean": {"awake_for_day": {}, "sleep_in": {"initial": True}}})
+    notify = async_mock_service(hass, "notify", "mobile_app_test")
+    hass.states.async_set(BED, "off")
+    await setup(
+        hass, bed_sensor=BED, rerun_minutes=15, awake_helper="input_boolean.awake_for_day",
+        sleep_in_helper="input_boolean.sleep_in", **COMMANDS,
+    )
+    await send(hass_client_no_auth, PLAN)
+    await send(hass_client_no_auth, {"type": "bedtime_undone", "data": {}})
+    await hass.async_block_till_done()
+    assert messages(notify) == ["RUN_DISARM"]
+    assert hass.states.get("input_boolean.awake_for_day").state == "on"
+    assert hass.states.get("input_boolean.sleep_in").state == "off"
+    assert hass.states.get("sensor.bedtime_bridge_next_alarm").state == "unknown"
+    assert hass.states.get("sensor.bedtime_bridge_last_plan").attributes["undone_at"] is not None
+
+    # Up for a while, then back into bed for the dwell.
+    freezer.tick(timedelta(minutes=40))
+    hass.states.async_set(BED, "on")
+    freezer.tick(timedelta(minutes=16))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert messages(notify) == ["RUN_DISARM", "RUN_BEDTIME"]
+
+
+async def test_a_new_plan_cancels_the_rerun(hass, hass_client_no_auth, freezer):
+    notify = async_mock_service(hass, "notify", "mobile_app_test")
+    hass.states.async_set(BED, "off")
+    await setup(hass, bed_sensor=BED, rerun_minutes=15, **COMMANDS)
+    await send(hass_client_no_auth, {"type": "bedtime_undone", "data": {}})
+    await send(hass_client_no_auth, PLAN)  # ran bedtime again by hand
+    hass.states.async_set(BED, "on")
+    freezer.tick(timedelta(minutes=20))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert messages(notify) == ["RUN_DISARM"]

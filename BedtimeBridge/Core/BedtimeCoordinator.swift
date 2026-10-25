@@ -111,6 +111,20 @@ final class BedtimeCoordinator {
         return plan
     }
 
+    // MARK: Undo bedtime
+
+    /// Up again after bedtime ran: the regular alarms go (temporary ones stay), and Home
+    /// Assistant disarms the house, puts Awake For Day back on and Sleep In off. Once you're
+    /// back in bed it runs bedtime again. Unlike a skip, the next plan sets alarms as usual.
+    func undoBedtime(settings phoneSettings: BridgeSettings) async throws {
+        let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
+        try alarms.cancelAll(keeping: keptAlarms)
+        leaveReminder.clear()
+        updateWidget { $0 = NextAlarmSnapshot(alarmStyle: settings.alarmStyle.rawValue, temporaryAlarms: temporaryAlarms.map(\.time)) }
+        lastCause = AlarmCause.none
+        await report(.bedtimeUndone, data: [:], settings: settings)
+    }
+
     // MARK: Away bedtime
 
     /// Bedtime away from home: your alarms, tomorrow's weather where you are, and whether
@@ -373,7 +387,9 @@ final class BedtimeCoordinator {
                 label: plan.label,
                 leaveBy: plan.leaveBy(settings: settings),
                 alarmStyle: settings.alarmStyle.rawValue,
-                temporaryAlarms: temporaryAlarms.map(\.time)
+                temporaryAlarms: temporaryAlarms.map(\.time),
+                wakeTime: plan.wakeTime,
+                reason: plan.reason
             )
         }
 
