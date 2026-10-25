@@ -40,15 +40,104 @@ struct SetWakeAlarmsIntent: AppIntent {
     @Parameter(title: "Wake-Up Time")
     var wakeTime: Date
 
+    @Parameter(title: "Time Is", description: "Whether the time is your first or last alarm. Default: the setting in the app.")
+    var timeIs: WakeTimeChoice?
+
     static var parameterSummary: some ParameterSummary {
-        Summary("Set wake-up alarms for \(\.$wakeTime)")
+        Summary("Set wake-up alarms for \(\.$wakeTime)") {
+            \.$timeIs
+        }
     }
 
     @MainActor
     func perform() async throws -> some IntentResult & ReturnsValue<WakePlanEntity> {
-        let plan = try await BedtimeCoordinator.shared.scheduleManual(wakeTime: wakeTime, settings: SettingsStore.shared.settings)
+        let plan = try await BedtimeCoordinator.shared.scheduleManual(
+            wakeTime: wakeTime,
+            wakeIs: timeIs?.wakeTimeAlarm,
+            settings: SettingsStore.shared.settings
+        )
         return .result(value: WakePlanEntity(plan: plan))
     }
+}
+
+enum WakeTimeChoice: String, AppEnum {
+    case first
+    case last
+
+    static var typeDisplayRepresentation: TypeDisplayRepresentation = "Time Is"
+    static var caseDisplayRepresentations: [WakeTimeChoice: DisplayRepresentation] = [
+        .first: "First alarm",
+        .last: "Last alarm",
+    ]
+
+    var wakeTimeAlarm: WakeTimeAlarm { self == .first ? .first : .last }
+}
+
+/// An extra alarm that doesn't replace or turn off the regular ones: up early for the trash
+/// or a call, then back to bed.
+struct SetTemporaryAlarmIntent: AppIntent {
+    static var title: LocalizedStringResource = "Set Temporary Alarm"
+    static var description = IntentDescription(
+        "One extra alarm beside your regular ones. Stopping it leaves Awake For Day, Sleep In and the regular alarms alone. With Disarm, Home Assistant disarms the house alarm and re-arms it once you're back in bed."
+    )
+
+    @Parameter(title: "Time")
+    var time: Date
+
+    @Parameter(title: "House Alarm", default: .disarm)
+    var houseAlarm: TemporaryHouseAlarm
+
+    static var parameterSummary: some ParameterSummary {
+        Summary("Set a temporary alarm at \(\.$time) and \(\.$houseAlarm)")
+    }
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ReturnsValue<Date> {
+        let alarm = try await BedtimeCoordinator.shared.setTemporaryAlarm(
+            at: time,
+            disarmHouse: houseAlarm == .disarm,
+            settings: SettingsStore.shared.settings
+        )
+        return .result(value: alarm.time)
+    }
+}
+
+/// Bedtime away from home: speaks your alarms, tomorrow's weather where you are and whether
+/// everything at home is good. Runs nothing in the house.
+struct AwayBedtimeSummaryIntent: AppIntent {
+    static var title: LocalizedStringResource = "Away Bedtime Summary"
+    static var description = IntentDescription(
+        "For bedtime away from home: your alarms, tomorrow's weather where you are, and a check of the house (alarm still armed, doors and garage closed). Says \"Everything at home is good\" when it is. Changes nothing."
+    )
+
+    @Parameter(title: "House Alarm", description: "The house alarm's state, e.g. from your alarm app's Get State action.")
+    var houseAlarm: String?
+
+    @Parameter(title: "Sign-Off", default: "Good night.")
+    var signOff: String
+
+    static var parameterSummary: some ParameterSummary {
+        Summary("Away bedtime summary with house alarm \(\.$houseAlarm)") {
+            \.$signOff
+        }
+    }
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ReturnsValue<String> {
+        let text = await BedtimeCoordinator.shared.awaySummary(houseAlarm: houseAlarm, signOff: signOff, settings: SettingsStore.shared.settings)
+        return .result(value: text)
+    }
+}
+
+enum TemporaryHouseAlarm: String, AppEnum {
+    case disarm
+    case keepArmed
+
+    static var typeDisplayRepresentation: TypeDisplayRepresentation = "House Alarm"
+    static var caseDisplayRepresentations: [TemporaryHouseAlarm: DisplayRepresentation] = [
+        .disarm: "disarm, then re-arm",
+        .keepArmed: "keep it armed",
+    ]
 }
 
 struct CancelWakeAlarmsIntent: AppIntent {

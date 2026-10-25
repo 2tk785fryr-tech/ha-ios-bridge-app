@@ -108,6 +108,8 @@ enum AlarmCause {
     static let calendar = "calendar"
     static let manual = "automade"
     static let none = "noalarm"
+    /// A temporary wake-up beside the regular alarms (never sent as a plan's cause).
+    static let temporary = "temporary"
 }
 
 struct WakePlan: Equatable {

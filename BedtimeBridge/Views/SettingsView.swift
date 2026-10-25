@@ -180,6 +180,7 @@ private struct DriveTimeSection: View {
                 }
             }
             Stepper("If no drive time: \(settings.fallbackTravelMinutes) min", value: $settings.fallbackTravelMinutes, in: 0...180, step: 5)
+            Toggle("Start from where I am when away", isOn: $settings.driveFromHereWhenAway)
         } header: {
             Text("Drive time")
         } footer: {

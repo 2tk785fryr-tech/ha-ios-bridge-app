@@ -20,16 +20,25 @@ struct NextAlarmSnapshot: Codable, Equatable {
     var snoozedUntil: Date?
     /// "app" or "clock"
     var alarmStyle: String = "app"
+    /// Temporary wake-ups beside the series. Optional so snapshots saved before they
+    /// existed still load.
+    var temporaryAlarms: [Date]? = nil
 
-    /// The next alarm at `date`: a running snooze first, then the series.
+    /// The next alarm at `date`: a running snooze first, then the series or a temporary one.
     func nextAlarm(after date: Date) -> Date? {
         if let snoozedUntil, snoozedUntil > date { return snoozedUntil }
-        return alarmTimes.sorted().first { $0 > date }
+        return (alarmTimes + (temporaryAlarms ?? [])).sorted().first { $0 > date }
+    }
+
+    /// "Temporary wake-up" when the next alarm is one, otherwise the plan's label.
+    func label(after date: Date) -> String {
+        guard let next = nextAlarm(after: date), next != snoozedUntil, (temporaryAlarms ?? []).contains(next) else { return label }
+        return "Temporary wake-up"
     }
 
     /// Times at which the widget's text changes (each alarm passing), for its timeline.
     func changeDates(after date: Date) -> [Date] {
-        ([snoozedUntil].compactMap { $0 } + alarmTimes).filter { $0 > date }.sorted()
+        ([snoozedUntil].compactMap { $0 } + alarmTimes + (temporaryAlarms ?? [])).filter { $0 > date }.sorted()
     }
 
     static func load() -> NextAlarmSnapshot {
