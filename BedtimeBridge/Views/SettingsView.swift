@@ -60,7 +60,7 @@ struct SettingsView: View {
                 if store.settings.driveTimeSource == .google {
                     Toggle("Plan for heavy traffic", isOn: $store.settings.googlePessimisticTraffic)
                 }
-                TextField("Home address", text: $store.settings.homeAddress, axis: .vertical)
+                HomeAddressField(address: $store.settings.homeAddress)
                 Stepper("If no drive time: \(store.settings.fallbackTravelMinutes) min", value: $store.settings.fallbackTravelMinutes, in: 0...180, step: 5)
             } header: {
                 Text("Drive time")

@@ -342,8 +342,7 @@ alarm time and sends back the spoken readout.
 
 ## Building
 
-Requires Xcode 26 (free from the Mac App Store) and an iPhone on iOS 26 or later (AlarmKit is
-iOS 26+). No Homebrew or Terminal needed; the Xcode project is in the repo.
+Requires Xcode 27 (free from the Mac App Store) and an iPhone on iOS 27 or later. No Homebrew or Terminal needed; the Xcode project is in the repo.
 
 1. Get the code: on GitHub, **Code → Download ZIP** and double-click the ZIP, or in Xcode
    **Clone Git Repository…** with `https://github.com/2tk785fryr-tech/ha-ios-bridge-app`.

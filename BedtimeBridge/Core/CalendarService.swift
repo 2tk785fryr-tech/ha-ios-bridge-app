@@ -4,6 +4,7 @@ enum BridgeError: LocalizedError {
     case calendarAccessDenied
     case alarmAccessDenied
     case locationNotFound(String)
+    case locationAccessDenied
     case homeAddressRequired
     case apiKeyMissing(String)
     case driveTimeService(String, Int, String)
@@ -19,6 +20,8 @@ enum BridgeError: LocalizedError {
             "Alarm access is off. Allow alarms for Bedtime Bridge in Settings."
         case .locationNotFound(let query):
             "Couldn't find a location for \"\(query)\"."
+        case .locationAccessDenied:
+            "Location access is off. Allow location for Bedtime Bridge in Settings, or type your address."
         case .homeAddressRequired:
             "Set your home address in Settings to use TomTom or Google drive times."
         case .apiKeyMissing(let service):
