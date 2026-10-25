@@ -25,7 +25,7 @@
           "shift_types": "Each one gets a lead-time setting, and its name is sent as the alarm cause.",
           "home_only": "Snooze, stop and Start Bedtime Routine skip the helpers and wake events while you're away. If your location is unknown, you count as home.",
           "bedtime_helper": "Turned on by the app's Start Bedtime Routine action (e.g. input_boolean.bedtime_routine).",
-          "safety_net_causes": "Publishes early/deadline/late times around the wake-up time for these alarm causes, for a Wake Deadline Backstop instance. Shift mornings already have your own rung sensors, so the default is calendar only.",
+          "safety_net_causes": "Publishes safety-net times after the last alarm for these alarm causes, for a Wake Deadline Backstop instance: early at the last alarm, deadline (out of bed) one margin later, late (left the room) two margins later. Shift mornings already have your own rung sensors, so the default is calendar only.",
           "notify_service": "e.g. notify.mobile_app_mikes_iphone. Used for the re-plan notification.",
           "replan_alert": "If the shift override or your next shift changes after you planned (and before you wake), send a notification with a Re-plan button."
         }
@@ -65,7 +65,7 @@
           "shift_types": "Each one gets a lead-time setting, and its name is sent as the alarm cause.",
           "home_only": "Snooze, stop and Start Bedtime Routine skip the helpers and wake events while you're away. If your location is unknown, you count as home.",
           "bedtime_helper": "Turned on by the app's Start Bedtime Routine action (e.g. input_boolean.bedtime_routine).",
-          "safety_net_causes": "Publishes early/deadline/late times around the wake-up time for these alarm causes, for a Wake Deadline Backstop instance. Shift mornings already have your own rung sensors, so the default is calendar only.",
+          "safety_net_causes": "Publishes safety-net times after the last alarm for these alarm causes, for a Wake Deadline Backstop instance: early at the last alarm, deadline (out of bed) one margin later, late (left the room) two margins later. Shift mornings already have your own rung sensors, so the default is calendar only.",
           "notify_service": "e.g. notify.mobile_app_mikes_iphone. Used for the re-plan notification.",
           "replan_alert": "If the shift override or your next shift changes after you planned (and before you wake), send a notification with a Re-plan button."
         }

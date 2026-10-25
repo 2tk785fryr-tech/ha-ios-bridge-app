@@ -71,6 +71,14 @@ final class ShiftRuleTests: XCTestCase {
         XCTAssertNotNil(result.shift?.fixedWake)
     }
 
+    func testDefaultDaysGivesFourTwentyToFourThirty() {
+        let days = BridgeSettings().shiftRules.first { $0.keyword == "Days" }!
+        let (shift, _) = ShiftCandidate.make(title: "Days", start: date(26, 6, 30), rule: days, calendar: calendar)
+        let plan = WakePlanner.plan(shift: shift, appointments: [], settings: BridgeSettings(), now: date(25, 21))
+        XCTAssertEqual(plan.alarmTimes, [date(26, 4, 20), date(26, 4, 25), date(26, 4, 30)])
+        XCTAssertEqual(plan.wakeTime, date(26, 4, 30))
+    }
+
     func testOldSavedRulesStillLoad() throws {
         let json = #"{"id":"6F1C2B9E-6C1F-4C69-9C1A-2B8E1D3F4A5B","keyword":"Days","wakeMinutesBefore":75}"#
         let rule = try JSONDecoder().decode(ShiftRule.self, from: Data(json.utf8))

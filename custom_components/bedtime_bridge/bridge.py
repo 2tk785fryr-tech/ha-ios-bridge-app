@@ -250,15 +250,21 @@ class BedtimeBridge:
         self._event(MSG_PLAN_FAILED, error=self.state["plan_error"])
 
     def _set_rungs(self) -> None:
-        """Early/deadline/late around the wake-up time, for the safety-net causes, when home."""
-        wake = dt_util.parse_datetime(self.state.get("wake_time") or "")
+        """Safety-net times after the last alarm, for the chosen causes, when home.
+
+        Mirrors the Days ladder in current_shift.yaml (alarms end 4:30, deadline 5:10): the
+        checks start once the alarms are over, so they never fire while alarms still ring.
+        Early = last alarm, deadline = +margin (out of bed by), late = +2×margin (left the room).
+        """
+        times = [t for t in (dt_util.parse_datetime(v) for v in self.state.get("alarm_times") or []) if t]
+        last = max(times) if times else dt_util.parse_datetime(self.state.get("wake_time") or "")
         causes = self.options.get(CONF_SAFETY_CAUSES, DEFAULT_SAFETY_CAUSES)
-        if wake is None or self.state.get("alarm_cause") not in causes or not self.is_home():
+        if last is None or self.state.get("alarm_cause") not in causes or not self.is_home():
             return
         margin = timedelta(minutes=int(self.options.get(CONF_SAFETY_MINUTES, DEFAULT_SAFETY_MINUTES)))
-        self.state["rung_early"] = (wake - margin).isoformat()
-        self.state["rung_deadline"] = wake.isoformat()
-        self.state["rung_late"] = (wake + margin).isoformat()
+        self.state["rung_early"] = last.isoformat()
+        self.state["rung_deadline"] = (last + margin).isoformat()
+        self.state["rung_late"] = (last + 2 * margin).isoformat()
 
     # MARK: Changes after bedtime
 

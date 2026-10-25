@@ -25,13 +25,14 @@ def plan_with(cause: str, wake: str) -> dict:
 
 async def test_safety_net_times_for_calendar_mornings(hass, hass_client_no_auth):
     await setup(hass)
+    # Alarms 09:16 and 09:26 (last). Checks start once the alarms are over, like the Days ladder.
     await send(hass_client_no_auth, plan_with("calendar", "2026-10-26T09:26:00+00:00"))
     await hass.async_block_till_done()
-    assert hass.states.get("sensor.bedtime_bridge_safety_net_early").state == "2026-10-26T09:11:00+00:00"
+    assert hass.states.get("sensor.bedtime_bridge_safety_net_early").state == "2026-10-26T09:26:00+00:00"
     deadline = hass.states.get("sensor.bedtime_bridge_safety_net_deadline")
-    assert deadline.state == "2026-10-26T09:26:00+00:00"
+    assert deadline.state == "2026-10-26T09:41:00+00:00"
     assert deadline.attributes["effective_shift"] == "Days"
-    assert hass.states.get("sensor.bedtime_bridge_safety_net_late").state == "2026-10-26T09:41:00+00:00"
+    assert hass.states.get("sensor.bedtime_bridge_safety_net_late").state == "2026-10-26T09:56:00+00:00"
 
 
 async def test_no_safety_net_for_shift_mornings_by_default(hass, hass_client_no_auth):

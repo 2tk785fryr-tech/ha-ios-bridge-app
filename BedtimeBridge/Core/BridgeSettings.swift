@@ -66,8 +66,9 @@ struct ShiftRule: Codable, Identifiable, Hashable {
 
 struct BridgeSettings: Codable, Equatable {
     var shiftRules: [ShiftRule] = [
-        // Placeholder: set your real Days timing and series in Settings.
-        ShiftRule(keyword: "Days", wakeMinutesBefore: 60),
+        // 6:30 AM shift → 4:20, 4:25, 4:30. HA's own 5:10 deadline (Wake Deadline Backstop)
+        // is when you must be out of bed; that stays in Home Assistant.
+        ShiftRule(keyword: "Days", wakeMinutesBefore: 120, wakeIs: .last, alarmCount: 3, alarmSpacingMinutes: 5),
         // First alarm at 8:00 AM on swing days, then the usual series after it.
         ShiftRule(keyword: "Swings", timing: .fixedTime, fixedHour: 8, fixedMinute: 0, wakeIs: .first),
     ]

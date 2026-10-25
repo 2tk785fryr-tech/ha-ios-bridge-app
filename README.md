@@ -16,8 +16,10 @@ instead of a long chain of calendar, maps and alarm actions.
      or last alarm. Or "use my usual series" (the general settings, which appointments and
      day-off alarms always use).
 
-   Defaults: Swings = first alarm at 8:00 AM, then 8:10 and 8:20. Days is a placeholder
-   (60 min before, usual series); set it to your real timing. Fixed-time alarms don't move for
+   Defaults: **Days** = up 120 min before the shift, last of 3 alarms 5 min apart (6:30 shift →
+   4:20, 4:25, 4:30). **Swings** = first alarm at 8:00 AM, then 8:10 and 8:20. Your
+   out-of-bed deadline (5:10 for Days) stays in Home Assistant, in `current_shift.yaml` and
+   Wake Deadline Backstop. Fixed-time alarms don't move for
    bad weather, since the drive is hours later. If the shift override switches the shift type,
    the other shift's timing and series are used.
 2. **Appointments.** Finds events whose notes contain `wake up` and that have a location. It
@@ -93,7 +95,7 @@ integration's **Configure**. Keep it private.
 | `binary_sensor.bedtime_bridge_snoozing` | On from a snooze until the alarm rings again |
 | `binary_sensor.bedtime_bridge_plan_out_of_date` | The shift override or next shift changed after you planned. Attribute: reason |
 | `sensor.bedtime_bridge_last_plan` | When the phone last planned. Attribute: error, if the last attempt failed |
-| `sensor.bedtime_bridge_safety_net_early` / `_deadline` / `_late` | Wake-up time −15 / 0 / +15 min for the chosen causes, for Wake Deadline Backstop |
+| `sensor.bedtime_bridge_safety_net_early` / `_deadline` / `_late` | Last alarm / +15 / +30 min for the chosen causes, for Wake Deadline Backstop |
 | `number.bedtime_bridge_get_ready_time`, `_arrive_early`, `_snooze_length`, `_bad_weather_extra_time_setting`, `_leave_by_reminder_lead`, `_days_lead_time`, `_swings_lead_time` | **Settings you can change in HA.** They start out matching the app after its first plan. After that, HA's value wins each time the app runs. |
 
 **Events:** `bedtime_bridge` with `type` (`planned`, `snoozed`, `stopped`, `cancelled`,
@@ -161,7 +163,11 @@ bypasses the check. Route it through the app's actions instead.
   time-sensitive notification with a **Plan now** button.
 - **Appointment mornings in Wake Deadline Backstop.** For the causes you choose (default:
   `calendar`), the integration publishes `sensor.bedtime_bridge_safety_net_early` /
-  `_deadline` / `_late` (wake-up time −15 / 0 / +15 min). Only when you're home. Make a second
+  `_deadline` / `_late`. Only when you're home. Like your Days ladder (alarms end 4:30, early
+  4:55, deadline 5:10), the checks start after the alarms. Early is at the last alarm (still in
+  bed: nightstand ramp + push). Deadline is 15 min later (still in bed: lights, critical push,
+  HomePod; bed empty but door shut: a push). Late is 30 min later (bedroom door never opened:
+  critical push, lights, HomePod). Make a second
   Backstop instance with those three as its rung sensors. Set its **Shift sensor** to
   `sensor.bedtime_bridge_safety_net_deadline` and keep *Applies to shifts* = Days: that sensor
   reports `effective_shift: Days` whenever a deadline is set, which satisfies the blueprint's
