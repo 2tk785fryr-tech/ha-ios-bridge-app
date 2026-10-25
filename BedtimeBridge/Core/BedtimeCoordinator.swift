@@ -117,7 +117,11 @@ final class BedtimeCoordinator {
             .lazy
             .compactMap { event -> (ShiftCandidate, String?)? in
                 guard let rule = WakePlanner.matchingRule(forTitle: event.title ?? "", rules: settings.shiftRules) else { return nil }
-                return ShiftCandidate.make(title: event.title ?? rule.keyword, start: event.startDate, rule: rule)
+                var (candidate, warning) = ShiftCandidate.make(title: event.title ?? rule.keyword, start: event.startDate, rule: rule)
+                candidate.location = event.location ?? ""
+                candidate.latitude = event.structuredLocation?.geoLocation?.coordinate.latitude
+                candidate.longitude = event.structuredLocation?.geoLocation?.coordinate.longitude
+                return (candidate, warning)
             }
             .first
         var shift = found?.0
@@ -153,6 +157,14 @@ final class BedtimeCoordinator {
                 }
             } catch {
                 extraWarnings.append("Couldn't check the weather: \(error.localizedDescription)")
+            }
+        }
+
+        // Shift alarms keep their rule's timing; the drive only says when to leave.
+        if plan.source == .shift, let shift = plan.shift, !shift.location.trimmingCharacters(in: .whitespaces).isEmpty {
+            plan.commute = await commute(to: shift, settings: settings)
+            if let leaveBy = plan.leaveBy(settings: settings), let wake = plan.wakeTime, leaveBy < wake {
+                extraWarnings.append("To be at \(shift.title) \(settings.workArrivalBufferMinutes) min early you'd leave at \(WakePlanner.format(leaveBy)), before your alarm at \(WakePlanner.format(wake)).")
             }
         }
 
@@ -198,19 +210,8 @@ final class BedtimeCoordinator {
             try alarms.cancelAll()
         }
 
-        if settings.leaveReminderEnabled, let appointment = plan.appointment, plan.source == .appointment, appointment.hasLocation {
-            await leaveReminder.schedule(
-                PendingTrip(
-                    title: appointment.title,
-                    location: appointment.location,
-                    start: appointment.start,
-                    arriveBy: appointment.arriveBy(bufferMinutes: settings.arrivalBufferMinutes),
-                    plannedTravelSeconds: appointment.travelSeconds,
-                    latitude: appointment.latitude,
-                    longitude: appointment.longitude
-                ),
-                leadMinutes: settings.leaveReminderLeadMinutes
-            )
+        if settings.leaveReminderEnabled, let trip = Self.trip(for: plan, settings: settings) {
+            await leaveReminder.schedule(trip, leadMinutes: settings.leaveReminderLeadMinutes)
         } else {
             leaveReminder.clear()
         }
@@ -226,9 +227,7 @@ final class BedtimeCoordinator {
                 alarmTimes: plan.alarmTimes,
                 cause: plan.cause,
                 label: plan.label,
-                leaveBy: plan.source == .appointment && plan.appointment?.hasLocation == true
-                    ? plan.appointment?.leaveBy(bufferMinutes: settings.arrivalBufferMinutes)
-                    : nil,
+                leaveBy: plan.leaveBy(settings: settings),
                 alarmStyle: settings.alarmStyle.rawValue
             )
         }
@@ -237,6 +236,37 @@ final class BedtimeCoordinator {
         var payload = plan.homeAssistantPayload(settings: settings)
         payload["app_settings"] = settings.homeAssistantSettings
         await report(.planned, data: payload, settings: settings)
+    }
+
+    /// The morning's drive, for the leave-by reminder: an appointment with a place, or a
+    /// shift whose event has one.
+    private static func trip(for plan: WakePlan, settings: BridgeSettings) -> PendingTrip? {
+        switch plan.source {
+        case .appointment:
+            guard let appointment = plan.appointment, appointment.hasLocation else { return nil }
+            return PendingTrip(
+                title: appointment.title,
+                location: appointment.location,
+                start: appointment.start,
+                arriveBy: appointment.arriveBy(bufferMinutes: settings.arrivalBufferMinutes),
+                plannedTravelSeconds: appointment.travelSeconds,
+                latitude: appointment.latitude,
+                longitude: appointment.longitude
+            )
+        case .shift:
+            guard let shift = plan.shift, let commute = plan.commute else { return nil }
+            return PendingTrip(
+                title: shift.title,
+                location: shift.location,
+                start: shift.start,
+                arriveBy: shift.start.addingTimeInterval(-Double(settings.workArrivalBufferMinutes) * 60),
+                plannedTravelSeconds: commute.travelSeconds,
+                latitude: commute.latitude,
+                longitude: commute.longitude
+            )
+        case .manual, .none:
+            return nil
+        }
     }
 
     // MARK: Missing locations
@@ -510,6 +540,26 @@ final class BedtimeCoordinator {
             candidate.fallbackReason = error.localizedDescription
         }
         return candidate
+    }
+
+    /// The drive from home to the shift's location, arriving the work buffer early.
+    private func commute(to shift: ShiftCandidate, settings: BridgeSettings) async -> Commute {
+        let arriveBy = shift.start.addingTimeInterval(-Double(settings.workArrivalBufferMinutes) * 60)
+        var commute = Commute(travelSeconds: Double(settings.fallbackTravelMinutes) * 60)
+        do {
+            let provider = try travel.provider(for: settings)
+            let origin = try await travel.origin(homeAddress: settings.homeAddress)
+            let saved = shift.latitude.flatMap { lat in shift.longitude.map { CLLocation(latitude: lat, longitude: $0) } }
+            let destination = try await travel.destination(locationText: shift.location, coordinates: saved)
+            commute.latitude = destination.location.coordinate.latitude
+            commute.longitude = destination.location.coordinate.longitude
+            let drive = try await provider.compare(from: origin, to: destination, arrivingBy: arriveBy)
+            commute.travelSeconds = drive.seconds
+            commute.driveEstimates = drive.estimates
+        } catch {
+            commute.fallbackReason = error.localizedDescription
+        }
+        return commute
     }
 
     /// From the first alarm until you need to be there: the hours worth checking the weather for.

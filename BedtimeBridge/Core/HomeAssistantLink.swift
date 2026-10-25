@@ -304,7 +304,17 @@ extension WakePlan {
             body["weather_extra"] = ["minutes": weather.minutes, "reason": weather.reason]
         }
         if let shift {
-            body["shift"] = ["title": shift.title, "start": iso.string(from: shift.start)]
+            var shiftBody: [String: Any] = ["title": shift.title, "start": iso.string(from: shift.start)]
+            if source == .shift, let commute, let leaveBy = leaveBy(settings: settings) {
+                let minutes = Int((commute.travelSeconds / 60).rounded())
+                body["leave_by"] = iso.string(from: leaveBy)
+                body["drive_minutes"] = minutes
+                shiftBody["location"] = shift.location
+                shiftBody["leave_by"] = iso.string(from: leaveBy)
+                shiftBody["drive_minutes"] = minutes
+                shiftBody["drive_time_estimated"] = commute.fallbackReason != nil
+            }
+            body["shift"] = shiftBody
         }
         return body
     }

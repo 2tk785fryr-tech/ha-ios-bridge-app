@@ -13,6 +13,10 @@ struct ShiftCandidate: Equatable {
     var wakeIs: WakeTimeAlarm? = nil
     var alarmCount: Int? = nil
     var alarmSpacingMinutes: Int? = nil
+    /// Where the shift is, from its calendar event, for the drive to work.
+    var location = ""
+    var latitude: Double? = nil
+    var longitude: Double? = nil
 
     var wakeTime: Date { fixedWake ?? start.addingTimeInterval(-Double(wakeMinutesBefore) * 60) }
 
@@ -36,6 +40,17 @@ struct ShiftCandidate: Equatable {
         candidate.fixedWake = fixed
         return (candidate, nil)
     }
+}
+
+/// The drive to a shift, worked out like an appointment's, so the plan can say when to leave.
+/// It doesn't move the alarm: shift alarms keep their rule's timing.
+struct Commute: Equatable {
+    var travelSeconds: TimeInterval
+    var driveEstimates: [DriveEstimate] = []
+    /// Set when the drive time could not be calculated and the fallback was used.
+    var fallbackReason: String? = nil
+    var latitude: Double? = nil
+    var longitude: Double? = nil
 }
 
 /// An appointment whose notes asked for a wake-up, with its drive time already resolved.
@@ -109,6 +124,22 @@ struct WakePlan: Equatable {
     var warnings: [String] = []
     /// "Wake up" appointments without a location that might have been saved without one.
     var missingLocations: [AppointmentCandidate] = []
+    /// The drive to the shift, when its calendar event has a location.
+    var commute: Commute? = nil
+
+    /// When to leave home: for an appointment with a place, or a shift with its drive worked out.
+    func leaveBy(settings: BridgeSettings) -> Date? {
+        switch source {
+        case .appointment:
+            guard let appointment, appointment.hasLocation else { return nil }
+            return appointment.leaveBy(bufferMinutes: settings.arrivalBufferMinutes)
+        case .shift:
+            guard let shift, let commute else { return nil }
+            return shift.start.addingTimeInterval(-Double(settings.workArrivalBufferMinutes) * 60 - commute.travelSeconds)
+        case .manual, .none:
+            return nil
+        }
+    }
 
     var firstAlarm: Date? { alarmTimes.first }
     var hasAlarm: Bool { !alarmTimes.isEmpty }

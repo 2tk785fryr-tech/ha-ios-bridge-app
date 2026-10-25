@@ -51,7 +51,10 @@ enum PlanAdjustments {
                 return (nil, "Shift override is \(override), but there's no shift on the calendar.")
             }
             // Rebuild from the override's rule: its timing and alarm series, not just the name.
-            let (rebuilt, warning) = ShiftCandidate.make(title: shift.title, start: shift.start, rule: rule)
+            var (rebuilt, warning) = ShiftCandidate.make(title: shift.title, start: shift.start, rule: rule)
+            rebuilt.location = shift.location
+            rebuilt.latitude = shift.latitude
+            rebuilt.longitude = shift.longitude
             return (rebuilt, warning)
         }
     }

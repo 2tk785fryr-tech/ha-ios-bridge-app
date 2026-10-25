@@ -45,6 +45,9 @@ struct ContentView: View {
                         if plan.source == .appointment, let appointment = plan.appointment, let wake = plan.wakeTime {
                             MorningTimeline(appointment: appointment, wake: wake, bufferMinutes: settings.arrivalBufferMinutes)
                         }
+                        if plan.source == .shift, let shift = plan.shift, let commute = plan.commute, let wake = plan.wakeTime {
+                            MorningTimeline(shift: shift, commute: commute, wake: wake, bufferMinutes: settings.workArrivalBufferMinutes)
+                        }
                         ForEach(plan.missingLocations, id: \.eventID) { appointment in
                             MissingLocationCard(appointment: appointment) { location in
                                 Task { await addLocation(location, to: appointment) }
@@ -396,16 +399,48 @@ private struct EmptyPlanCard: View {
 
 // MARK: Appointment timeline
 
+/// Wake → get ready → leave → arrive → start, for an appointment or a shift with a place.
 private struct MorningTimeline: View {
-    let appointment: AppointmentCandidate
+    let title: String
+    let start: Date
+    let location: String
+    /// False for an appointment with no location: no drive, just be ready.
+    let hasLocation: Bool
+    let travelSeconds: TimeInterval
+    let estimates: [DriveEstimate]
+    let fallbackReason: String?
     let wake: Date
     let bufferMinutes: Int
 
+    init(appointment: AppointmentCandidate, wake: Date, bufferMinutes: Int) {
+        title = appointment.title
+        start = appointment.start
+        location = appointment.location
+        hasLocation = appointment.hasLocation
+        travelSeconds = appointment.travelSeconds
+        estimates = appointment.driveEstimates
+        fallbackReason = appointment.fallbackReason
+        self.wake = wake
+        self.bufferMinutes = bufferMinutes
+    }
+
+    init(shift: ShiftCandidate, commute: Commute, wake: Date, bufferMinutes: Int) {
+        title = "\(shift.title) starts"
+        start = shift.start
+        location = shift.location
+        hasLocation = true
+        travelSeconds = commute.travelSeconds
+        estimates = commute.driveEstimates
+        fallbackReason = commute.fallbackReason
+        self.wake = wake
+        self.bufferMinutes = bufferMinutes
+    }
+
     var body: some View {
-        let leaveBy = appointment.leaveBy(bufferMinutes: bufferMinutes)
-        let arrive = appointment.arriveBy(bufferMinutes: bufferMinutes)
+        let arrive = start.addingTimeInterval(-Double(bufferMinutes) * 60)
+        let leaveBy = arrive.addingTimeInterval(-travelSeconds)
         let readyMinutes = Int(leaveBy.timeIntervalSince(wake) / 60)
-        let driveMinutes = Int((appointment.travelSeconds / 60).rounded())
+        let driveMinutes = Int((travelSeconds / 60).rounded())
 
         VStack(alignment: .leading, spacing: 0) {
             Text("Your morning")
@@ -413,38 +448,39 @@ private struct MorningTimeline: View {
                 .foregroundStyle(Theme.textMuted)
                 .padding(.bottom, 12)
             TimelineStep(title: "Wake up", value: WakePlanner.format(wake), dot: .filled(Theme.accent), bold: true)
-            TimelineStep(title: "Get ready", value: "\(readyMinutes) min", dot: .ring(Theme.accent))
-            if !appointment.hasLocation {
+            if !hasLocation {
+                TimelineStep(title: "Get ready", value: "\(Int(arrive.timeIntervalSince(wake) / 60)) min", dot: .ring(Theme.accent))
                 TimelineStep(title: "Be ready", value: WakePlanner.format(arrive), detail: "No location, so no drive", dot: .filled(Theme.leaveBy), bold: true, highlight: Theme.appointmentChip.text)
-                TimelineStep(title: appointment.title, value: WakePlanner.format(appointment.start), dot: .filled(Theme.text), bold: true, isLast: true)
+                TimelineStep(title: title, value: WakePlanner.format(start), dot: .filled(Theme.text), bold: true, isLast: true)
             } else {
-            TimelineStep(
-                title: "Leave by",
-                value: WakePlanner.format(leaveBy),
-                detail: "\(driveMinutes) min drive with expected traffic" + Self.comparison(appointment.driveEstimates),
-                dot: .filled(Theme.leaveBy),
-                bold: true,
-                highlight: Theme.appointmentChip.text
-            )
-            TimelineStep(title: "Arrive", value: "\(WakePlanner.format(arrive)) · \(bufferMinutes) min early", dot: .ring(Theme.leaveBy))
-            TimelineStep(
-                title: appointment.title,
-                value: WakePlanner.format(appointment.start),
-                detail: appointment.location,
-                dot: .filled(Theme.text),
-                bold: true,
-                isLast: true
-            )
+                TimelineStep(
+                    title: "Get ready",
+                    value: readyMinutes >= 0 ? "\(readyMinutes) min" : "\(-readyMinutes) min short",
+                    dot: .ring(readyMinutes >= 0 ? Theme.accent : Theme.danger)
+                )
+                TimelineStep(
+                    title: "Leave by",
+                    value: WakePlanner.format(leaveBy),
+                    detail: driveDetail(minutes: driveMinutes),
+                    dot: .filled(Theme.leaveBy),
+                    bold: true,
+                    highlight: Theme.appointmentChip.text
+                )
+                TimelineStep(title: "Arrive", value: "\(WakePlanner.format(arrive)) · \(bufferMinutes) min early", dot: .ring(Theme.leaveBy))
+                TimelineStep(title: title, value: WakePlanner.format(start), detail: location, dot: .filled(Theme.text), bold: true, isLast: true)
             }
         }
         .nightfallCard(padding: 20)
     }
 
-    /// "\nApple 28 · TomTom 30 · Google 29 · Google worst case 41 min", when there's more than one answer.
-    private static func comparison(_ estimates: [DriveEstimate]) -> String {
-        guard estimates.count > 1 else { return "" }
+    /// "32 min drive with expected traffic\nApple 28 · TomTom 30 · Google 29 · Google worst case 41 min"
+    private func driveDetail(minutes: Int) -> String {
+        if let fallbackReason {
+            return "\(minutes) min assumed: no drive time (\(fallbackReason))"
+        }
+        guard estimates.count > 1 else { return "\(minutes) min drive with expected traffic" }
         let parts = estimates.map { "\($0.service.displayName) \(Int(($0.seconds / 60).rounded()))" }
-        return "\n" + parts.joined(separator: " · ") + " min"
+        return "\(minutes) min drive with expected traffic\n" + parts.joined(separator: " · ") + " min"
     }
 }
 
