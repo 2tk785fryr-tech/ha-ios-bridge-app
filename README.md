@@ -81,11 +81,16 @@ integration's **Configure**. Keep it private.
 | `sensor.bedtime_bridge_leave_by`, `_drive_time`, `_bad_weather_extra_time` | Appointment and weather details |
 | `sensor.bedtime_bridge_snooze_count`, `_last_event` | This morning's snoozes. Last event: planned/snoozed/stopped/cancelled/leave_by |
 | `binary_sensor.bedtime_bridge_snoozing` | On from a snooze until the alarm rings again |
+| `binary_sensor.bedtime_bridge_plan_out_of_date` | The shift override or next shift changed after you planned. Attribute: reason |
+| `sensor.bedtime_bridge_last_plan` | When the phone last planned. Attribute: error, if the last attempt failed |
+| `sensor.bedtime_bridge_safety_net_early` / `_deadline` / `_late` | Wake-up time −15 / 0 / +15 min for the chosen causes, for Wake Deadline Backstop |
 | `number.bedtime_bridge_get_ready_time`, `_arrive_early`, `_snooze_length`, `_bad_weather_extra_time_setting`, `_leave_by_reminder_lead`, `_days_lead_time`, `_swings_lead_time` | **Settings you can change in HA.** They start out matching the app after its first plan. After that, HA's value wins each time the app runs. |
 
 **Events:** `bedtime_bridge` with `type` (`planned`, `snoozed`, `stopped`, `cancelled`,
 `leave_by`) plus `alarm_cause`, `alarm_time`, `alarm_times`, `label`, `leave_by` and
-`snooze_count`. With *helpers only*, snoozed/stopped aren't fired.
+`snooze_count`. Also fired: `bedtime`, `plan_failed` (with `error`) and `plan_outdated`
+(with `reason`). Test alarms add `test: true`. With *helpers only*, or while you're away,
+snoozed/stopped aren't fired.
 
 **Helpers or blueprints, your choice:**
 - *Helpers:* your existing Wake Snooze Fade and Wake Sequence blueprints keep watching
@@ -128,6 +133,38 @@ settings are in the app (token mode).
 
 Anything that still flips those helpers directly (an old HomeKit step, a dashboard button)
 bypasses the check. Route it through the app's actions instead.
+
+## Safety nets
+
+- **Test alarm.** Settings → Alarms → **Test alarm in 2 minutes** (app alarms). It rings once.
+  Snooze it, then stop it, and your real routines run (if you're home). HA marks those events
+  `test: true` and leaves tonight's plan alone.
+- **If planning fails.** If the calendar can't be read, *Plan Wake-Up Alarms* falls back to Home
+  Assistant's next shift (`sensor.current_shift`) and sets your usual alarms with a warning.
+  Appointments aren't checked in that case. If HA can't help either, the action fails visibly
+  in the shortcut and tells HA the plan failed.
+- **No plan by bedtime.** `sensor.bedtime_bridge_last_plan` records every plan (its `error`
+  attribute shows a failure). The **Bedtime Bridge missing plan** blueprint checks at a time you
+  pick (default 11:30 PM). If a shift starts within 14 h and there's no fresh plan, or the last
+  one failed, it sends a time-sensitive notification with a **Plan now** button.
+- **Appointment mornings in Wake Deadline Backstop.** For the causes you choose (default:
+  `calendar`), the integration publishes `sensor.bedtime_bridge_safety_net_early` /
+  `_deadline` / `_late` (wake-up time −15 / 0 / +15 min). Only when you're home. Make a second
+  Backstop instance with those three as its rung sensors. Set its **Shift sensor** to
+  `sensor.bedtime_bridge_safety_net_deadline` and keep *Applies to shifts* = Days: that sensor
+  reports `effective_shift: Days` whenever a deadline is set, which satisfies the blueprint's
+  shift check without editing it. Your shift instance stays as it is.
+- **Plan out of date.** If the shift override or HA's next shift changes after you planned (and
+  before you wake), `binary_sensor.bedtime_bridge_plan_out_of_date` turns on and a
+  `plan_outdated` event fires. If you set a notify action in the integration, you get a
+  notification with **Re-plan now** (opens `bedtimebridge://replan`, and the app plans again).
+  Routine refreshes with the same shift time don't count. Calendar edits on the phone itself
+  can't be seen by HA; the app picks those up the next time it plans.
+- **Appointments without a location.** A "wake up" appointment with no location still gets an
+  alarm: no drive, just ready by start − arrive-early. Unless you've already said it doesn't
+  need one, the bedtime shortcut asks *"Dentist at 9:00 AM has no location. Should it have
+  one?"* Add Location saves your answer to the calendar event and plans again. No Location
+  Needed remembers that for the event. The Tonight screen shows the same question as a card.
 
 ## Lock Screen widget
 
@@ -208,7 +245,8 @@ the fallback drive time from Settings. You'll see a warning in `Warnings`, and t
 Replace the calendar, maps and alarm part of the shortcut with:
 
 ```
-Plan Wake-Up Alarms (Set Alarms: on)            → Wake Plan
+Plan Wake-Up Alarms (Set Alarms: on,
+                     Ask About Missing Locations: on)  → Wake Plan
 If  Wake Plan › Has Alarm  is  false
     Ask for Input (Time) "Alarm for your day off?"
     If  Provided Input has any value

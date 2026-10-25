@@ -12,10 +12,15 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import selector
 from homeassistant.helpers.network import NoURLAvailableError
 
+from .const import shift_types as parse_shift_types
 from .const import (
     CONF_BEDTIME_HELPER,
     CONF_HOME_ONLY,
+    CONF_NOTIFY,
     CONF_PRESENCE,
+    CONF_REPLAN_ALERT,
+    CONF_SAFETY_CAUSES,
+    CONF_SAFETY_MINUTES,
     CONF_SHIFT_OVERRIDE,
     CONF_SHIFT_SENSOR,
     CONF_SHIFT_TYPES,
@@ -24,6 +29,8 @@ from .const import (
     CONF_WAKE_ACTION,
     CONF_WEATHER,
     CONF_WEBHOOK_ID,
+    DEFAULT_SAFETY_CAUSES,
+    DEFAULT_SAFETY_MINUTES,
     DEFAULT_SHIFT_TYPES,
     DOMAIN,
     SUGGESTED,
@@ -43,6 +50,10 @@ OPTION_KEYS = [
     CONF_SHIFT_SENSOR,
     CONF_WEATHER,
     CONF_SHIFT_TYPES,
+    CONF_SAFETY_CAUSES,
+    CONF_SAFETY_MINUTES,
+    CONF_NOTIFY,
+    CONF_REPLAN_ALERT,
 ]
 
 
@@ -65,6 +76,15 @@ def _schema(hass: HomeAssistant, current: dict[str, Any]) -> vol.Schema:
         return {"suggested_value": people[:1]} if people else {}
 
     home_only = current.get(CONF_HOME_ONLY)
+    replan_alert = current.get(CONF_REPLAN_ALERT)
+    shift_names = parse_shift_types(current.get(CONF_SHIFT_TYPES) or DEFAULT_SHIFT_TYPES)
+    cause_options = ["calendar", "automade", *shift_names]
+
+    def notify_suggestion() -> dict[str, Any]:
+        if CONF_NOTIFY in current:
+            return {"suggested_value": current[CONF_NOTIFY]} if current[CONF_NOTIFY] else {}
+        phones = sorted(s for s in hass.services.async_services_for_domain("notify") if s.startswith("mobile_app_"))
+        return {"suggested_value": f"notify.{phones[0]}"} if phones else {}
     return vol.Schema(
         {
             vol.Optional(CONF_PRESENCE, description=presence_suggestion()): selector.EntitySelector(
@@ -81,6 +101,14 @@ def _schema(hass: HomeAssistant, current: dict[str, Any]) -> vol.Schema:
             vol.Optional(CONF_SHIFT_SENSOR, description=suggested(CONF_SHIFT_SENSOR)): entity(["sensor"]),
             vol.Optional(CONF_WEATHER, description=suggested(CONF_WEATHER)): entity(["weather"]),
             vol.Required(CONF_SHIFT_TYPES, default=current.get(CONF_SHIFT_TYPES) or DEFAULT_SHIFT_TYPES): selector.TextSelector(),
+            vol.Optional(
+                CONF_SAFETY_CAUSES, default=current.get(CONF_SAFETY_CAUSES) or DEFAULT_SAFETY_CAUSES
+            ): selector.SelectSelector(selector.SelectSelectorConfig(options=cause_options, multiple=True, custom_value=True)),
+            vol.Required(
+                CONF_SAFETY_MINUTES, default=current.get(CONF_SAFETY_MINUTES) or DEFAULT_SAFETY_MINUTES
+            ): selector.NumberSelector(selector.NumberSelectorConfig(min=5, max=60, step=5, unit_of_measurement="min")),
+            vol.Optional(CONF_NOTIFY, description=notify_suggestion()): selector.TextSelector(),
+            vol.Required(CONF_REPLAN_ALERT, default=True if replan_alert is None else replan_alert): selector.BooleanSelector(),
         }
     )
 

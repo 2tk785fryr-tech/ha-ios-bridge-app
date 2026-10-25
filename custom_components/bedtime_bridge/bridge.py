@@ -3,19 +3,25 @@
 from __future__ import annotations
 
 import logging
+from datetime import timedelta
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import Event, EventStateChangedData, HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .const import (
     CONF_BEDTIME_HELPER,
     CONF_HOME_ONLY,
+    CONF_NOTIFY,
     CONF_PRESENCE,
+    CONF_REPLAN_ALERT,
+    CONF_SAFETY_CAUSES,
+    CONF_SAFETY_MINUTES,
     CONF_SHIFT_OVERRIDE,
     CONF_SHIFT_SENSOR,
     CONF_SHIFT_TYPES,
@@ -23,17 +29,22 @@ from .const import (
     CONF_STOP_HELPER,
     CONF_WAKE_ACTION,
     CONF_WEATHER,
+    DEFAULT_SAFETY_CAUSES,
+    DEFAULT_SAFETY_MINUTES,
     DOMAIN,
     EVENT,
+    EVENT_PLAN_OUTDATED,
     HOME_STATES,
     MSG_BEDTIME,
     MSG_CANCELLED,
     MSG_CONTEXT,
     MSG_FORECAST,
     MSG_LEAVE_BY,
+    MSG_PLAN_FAILED,
     MSG_PLANNED,
     MSG_SNOOZED,
     MSG_STOPPED,
+    REPLAN_URL,
     SETTINGS,
     SHIFT_LEAD_PREFIX,
     UNKNOWN_STATES,
@@ -83,7 +94,18 @@ def empty_state() -> dict[str, Any]:
         "last_event": None,
         "last_event_time": None,
         "skipped_away": False,
+        # Safety-net times for Wake Deadline Backstop (only for the chosen causes).
+        "rung_early": None,
+        "rung_deadline": None,
+        "rung_late": None,
+        "plan_outdated": False,
+        "outdated_reason": None,
     }
+
+
+def plan_record() -> dict[str, Any]:
+    """Kept across new plans and cancels: when the phone last planned, and why it failed."""
+    return {"last_plan": None, "plan_error": None}
 
 
 class BedtimeBridge:
@@ -92,7 +114,7 @@ class BedtimeBridge:
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         self.hass = hass
         self.entry = entry
-        self.state: dict[str, Any] = empty_state()
+        self.state: dict[str, Any] = {**empty_state(), **plan_record()}
         # None means "not set yet"; filled from the app's own settings on its first plan.
         self.settings: dict[str, int | None] = {}
         self._store: Store[dict[str, Any]] = Store(hass, STORAGE_VERSION, f"{DOMAIN}.{entry.entry_id}")
@@ -108,9 +130,15 @@ class BedtimeBridge:
 
     async def async_load(self) -> None:
         stored = await self._store.async_load() or {}
-        self.state = {**empty_state(), **stored.get("state", {})}
+        self.state = {**empty_state(), **plan_record(), **stored.get("state", {})}
         self.settings = stored.get("settings", {})
 
+    @callback
+    def async_start(self) -> None:
+        """Watches the shift override and shift sensor for changes after a plan."""
+        watched = [e for e in (self.options.get(CONF_SHIFT_OVERRIDE), self.options.get(CONF_SHIFT_SENSOR)) if e]
+        if watched:
+            self.entry.async_on_unload(async_track_state_change_event(self.hass, watched, self._shift_changed))
     def _save(self) -> None:
         self._store.async_delay_save(lambda: {"state": self.state, "settings": self.settings}, 1)
 
@@ -162,6 +190,7 @@ class BedtimeBridge:
             MSG_CANCELLED: self._cancelled,
             MSG_LEAVE_BY: self._leave_by,
             MSG_BEDTIME: self._bedtime,
+            MSG_PLAN_FAILED: self._plan_failed,
         }.get(kind)
         if handler is None:
             return {"error": f"unknown message type: {kind}"}
@@ -175,6 +204,7 @@ class BedtimeBridge:
         return {
             "shift_override": override.state if override else None,
             "next_shift_start": sensor.attributes.get("next_shift_start") if sensor else None,
+            "next_shift_type": sensor.attributes.get("next_shift_type") if sensor else None,
             "at_home": self.is_home(),
         }
 
@@ -207,9 +237,99 @@ class BedtimeBridge:
         self._adopt_app_settings(data.get("app_settings") or {})
         self.state.update(empty_state())
         self.state.update({key: data.get(key) for key in PLAN_FIELDS if key in data})
+        self.state["last_plan"] = dt_util.utcnow().isoformat()
+        self.state["plan_error"] = None
+        self.state["planned_override"] = self._state_of(CONF_SHIFT_OVERRIDE)
+        self.state["planned_shift_start"] = self._next_shift_start()
+        self._set_rungs()
         self._event(MSG_PLANNED)
 
+    async def _plan_failed(self, data: dict[str, Any]) -> None:
+        """The phone couldn't plan. The previous plan's alarms may still be set."""
+        self.state["plan_error"] = data.get("error") or "unknown error"
+        self._event(MSG_PLAN_FAILED, error=self.state["plan_error"])
+
+    def _set_rungs(self) -> None:
+        """Early/deadline/late around the wake-up time, for the safety-net causes, when home."""
+        wake = dt_util.parse_datetime(self.state.get("wake_time") or "")
+        causes = self.options.get(CONF_SAFETY_CAUSES, DEFAULT_SAFETY_CAUSES)
+        if wake is None or self.state.get("alarm_cause") not in causes or not self.is_home():
+            return
+        margin = timedelta(minutes=int(self.options.get(CONF_SAFETY_MINUTES, DEFAULT_SAFETY_MINUTES)))
+        self.state["rung_early"] = (wake - margin).isoformat()
+        self.state["rung_deadline"] = wake.isoformat()
+        self.state["rung_late"] = (wake + margin).isoformat()
+
+    # MARK: Changes after bedtime
+
+    def _state_of(self, option: str) -> str | None:
+        state = self.hass.states.get(self.options.get(option) or "")
+        return state.state if state else None
+
+    def _next_shift_start(self) -> str | None:
+        sensor = self.hass.states.get(self.options.get(CONF_SHIFT_SENSOR) or "")
+        value = sensor.attributes.get("next_shift_start") if sensor else None
+        return str(value) if value else None
+
+    @callback
+    def _shift_changed(self, event: Event[EventStateChangedData]) -> None:
+        """Flags the plan as outdated when the override or HA's next shift changes after it."""
+        if self.state.get("plan_outdated") or not self._plan_still_ahead():
+            return
+        override = self._state_of(CONF_SHIFT_OVERRIDE)
+        shift_start = self._next_shift_start()
+        reason = None
+        if override not in (None, *UNKNOWN_STATES) and override != self.state.get("planned_override"):
+            reason = f"Shift override changed to {override}"
+        elif shift_start and shift_start != self.state.get("planned_shift_start"):
+            when = dt_util.parse_datetime(shift_start)
+            reason = f"Next shift moved to {dt_util.as_local(when).strftime('%a %-I:%M %p') if when else shift_start}"
+        if reason is None:
+            return
+        self.state["plan_outdated"] = True
+        self.state["outdated_reason"] = reason
+        self.hass.bus.async_fire(EVENT, {"type": EVENT_PLAN_OUTDATED, "reason": reason})
+        self.hass.async_create_task(self._notify_outdated(reason))
+        self._changed()
+
+    def _plan_still_ahead(self) -> bool:
+        """A plan exists and its wake-up hasn't happened yet (or it planned no alarm recently)."""
+        last_plan = dt_util.parse_datetime(self.state.get("last_plan") or "")
+        if last_plan is None:
+            return False
+        wake = dt_util.parse_datetime(self.state.get("wake_time") or "")
+        if wake is not None:
+            return wake > dt_util.utcnow()
+        return dt_util.utcnow() - last_plan < timedelta(hours=18)
+
+    async def _notify_outdated(self, reason: str) -> None:
+        notify = (self.options.get(CONF_NOTIFY) or "").strip()
+        if not notify or not self.options.get(CONF_REPLAN_ALERT, True):
+            return
+        domain, _, service = notify.partition(".")
+        try:
+            await self.hass.services.async_call(
+                domain,
+                service,
+                {
+                    "title": "Alarms may be wrong",
+                    "message": f"{reason} after you planned. Tap to re-plan.",
+                    "data": {
+                        "tag": "bedtime_bridge_replan",
+                        "url": REPLAN_URL,
+                        "actions": [{"action": "URI", "title": "Re-plan now", "uri": REPLAN_URL}],
+                    },
+                },
+                blocking=False,
+            )
+        except HomeAssistantError as err:
+            _LOGGER.warning("Bedtime Bridge couldn't send the re-plan notification: %s", err)
+
     async def _snoozed(self, data: dict[str, Any]) -> None:
+        if data.get("test"):
+            await self._wake(CONF_SNOOZE_HELPER)
+            self._event(MSG_SNOOZED, test=True)
+            return
         self.state["snoozed_until"] = data.get("rings_again")
         self.state["snooze_count"] = int(self.state.get("snooze_count") or 0) + 1
         if data.get("rings_again"):
@@ -218,6 +338,11 @@ class BedtimeBridge:
         self._event(MSG_SNOOZED)
 
     async def _stopped(self, data: dict[str, Any]) -> None:
+        if data.get("test"):
+            # A test alarm runs the real routines but leaves tonight's plan alone.
+            await self._wake(CONF_STOP_HELPER)
+            self._event(MSG_STOPPED, test=True)
+            return
         remaining = data.get("alarm_times") or []
         self.state["snoozed_until"] = None
         self.state["alarm_times"] = remaining

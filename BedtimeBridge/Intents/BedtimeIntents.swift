@@ -11,9 +11,21 @@ struct PlanWakeAlarmsIntent: AppIntent {
     @Parameter(title: "Set Alarms", description: "Turn off to only preview the plan.", default: true)
     var setAlarms: Bool
 
+    @Parameter(
+        title: "Ask About Missing Locations",
+        description: "When a \"wake up\" appointment has no location, ask whether it should have one.",
+        default: true
+    )
+    var askAboutLocations: Bool
+
+    /// Only filled in by the question above; not meant to be set in the editor.
+    @Parameter(title: "Location Answer")
+    var locationAnswer: String?
+
     static var parameterSummary: some ParameterSummary {
         Summary("Plan wake-up alarms") {
             \.$setAlarms
+            \.$askAboutLocations
         }
     }
 
@@ -21,10 +33,42 @@ struct PlanWakeAlarmsIntent: AppIntent {
     func perform() async throws -> some IntentResult & ReturnsValue<WakePlanEntity> {
         let settings = SettingsStore.shared.settings
         let coordinator = BedtimeCoordinator.shared
-        let plan = setAlarms
+        var plan = setAlarms
             ? try await coordinator.planAndSchedule(settings: settings)
             : try await coordinator.buildPlan(settings: settings)
+
+        if setAlarms, askAboutLocations, !plan.missingLocations.isEmpty {
+            var addedAny = false
+            for appointment in plan.missingLocations {
+                addedAny = try await ask(about: appointment, coordinator: coordinator) || addedAny
+            }
+            // A real location changes the drive time, so plan again.
+            if addedAny { plan = try await coordinator.planAndSchedule(settings: settings) }
+        }
         return .result(value: WakePlanEntity(plan: plan))
+    }
+
+    /// "Dentist at 9:00 AM has no location. Should it have one?" Returns true if one was added.
+    @MainActor
+    private func ask(about appointment: AppointmentCandidate, coordinator: BedtimeCoordinator) async throws -> Bool {
+        do {
+            try await requestConfirmation(
+                result: .result(dialog: IntentDialog(stringLiteral: "\(appointment.title) at \(WakePlanner.format(appointment.start)) has no location. Should it have one?")),
+                confirmationActionName: .custom(
+                    acceptLabel: "Add Location",
+                    acceptAlternatives: ["Yes"],
+                    denyLabel: "No Location Needed",
+                    denyAlternatives: ["No"]
+                )
+            )
+        } catch {
+            // "No Location Needed" (or dismissing the question): don't ask again for this event.
+            coordinator.markNoLocationNeeded(appointment)
+            return false
+        }
+        let place = try await $locationAnswer.requestValue(IntentDialog(stringLiteral: "Where is \(appointment.title)?"))
+        try coordinator.addLocation(place, to: appointment)
+        return true
     }
 }
 

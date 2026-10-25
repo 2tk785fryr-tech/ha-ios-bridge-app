@@ -41,6 +41,10 @@ struct WakePlanEntity: TransientAppEntity {
     @Property(title: "Warnings")
     var warnings: String
 
+    /// "Wake up" appointments still without a location (one per line), for your own handling.
+    @Property(title: "Missing Locations")
+    var missingLocations: String
+
     /// JSON ready to send to Home Assistant (webhook body or a Shortcuts dictionary).
     @Property(title: "Home Assistant JSON")
     var homeAssistantJSON: String
@@ -56,6 +60,7 @@ struct WakePlanEntity: TransientAppEntity {
         reason = ""
         atHome = true
         warnings = ""
+        missingLocations = ""
         homeAssistantJSON = "{}"
     }
 
@@ -71,6 +76,7 @@ struct WakePlanEntity: TransientAppEntity {
         reason = plan.reason
         atHome = plan.atHome ?? true
         warnings = plan.warnings.joined(separator: "\n")
+        missingLocations = plan.missingLocations.map(\.title).joined(separator: "\n")
         homeAssistantJSON = Self.homeAssistantJSON(for: plan)
     }
 

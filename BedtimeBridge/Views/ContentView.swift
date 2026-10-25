@@ -27,6 +27,14 @@ struct ContentView: View {
                         if plan.source == .appointment, let appointment = plan.appointment, let wake = plan.wakeTime {
                             MorningTimeline(appointment: appointment, wake: wake, bufferMinutes: settings.arrivalBufferMinutes)
                         }
+                        ForEach(plan.missingLocations, id: \.eventID) { appointment in
+                            MissingLocationCard(appointment: appointment) { location in
+                                Task { await addLocation(location, to: appointment) }
+                            } noLocationNeeded: {
+                                coordinator.markNoLocationNeeded(appointment)
+                                self.plan?.missingLocations.removeAll { $0.eventID == appointment.eventID }
+                            }
+                        }
                     } else {
                         EmptyPlanCard(scheduled: scheduled)
                     }
@@ -73,6 +81,11 @@ struct ContentView: View {
             .safeAreaInset(edge: .bottom) { actions }
             .toolbar(.hidden, for: .navigationBar)
             .onAppear(perform: refreshScheduled)
+            // bedtimebridge://replan, from Home Assistant's "plan out of date" and
+            // "missing plan" notifications.
+            .onOpenURL { url in
+                if url.host == "replan" { run(schedule: true) }
+            }
         }
     }
 
@@ -158,7 +171,17 @@ struct ContentView: View {
     }
 
     private func refreshScheduled() {
-        scheduled = coordinator.alarms.scheduledAlarmTimes()
+        scheduled = coordinator.scheduledAlarmTimes()
+    }
+
+    /// Saves the place on the calendar event, then plans again with a real drive time.
+    private func addLocation(_ location: String, to appointment: AppointmentCandidate) async {
+        do {
+            try coordinator.addLocation(location, to: appointment)
+            run(schedule: true)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 }
 
@@ -297,6 +320,10 @@ private struct MorningTimeline: View {
                 .padding(.bottom, 12)
             TimelineStep(title: "Wake up", value: WakePlanner.format(wake), dot: .filled(Theme.accent), bold: true)
             TimelineStep(title: "Get ready", value: "\(readyMinutes) min", dot: .ring(Theme.accent))
+            if !appointment.hasLocation {
+                TimelineStep(title: "Be ready", value: WakePlanner.format(arrive), detail: "No location, so no drive", dot: .filled(Theme.leaveBy), bold: true, highlight: Theme.appointmentChip.text)
+                TimelineStep(title: appointment.title, value: WakePlanner.format(appointment.start), dot: .filled(Theme.text), bold: true, isLast: true)
+            } else {
             TimelineStep(
                 title: "Leave by",
                 value: WakePlanner.format(leaveBy),
@@ -314,6 +341,7 @@ private struct MorningTimeline: View {
                 bold: true,
                 isLast: true
             )
+            }
         }
         .nightfallCard(padding: 20)
     }
@@ -365,6 +393,50 @@ private struct TimelineStep: View {
             .padding(.bottom, isLast ? 0 : 18)
         }
         .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+// MARK: Missing location
+
+/// A "wake up" appointment with no location: was it saved without one?
+private struct MissingLocationCard: View {
+    let appointment: AppointmentCandidate
+    let save: (String) -> Void
+    let noLocationNeeded: () -> Void
+    @State private var location = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("\(appointment.title) at \(WakePlanner.format(appointment.start)) has no location", systemImage: "mappin.slash")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Theme.text)
+            Text("Planned with no drive. Was it supposed to have one?")
+                .font(.footnote)
+                .foregroundStyle(Theme.textMuted)
+            TextField("Address or place name", text: $location)
+                .textContentType(.fullStreetAddress)
+                .padding(12)
+                .background(Theme.raised, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .foregroundStyle(Theme.text)
+            HStack(spacing: 10) {
+                Button { save(location) } label: {
+                    Text("Save and re-plan")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .background(Theme.accent, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+                .disabled(location.trimmingCharacters(in: .whitespaces).isEmpty)
+                Button(action: noLocationNeeded) {
+                    Text("No location needed")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Theme.accentText)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Theme.border, lineWidth: 1))
+                }
+            }
+        }
+        .nightfallCard()
     }
 }
 

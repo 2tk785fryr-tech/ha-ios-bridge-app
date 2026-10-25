@@ -127,6 +127,7 @@ private struct AlarmSettingsSection: View {
             if settings.alarmStyle == .app {
                 Stepper("Snooze: \(settings.snoozeMinutes) min", value: $settings.snoozeMinutes, in: 1...30)
                 Toggle("Stop cancels the rest", isOn: $settings.stopCancelsRemaining)
+                TestAlarmButton(settings: settings)
             }
             Stepper("Look ahead \(settings.lookAheadHours) h", value: $settings.lookAheadHours, in: 6...72)
         } header: {
@@ -137,6 +138,30 @@ private struct AlarmSettingsSection: View {
                 Text("Rings through Silent and Focus. Snooze and Stop tell Home Assistant directly (set it up below), because the Shortcuts \"alarm snoozed/stopped\" automations only see Clock app alarms.")
             case .clock:
                 Text("The app works out the times and your shortcut creates Clock alarms from Wake Plan › Alarm Dates. Your snooze/stop automations keep working, but Apple fixes Clock snooze at 9 minutes.")
+            }
+        }
+    }
+}
+
+/// Rings in two minutes and runs the real snooze/stop routines in Home Assistant.
+private struct TestAlarmButton: View {
+    let settings: BridgeSettings
+    @State private var status: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Button("Test alarm in 2 minutes", systemImage: "alarm.waves.left.and.right") {
+                Task {
+                    do {
+                        let time = try await BedtimeCoordinator.shared.scheduleTestAlarm(settings: settings)
+                        status = "Rings at \(WakePlanner.format(time)). Snooze, then Stop: your real routines will run (if you're home)."
+                    } catch {
+                        status = error.localizedDescription
+                    }
+                }
+            }
+            if let status {
+                Text(status).font(.footnote).foregroundStyle(Theme.textMuted)
             }
         }
     }

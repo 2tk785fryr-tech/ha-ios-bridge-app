@@ -23,6 +23,13 @@ struct AppointmentCandidate: Equatable {
     /// Where the appointment is, kept so the leave-by reminder can recheck traffic.
     var latitude: Double? = nil
     var longitude: Double? = nil
+    /// The calendar event, so a missing location can be filled in.
+    var eventID: String? = nil
+    /// False for a "wake up" appointment with no location (a call, or one saved without
+    /// its place): no drive, you just need to be ready by arrive-by time.
+    var hasLocation = true
+    /// No location and you haven't said "no location needed" for it yet.
+    var askAboutLocation = false
 
     var usedFallbackTravel: Bool { fallbackReason != nil }
 
@@ -66,6 +73,8 @@ struct WakePlan: Equatable {
     /// From Home Assistant; nil when it couldn't tell.
     var atHome: Bool? = nil
     var warnings: [String] = []
+    /// "Wake up" appointments without a location that might have been saved without one.
+    var missingLocations: [AppointmentCandidate] = []
 
     var firstAlarm: Date? { alarmTimes.first }
     var hasAlarm: Bool { !alarmTimes.isEmpty }
@@ -124,9 +133,11 @@ enum WakePlanner {
         }
         let appointments = appointments.map { appointment -> AppointmentCandidate in
             var appointment = appointment
-            appointment.travelSeconds += extra
+            // Bad weather slows the drive; it doesn't matter for a call from home.
+            if appointment.hasLocation { appointment.travelSeconds += extra }
             return appointment
         }
+        let missing = appointments.filter(\.askAboutLocation)
 
         var shiftWake: Date?
         if let shift {
@@ -161,15 +172,19 @@ enum WakePlanner {
             let (appointment, wake) = best
             let minutes = Int((appointment.travelSeconds / 60).rounded())
             let leaveBy = appointment.leaveBy(bufferMinutes: settings.arrivalBufferMinutes)
+            let reason = appointment.hasLocation
+                ? "\(appointment.title) at \(format(appointment.start)). Leave by \(format(leaveBy)) (\(minutes) min drive, \(settings.arrivalBufferMinutes) min early)\(weatherNote)"
+                : "\(appointment.title) at \(format(appointment.start)). Ready by \(format(leaveBy)) (no location, so no drive)"
             return WakePlan(
                 source: .appointment,
                 wakeTime: wake,
                 alarmTimes: makeTimes(wake),
-                reason: "\(appointment.title) at \(format(appointment.start)). Leave by \(format(leaveBy)) (\(minutes) min drive, \(settings.arrivalBufferMinutes) min early)\(weatherNote)",
+                reason: reason,
                 shift: shift,
                 appointment: appointment,
-                weather: weather,
-                warnings: warnings
+                weather: appointment.hasLocation ? weather : nil,
+                warnings: warnings,
+                missingLocations: missing
             )
         }
 
@@ -182,11 +197,12 @@ enum WakePlanner {
                 shift: shift,
                 appointment: earliestAppointment?.0,
                 weather: weather,
-                warnings: warnings
+                warnings: warnings,
+                missingLocations: missing
             )
         }
 
-        return WakePlan(source: .none, alarmTimes: [], reason: "No shift or wake-up appointment found", warnings: warnings)
+        return WakePlan(source: .none, alarmTimes: [], reason: "No shift or wake-up appointment found", warnings: warnings, missingLocations: missing)
     }
 
     static func format(_ date: Date) -> String {

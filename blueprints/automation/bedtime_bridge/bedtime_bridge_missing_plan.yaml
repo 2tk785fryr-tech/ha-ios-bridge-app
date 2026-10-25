@@ -1,0 +1,122 @@
+blueprint:
+  name: Bedtime Bridge missing plan
+  description: >
+    Warns you when a work day is coming but the Bedtime Bridge app hasn't planned your
+    alarms tonight, or its last attempt failed. It catches the quiet failures: the bedtime
+    shortcut never ran, the app errored, or calendar access was turned off.
+
+    At the check time it looks at your shift sensor's next_shift_start. If a shift starts
+    within the look-ahead window and the last plan is older than the max age (or ended in
+    an error), it sends one notification. Optionally it only checks while you're home.
+
+    Pair it with "Bedtime Bridge alarm event" or your own automation if you want something
+    louder than a notification.
+  domain: automation
+  source_url: https://github.com/2tk785fryr-tech/ha-ios-bridge-app/blob/main/blueprints/automation/bedtime_bridge/bedtime_bridge_missing_plan.yaml
+  input:
+    check_time:
+      name: Check at
+      description: When to check each night. Pick a time after you're normally in bed.
+      default: "23:30:00"
+      selector:
+        time: {}
+    last_plan_sensor:
+      name: Last plan sensor
+      description: "Expected: sensor.bedtime_bridge_last_plan"
+      selector:
+        entity:
+          domain: sensor
+          device_class: timestamp
+    shift_sensor:
+      name: Shift sensor
+      description: "Expected: sensor.current_shift. Read for its next_shift_start attribute."
+      selector:
+        entity:
+          domain: sensor
+    look_ahead_hours:
+      name: Shift starts within
+      default: 14
+      selector:
+        number:
+          min: 1
+          max: 36
+          unit_of_measurement: h
+    max_plan_age_hours:
+      name: Plan counts as tonight's if newer than
+      default: 6
+      selector:
+        number:
+          min: 1
+          max: 24
+          unit_of_measurement: h
+    presence_entities:
+      name: Only when these are home (optional)
+      description: Leave empty to check every night.
+      default: []
+      selector:
+        entity:
+          domain: person
+          multiple: true
+    notify_action:
+      name: Notify action
+      description: "Full action name, e.g. notify.mobile_app_mikes_iphone"
+      selector:
+        text: {}
+
+mode: single
+max_exceeded: silent
+
+triggers:
+  - trigger: time
+    at: !input check_time
+
+variables:
+  last_plan_sensor: !input last_plan_sensor
+  shift_sensor: !input shift_sensor
+  look_ahead_hours: !input look_ahead_hours
+  max_plan_age_hours: !input max_plan_age_hours
+  presence_entities: !input presence_entities
+  notify_action: !input notify_action
+  # Kept as text; each template converts with as_datetime, since variables don't hold datetimes.
+  next_shift_text: "{{ state_attr(shift_sensor, 'next_shift_start') or '' }}"
+  last_plan_text: "{{ states(last_plan_sensor) }}"
+  plan_error: "{{ state_attr(last_plan_sensor, 'error') or '' }}"
+
+conditions:
+  - alias: Home, or no presence filter
+    condition: template
+    value_template: >-
+      {{ presence_entities | count == 0
+         or expand(presence_entities) | selectattr('state', 'eq', 'home') | list | count > 0 }}
+  - alias: A shift starts soon
+    condition: template
+    value_template: >-
+      {% set next_shift = next_shift_text | as_datetime(none) %}
+      {{ next_shift is not none
+         and now() < next_shift < now() + timedelta(hours=look_ahead_hours | float(14)) }}
+  - alias: No fresh plan, or the last one failed
+    condition: template
+    value_template: >-
+      {% set last_plan = last_plan_text | as_datetime(none) %}
+      {{ last_plan is none
+         or now() - last_plan > timedelta(hours=max_plan_age_hours | float(6))
+         or plan_error != '' }}
+
+actions:
+  - action: "{{ notify_action }}"
+    data:
+      title: No alarms planned
+      message: >-
+        {% if plan_error != '' %}Bedtime Bridge couldn't plan: {{ plan_error }}.
+        {% else %}Bedtime Bridge hasn't planned tonight.{% endif %}
+        Your shift starts {{ next_shift_text | as_datetime | as_local | as_timestamp | timestamp_custom('%-I:%M %p') }}.
+        Tap to plan now.
+      data:
+        tag: bedtime_bridge_missing_plan
+        url: bedtimebridge://replan
+        push:
+          interruption-level: time-sensitive
+        actions:
+          - action: URI
+            title: Plan now
+            uri: bedtimebridge://replan

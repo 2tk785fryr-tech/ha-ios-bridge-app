@@ -14,6 +14,10 @@ CONF_SHIFT_TYPES = "shift_types"
 CONF_PRESENCE = "presence_entities"
 CONF_HOME_ONLY = "home_only"
 CONF_BEDTIME_HELPER = "bedtime_helper"
+CONF_NOTIFY = "notify_service"
+CONF_REPLAN_ALERT = "replan_alert"
+CONF_SAFETY_CAUSES = "safety_net_causes"
+CONF_SAFETY_MINUTES = "safety_net_minutes"
 
 # What Snooze/Stop on the phone do in Home Assistant.
 WAKE_BOTH = "both"
@@ -31,6 +35,10 @@ SUGGESTED = {
     CONF_WEATHER: "weather.forecast_home",
 }
 DEFAULT_SHIFT_TYPES = "Days, Swings"
+DEFAULT_SAFETY_CAUSES = ["calendar"]
+DEFAULT_SAFETY_MINUTES = 15
+# Opens the app and re-plans (the app registers this URL scheme).
+REPLAN_URL = "bedtimebridge://replan"
 
 # Settings the app reads back from Home Assistant: key -> (name, min, max, step).
 SETTINGS = {
@@ -51,6 +59,8 @@ MSG_STOPPED = "stopped"
 MSG_CANCELLED = "cancelled"
 MSG_LEAVE_BY = "leave_by"
 MSG_BEDTIME = "bedtime"
+MSG_PLAN_FAILED = "plan_failed"
+EVENT_PLAN_OUTDATED = "plan_outdated"
 
 # Presence states that count as home. Anything unknown/unavailable also counts as home, so a
 # glitching tracker never silently skips your morning routine while you're in bed.

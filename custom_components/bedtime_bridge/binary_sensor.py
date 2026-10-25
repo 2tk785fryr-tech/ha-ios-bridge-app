@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from homeassistant.components.binary_sensor import BinarySensorEntity
+from homeassistant.components.binary_sensor import BinarySensorDeviceClass, BinarySensorEntity
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_point_in_utc_time
@@ -17,7 +17,25 @@ from .entity import BedtimeBridgeEntity
 async def async_setup_entry(
     hass: HomeAssistant, entry: BedtimeBridgeConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    async_add_entities([SnoozingSensor(entry.runtime_data)])
+    async_add_entities([SnoozingSensor(entry.runtime_data), PlanOutdatedSensor(entry.runtime_data)])
+
+
+class PlanOutdatedSensor(BedtimeBridgeEntity, BinarySensorEntity):
+    """On when the shift override or next shift changed after tonight's plan."""
+
+    _attr_translation_key = "plan_outdated"
+    _attr_device_class = BinarySensorDeviceClass.PROBLEM
+
+    def __init__(self, bridge) -> None:
+        super().__init__(bridge, "plan_outdated")
+
+    @property
+    def is_on(self) -> bool:
+        return bool(self.bridge.state.get("plan_outdated"))
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str | None]:
+        return {"reason": self.bridge.state.get("outdated_reason")}
 
 
 class SnoozingSensor(BedtimeBridgeEntity, BinarySensorEntity):

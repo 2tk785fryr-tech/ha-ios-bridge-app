@@ -40,6 +40,11 @@ targets:
         NSAlarmKitUsageDescription: Bedtime Bridge sets your wake-up alarms for work shifts and appointments.
         NSLocationWhenInUseUsageDescription: If no home address is set, your current location is used as the starting point for drive times.
         NSSupportsLiveActivities: true
+        # bedtimebridge://replan opens the app and plans again (HA notifications use it).
+        CFBundleURLTypes:
+          - CFBundleURLName: com.example.BedtimeBridge
+            CFBundleURLSchemes:
+              - bedtimebridge
         UIAppFonts:
           - Sora-Light.ttf
           - Sora-Regular.ttf

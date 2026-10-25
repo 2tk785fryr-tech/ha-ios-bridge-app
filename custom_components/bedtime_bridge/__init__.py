@@ -26,6 +26,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: BedtimeBridgeConfigEntry
     bridge = BedtimeBridge(hass, entry)
     await bridge.async_load()
     entry.runtime_data = bridge
+    bridge.async_start()
 
     async def handle_webhook(hass: HomeAssistant, webhook_id: str, request: web.Request) -> web.Response:
         try:

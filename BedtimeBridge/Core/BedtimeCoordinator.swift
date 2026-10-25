@@ -21,10 +21,48 @@ final class BedtimeCoordinator {
         try await makePlan(settings: settings, now: now).plan
     }
 
+    /// Plans and sets alarms. If planning fails (calendar access off, an error), it falls
+    /// back to Home Assistant's next shift; if that isn't available either, it tells HA the
+    /// plan failed (so the missing-plan blueprint can warn you) and rethrows.
     func planAndSchedule(settings: BridgeSettings) async throws -> WakePlan {
-        let (plan, effective) = try await makePlan(settings: settings, now: .now)
-        try await apply(plan, settings: effective)
-        return plan
+        let result: (WakePlan, BridgeSettings)
+        do {
+            result = try await makePlan(settings: settings, now: .now)
+        } catch {
+            guard let fallback = await fallbackPlan(settings: settings, error: error) else {
+                await report(.planFailed, data: ["error": error.localizedDescription], settings: settings)
+                throw error
+            }
+            result = fallback
+        }
+        try await apply(result.0, settings: result.1)
+        return result.0
+    }
+
+    /// The work alarm from Home Assistant's next shift, for when the calendar can't be read.
+    private func fallbackPlan(settings phoneSettings: BridgeSettings, error: Error) async -> (WakePlan, BridgeSettings)? {
+        guard let link = HomeAssistantLinks.current(phoneSettings),
+              let context = try? await link.context(settings: phoneSettings),
+              let start = context.nextShiftStart else { return nil }
+        let settings = phoneSettings.applying(context.settings)
+        let now = Date.now
+        guard start < now.addingTimeInterval(Double(settings.lookAheadHours) * 3600) else { return nil }
+        let type = context.nextShiftType ?? ""
+        let rule = settings.shiftRules.first { $0.keyword.caseInsensitiveCompare(type) == .orderedSame }
+        let shift = ShiftCandidate(
+            title: type.isEmpty ? "Shift" : type,
+            start: start,
+            wakeMinutesBefore: rule?.wakeMinutesBefore ?? settings.shiftRules.map(\.wakeMinutesBefore).max() ?? 60,
+            cause: rule?.keyword ?? (type.isEmpty ? "Days" : type)
+        )
+        var plan = WakePlanner.plan(shift: shift, appointments: [], settings: settings, now: now)
+        guard plan.hasAlarm else { return nil }
+        plan.atHome = context.atHome
+        plan.warnings.insert(
+            "Couldn't read your calendar (\(error.localizedDescription)), so this uses Home Assistant's next shift. Appointments weren't checked.",
+            at: 0
+        )
+        return (plan, settings)
     }
 
     /// Returns the plan and the settings it was made with (the phone's settings with any
@@ -131,7 +169,7 @@ final class BedtimeCoordinator {
             try alarms.cancelAll()
         }
 
-        if settings.leaveReminderEnabled, let appointment = plan.appointment, plan.source == .appointment {
+        if settings.leaveReminderEnabled, let appointment = plan.appointment, plan.source == .appointment, appointment.hasLocation {
             await leaveReminder.schedule(
                 PendingTrip(
                     title: appointment.title,
@@ -153,7 +191,9 @@ final class BedtimeCoordinator {
                 alarmTimes: plan.alarmTimes,
                 cause: plan.cause,
                 label: plan.label,
-                leaveBy: plan.source == .appointment ? plan.appointment?.leaveBy(bufferMinutes: settings.arrivalBufferMinutes) : nil,
+                leaveBy: plan.source == .appointment && plan.appointment?.hasLocation == true
+                    ? plan.appointment?.leaveBy(bufferMinutes: settings.arrivalBufferMinutes)
+                    : nil,
                 alarmStyle: settings.alarmStyle.rawValue
             )
         }
@@ -164,31 +204,87 @@ final class BedtimeCoordinator {
         await report(.planned, data: payload, settings: settings)
     }
 
+    // MARK: Missing locations
+
+    private static let noLocationKey = "noLocationNeededEventIDs"
+
+    /// Events you said don't need a location (a call, working from home).
+    private var noLocationNeeded: Set<String> {
+        get { Set(UserDefaults.standard.stringArray(forKey: Self.noLocationKey) ?? []) }
+        set { UserDefaults.standard.set(Array(newValue), forKey: Self.noLocationKey) }
+    }
+
+    func markNoLocationNeeded(_ appointment: AppointmentCandidate) {
+        guard let id = appointment.eventID else { return }
+        noLocationNeeded.insert(id)
+    }
+
+    /// Saves the location on the calendar event, so the next plan gets a real drive time.
+    func addLocation(_ location: String, to appointment: AppointmentCandidate) throws {
+        let trimmed = location.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let id = appointment.eventID, !trimmed.isEmpty else { return }
+        try calendar.setLocation(trimmed, eventID: id)
+    }
+
+    // MARK: Test alarm
+
+    private static let testAlarmKey = "testAlarmID"
+
+    private var testAlarmID: UUID? {
+        get { UserDefaults.standard.string(forKey: Self.testAlarmKey).flatMap(UUID.init) }
+        set { UserDefaults.standard.set(newValue?.uuidString, forKey: Self.testAlarmKey) }
+    }
+
+    /// One alarm in two minutes that runs your real snooze and stop routines, so the whole
+    /// chain (alarm → app → Home Assistant → lights) can be checked in the afternoon.
+    /// Tonight's alarms and plan are left alone.
+    func scheduleTestAlarm(settings phoneSettings: BridgeSettings) async throws -> Date {
+        let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
+        if let old = testAlarmID { alarms.cancel(old) }
+        let time = Date.now.addingTimeInterval(120)
+        testAlarmID = try await alarms.scheduleTest(at: time, snoozeMinutes: settings.snoozeMinutes)
+        return time
+    }
+
+    /// Alarms set for real (the test alarm left out).
+    func scheduledAlarmTimes() -> [Date] {
+        alarms.scheduledAlarmTimes(excluding: testAlarmID)
+    }
+
     // MARK: Alarm buttons (app alarms only)
 
     func alarmSnoozed(id: UUID, settings phoneSettings: BridgeSettings) async {
         let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
         alarms.snooze(id)
+        if id == testAlarmID {
+            await report(.snoozed, data: ["test": true], settings: settings)
+            return
+        }
         let ringsAgain = Date.now.addingTimeInterval(Double(settings.snoozeMinutes) * 60)
         updateWidget { snapshot in
             snapshot.snoozedUntil = ringsAgain
-            snapshot.alarmTimes = alarms.scheduledAlarmTimes()
+            snapshot.alarmTimes = scheduledAlarmTimes()
         }
         await report(.snoozed, data: [
             "rings_again": Self.iso(ringsAgain),
             "alarm_time": Self.iso(ringsAgain),
             "alarm_cause": lastCause,
-            "alarm_times": alarms.scheduledAlarmTimes().map(Self.iso),
+            "alarm_times": scheduledAlarmTimes().map(Self.iso),
         ], settings: settings)
     }
 
     func alarmStopped(id: UUID, settings phoneSettings: BridgeSettings) async {
         let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
         alarms.stop(id)
+        if id == testAlarmID {
+            testAlarmID = nil
+            await report(.stopped, data: ["test": true], settings: settings)
+            return
+        }
         if settings.stopCancelsRemaining {
             alarms.cancelAll(except: id)
         }
-        let remaining = alarms.scheduledAlarmTimes().filter { $0 > .now }
+        let remaining = scheduledAlarmTimes().filter { $0 > .now }
         updateWidget { snapshot in
             snapshot.snoozedUntil = nil
             snapshot.alarmTimes = remaining
@@ -264,12 +360,27 @@ final class BedtimeCoordinator {
     }
 
     private func appointmentCandidates(from now: Date, to end: Date, settings: BridgeSettings) async -> [AppointmentCandidate] {
-        let events = calendar.events(from: now, to: end, calendarIDs: settings.appointmentCalendarIDs)
-            .filter { event in
-                WakePlanner.notesRequestWakeUp(event.notes, keyword: settings.appointmentKeyword)
-                    && !(event.location ?? "").trimmingCharacters(in: .whitespaces).isEmpty
-            }
-        guard !events.isEmpty else { return [] }
+        let allEvents = calendar.events(from: now, to: end, calendarIDs: settings.appointmentCalendarIDs)
+            .filter { WakePlanner.notesRequestWakeUp($0.notes, keyword: settings.appointmentKeyword) }
+        let hasPlace = { (event: EKEvent) in !(event.location ?? "").trimmingCharacters(in: .whitespaces).isEmpty }
+
+        // No location: no drive, just be ready by arrive-by time. Ask whether it should have one
+        // unless you've already said it doesn't.
+        let skipAsking = noLocationNeeded
+        var candidates: [AppointmentCandidate] = allEvents.filter { !hasPlace($0) }.map { event in
+            AppointmentCandidate(
+                title: event.title ?? "Appointment",
+                start: event.startDate,
+                location: "",
+                travelSeconds: 0,
+                eventID: event.eventIdentifier,
+                hasLocation: false,
+                askAboutLocation: !skipAsking.contains(event.eventIdentifier ?? "")
+            )
+        }
+
+        let events = allEvents.filter(hasPlace)
+        guard !events.isEmpty else { return candidates }
 
         // A missing origin or API key becomes the fallback reason on each appointment.
         let route: Result<(MKMapItem, DriveTimeProvider), Error>
@@ -279,7 +390,6 @@ final class BedtimeCoordinator {
             route = .failure(error)
         }
 
-        var candidates: [AppointmentCandidate] = []
         for event in events {
             candidates.append(await appointmentCandidate(for: event, route: route, settings: settings))
         }
@@ -295,7 +405,8 @@ final class BedtimeCoordinator {
             title: event.title ?? "Appointment",
             start: event.startDate,
             location: event.location ?? "",
-            travelSeconds: Double(settings.fallbackTravelMinutes) * 60
+            travelSeconds: Double(settings.fallbackTravelMinutes) * 60,
+            eventID: event.eventIdentifier
         )
         do {
             let (origin, provider) = try route.get()

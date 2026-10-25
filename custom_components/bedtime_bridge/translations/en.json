@@ -14,13 +14,20 @@
           "shift_override_entity": "Shift override",
           "shift_sensor_entity": "Shift sensor (checks next_shift_start)",
           "weather_entity": "Weather forecast",
-          "shift_types": "Shift types (comma separated, as they appear in calendar titles)"
+          "shift_types": "Shift types (comma separated, as they appear in calendar titles)",
+          "safety_net_causes": "Safety-net times for",
+          "safety_net_minutes": "Safety-net margin",
+          "notify_service": "Notify action for your phone",
+          "replan_alert": "Tell me when my plan goes out of date"
         },
         "data_description": {
           "wake_action": "Helpers: turn on the entities below, for blueprints that watch them (Wake Snooze Fade, Wake Sequence). Events: fire a bedtime_bridge event for automations and blueprints to trigger on. Both: do both.",
           "shift_types": "Each one gets a lead-time setting, and its name is sent as the alarm cause.",
           "home_only": "Snooze, stop and Start Bedtime Routine skip the helpers and wake events while you're away. If your location is unknown, you count as home.",
-          "bedtime_helper": "Turned on by the app's Start Bedtime Routine action (e.g. input_boolean.bedtime_routine)."
+          "bedtime_helper": "Turned on by the app's Start Bedtime Routine action (e.g. input_boolean.bedtime_routine).",
+          "safety_net_causes": "Publishes early/deadline/late times around the wake-up time for these alarm causes, for a Wake Deadline Backstop instance. Shift mornings already have your own rung sensors, so the default is calendar only.",
+          "notify_service": "e.g. notify.mobile_app_mikes_iphone. Used for the re-plan notification.",
+          "replan_alert": "If the shift override or your next shift changes after you planned (and before you wake), send a notification with a Re-plan button."
         }
       },
       "pair": {
@@ -47,13 +54,20 @@
           "shift_override_entity": "Shift override",
           "shift_sensor_entity": "Shift sensor (checks next_shift_start)",
           "weather_entity": "Weather forecast",
-          "shift_types": "Shift types (comma separated, as they appear in calendar titles)"
+          "shift_types": "Shift types (comma separated, as they appear in calendar titles)",
+          "safety_net_causes": "Safety-net times for",
+          "safety_net_minutes": "Safety-net margin",
+          "notify_service": "Notify action for your phone",
+          "replan_alert": "Tell me when my plan goes out of date"
         },
         "data_description": {
           "wake_action": "Helpers: turn on the entities below, for blueprints that watch them (Wake Snooze Fade, Wake Sequence). Events: fire a bedtime_bridge event for automations and blueprints to trigger on. Both: do both.",
           "shift_types": "Each one gets a lead-time setting, and its name is sent as the alarm cause.",
           "home_only": "Snooze, stop and Start Bedtime Routine skip the helpers and wake events while you're away. If your location is unknown, you count as home.",
-          "bedtime_helper": "Turned on by the app's Start Bedtime Routine action (e.g. input_boolean.bedtime_routine)."
+          "bedtime_helper": "Turned on by the app's Start Bedtime Routine action (e.g. input_boolean.bedtime_routine).",
+          "safety_net_causes": "Publishes early/deadline/late times around the wake-up time for these alarm causes, for a Wake Deadline Backstop instance. Shift mornings already have your own rung sensors, so the default is calendar only.",
+          "notify_service": "e.g. notify.mobile_app_mikes_iphone. Used for the re-plan notification.",
+          "replan_alert": "If the shift override or your next shift changes after you planned (and before you wake), send a notification with a Re-plan button."
         }
       }
     }
@@ -95,11 +109,26 @@
       },
       "last_event": {
         "name": "Last event"
+      },
+      "last_plan": {
+        "name": "Last plan"
+      },
+      "rung_early": {
+        "name": "Safety net early"
+      },
+      "rung_deadline": {
+        "name": "Safety net deadline"
+      },
+      "rung_late": {
+        "name": "Safety net late"
       }
     },
     "binary_sensor": {
       "snoozing": {
         "name": "Snoozing"
+      },
+      "plan_outdated": {
+        "name": "Plan out of date"
       }
     },
     "number": {

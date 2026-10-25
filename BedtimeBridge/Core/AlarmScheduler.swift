@@ -20,8 +20,8 @@ final class AlarmScheduler {
     }
 
     /// Alarms this app currently has scheduled, earliest first.
-    func scheduledAlarmTimes() -> [Date] {
-        scheduledAlarms().map(\.date)
+    func scheduledAlarmTimes(excluding excluded: UUID? = nil) -> [Date] {
+        scheduledAlarms().filter { $0.id != excluded }.map(\.date)
     }
 
     func scheduledAlarms() -> [(id: UUID, date: Date)] {
@@ -70,6 +70,35 @@ final class AlarmScheduler {
             _ = try await manager.schedule(id: id, configuration: configuration)
         }
     }
+
+    /// One alarm a couple of minutes out, alongside tonight's alarms (it doesn't replace them).
+    func scheduleTest(at time: Date, snoozeMinutes: Int) async throws -> UUID {
+        try await ensureAccess()
+        let alert = AlarmPresentation.Alert(
+            title: "Test alarm",
+            stopButton: AlarmButton(text: "Stop", textColor: .white, systemImageName: "stop.circle"),
+            secondaryButton: AlarmButton(text: "Snooze", textColor: .white, systemImageName: "zzz"),
+            secondaryButtonBehavior: .countdown
+        )
+        let attributes = AlarmAttributes<WakeAlarmMetadata>(
+            presentation: AlarmPresentation(alert: alert, countdown: AlarmPresentation.Countdown(title: "Snoozing", pauseButton: nil), paused: nil),
+            metadata: WakeAlarmMetadata(cause: "test"),
+            tintColor: Theme.accent
+        )
+        let id = UUID()
+        let configuration = AlarmManager.AlarmConfiguration<WakeAlarmMetadata>(
+            countdownDuration: Alarm.CountdownDuration(preAlert: nil, postAlert: TimeInterval(max(snoozeMinutes, 1) * 60)),
+            schedule: .fixed(time),
+            attributes: attributes,
+            stopIntent: StopWakeAlarmIntent(alarmID: id),
+            secondaryIntent: SnoozeWakeAlarmIntent(alarmID: id),
+            sound: .default
+        )
+        _ = try await manager.schedule(id: id, configuration: configuration)
+        return id
+    }
+
+    func cancel(_ id: UUID) { try? manager.cancel(id: id) }
 
     func cancelAll() throws {
         for alarm in try manager.alarms {

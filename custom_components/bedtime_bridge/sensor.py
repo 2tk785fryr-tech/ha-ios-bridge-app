@@ -92,6 +92,25 @@ SENSORS = (
         value=lambda s: s.get("snooze_count") or 0,
     ),
     BridgeSensorDescription(
+        key="last_plan",
+        translation_key="last_plan",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        value=lambda s: _time(s.get("last_plan")),
+        attributes=lambda s: {"error": s.get("plan_error")},
+    ),
+    *(
+        BridgeSensorDescription(
+            key=f"rung_{rung}",
+            translation_key=f"rung_{rung}",
+            device_class=SensorDeviceClass.TIMESTAMP,
+            value=lambda s, rung=rung: _time(s.get(f"rung_{rung}")),
+            # Wake Deadline Backstop gates on its shift sensor's effective_shift attribute;
+            # point a second instance's "Shift sensor" at the deadline sensor and keep Days.
+            attributes=lambda s, rung=rung: {"effective_shift": "Days" if s.get(f"rung_{rung}") else None},
+        )
+        for rung in ("early", "deadline", "late")
+    ),
+    BridgeSensorDescription(
         key="last_event",
         translation_key="last_event",
         icon="mdi:history",

@@ -9,6 +9,7 @@ enum BridgeError: LocalizedError {
     case driveTimeService(String, Int, String)
     case homeAssistant(Int, String)
     case homeAssistantNotSetUp
+    case eventNotFound
 
     var errorDescription: String? {
         switch self {
@@ -28,6 +29,8 @@ enum BridgeError: LocalizedError {
             "Home Assistant returned an error (\(status)): \(body)"
         case .homeAssistantNotSetUp:
             "Connect Home Assistant in Bedtime Bridge's settings first."
+        case .eventNotFound:
+            "That calendar event couldn't be found. It may have been moved or deleted."
         }
     }
 }
@@ -44,6 +47,13 @@ final class CalendarService {
         default:
             throw BridgeError.calendarAccessDenied
         }
+    }
+
+    /// Fills in a location the event was saved without (you confirmed it should have one).
+    func setLocation(_ location: String, eventID: String) throws {
+        guard let event = store.event(withIdentifier: eventID) else { throw BridgeError.eventNotFound }
+        event.location = location
+        try store.save(event, span: .thisEvent)
     }
 
     func eventCalendars() -> [EKCalendar] {

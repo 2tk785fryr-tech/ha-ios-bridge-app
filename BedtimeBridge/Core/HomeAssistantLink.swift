@@ -4,6 +4,8 @@ import Foundation
 struct HomeAssistantContext {
     var shiftOverride: String?
     var nextShiftStart: Date?
+    /// "Days", "Swings": used for the fallback alarm when the calendar can't be read.
+    var nextShiftType: String? = nil
     /// nil when Home Assistant didn't say (no presence entity set up).
     var atHome: Bool?
     /// Settings adjusted in HA (Bedtime Bridge integration only); see `BridgeSettings.applying`.
@@ -14,6 +16,7 @@ struct HomeAssistantContext {
 enum BridgeEvent: String {
     case planned, snoozed, stopped, cancelled
     case leaveBy = "leave_by"
+    case planFailed = "plan_failed"
 }
 
 /// The two ways the app can talk to Home Assistant: the Bedtime Bridge integration
@@ -76,6 +79,7 @@ struct IntegrationLink: HomeAssistantLink {
         return HomeAssistantContext(
             shiftOverride: reply["shift_override"] as? String,
             nextShiftStart: (reply["next_shift_start"] as? String).flatMap(Self.parseDate),
+            nextShiftType: reply["next_shift_type"] as? String,
             atHome: reply["at_home"] as? Bool,
             settings: reply["settings"] as? [String: Any] ?? [:]
         )
@@ -149,7 +153,12 @@ struct TokenLink: HomeAssistantLink {
         let override = try await client.state(of: settings.shiftOverrideEntity).state
         let sensor = try? await client.state(of: settings.shiftSensorEntity)
         let start = (sensor?.attributes["next_shift_start"] as? String).flatMap { ISO8601DateFormatter().date(from: $0) }
-        return HomeAssistantContext(shiftOverride: override, nextShiftStart: start, atHome: await isHome(settings))
+        return HomeAssistantContext(
+            shiftOverride: override,
+            nextShiftStart: start,
+            nextShiftType: sensor?.attributes["next_shift_type"] as? String,
+            atHome: await isHome(settings)
+        )
     }
 
     func startBedtime(settings: BridgeSettings) async throws -> (started: Bool, atHome: Bool) {
@@ -216,7 +225,7 @@ extension WakePlan {
         ]
         if let first = firstAlarm { body["alarm_time"] = iso.string(from: first) }
         if let wakeTime { body["wake_time"] = iso.string(from: wakeTime) }
-        if let appointment, source == .appointment {
+        if let appointment, source == .appointment, appointment.hasLocation {
             let leaveBy = iso.string(from: appointment.leaveBy(bufferMinutes: settings.arrivalBufferMinutes))
             body["leave_by"] = leaveBy
             body["drive_minutes"] = Int((appointment.travelSeconds / 60).rounded())
