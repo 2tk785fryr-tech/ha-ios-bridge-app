@@ -86,26 +86,38 @@ enum PlanAdjustments {
     }
 
     /// Looks at every forecast hour overlapping `window` (wake-up until you need to arrive).
+    /// The extra time for the worst weather between waking and arriving. Each ticked
+    /// condition adds its own minutes, or `extraMinutes` when it has none; when several turn
+    /// up, the largest wins (snow at 30 beats wind at 10, it doesn't add to 40).
+    /// `minutes["freezing"]` is the amount for rain or snow at or below `freezingAt`.
     static func weather(
         forecast: [ForecastHour],
         window: ClosedRange<Date>,
         conditions: Set<String>,
         freezingAt: Double?,
-        extraMinutes: Int
+        extraMinutes: Int,
+        minutes: [String: Int] = [:]
     ) -> WeatherAdjustment? {
-        guard extraMinutes > 0 else { return nil }
         let precipitation: Set<String> = ["rainy", "pouring", "lightning-rainy", "snowy", "snowy-rainy", "hail"]
+        var worst: WeatherAdjustment?
         for hour in forecast.sorted(by: { $0.start < $1.start }) {
             let end = hour.start.addingTimeInterval(3600)
             guard end > window.lowerBound, hour.start <= window.upperBound else { continue }
             let time = hour.start.formatted(date: .omitted, time: .shortened)
+            var found: [WeatherAdjustment] = []
             if conditions.contains(hour.condition) {
-                return WeatherAdjustment(minutes: extraMinutes, reason: "\(hour.condition) at \(time)")
+                found.append(WeatherAdjustment(minutes: minutes[hour.condition] ?? extraMinutes, reason: "\(hour.condition) at \(time)"))
             }
             if let freezingAt, let temperature = hour.temperature, temperature <= freezingAt, precipitation.contains(hour.condition) {
-                return WeatherAdjustment(minutes: extraMinutes, reason: "freezing \(hour.condition) at \(time)")
+                found.append(WeatherAdjustment(minutes: minutes[Self.freezing] ?? extraMinutes, reason: "freezing \(hour.condition) at \(time)"))
+            }
+            for candidate in found where candidate.minutes > (worst?.minutes ?? 0) {
+                worst = candidate
             }
         }
-        return nil
+        return worst
     }
+
+    /// The key for "rain or snow at freezing" in the per-condition minutes.
+    static let freezing = "freezing"
 }

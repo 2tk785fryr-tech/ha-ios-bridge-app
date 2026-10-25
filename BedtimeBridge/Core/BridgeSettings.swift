@@ -84,6 +84,9 @@ struct BridgeSettings: Codable, Equatable {
     var arrivalBufferMinutes = 10
     /// Arrive this long before a shift starts.
     var workArrivalBufferMinutes = 10
+    /// Move a shift's alarms earlier when the drive (or bad weather) would leave less than
+    /// the get-ready time before leaving.
+    var wakeEarlyToGetReady = false
     var driveTimeSource: DriveTimeSource = .apple
     /// Google only: plan for a bad-traffic day instead of a typical one.
     var googlePessimisticTraffic = false
@@ -135,12 +138,29 @@ struct BridgeSettings: Codable, Equatable {
 
     // MARK: Weather
 
+    /// Where the forecast comes from. Open-Meteo works without Home Assistant.
+    var weatherSource: WeatherSource = .homeAssistant
     var weatherEntity = "weather.forecast_home"
-    /// Added when the forecast between waking and arriving matches a bad-weather condition.
+    /// Added when the forecast between waking and arriving matches a bad-weather condition
+    /// that has no amount of its own.
     var weatherExtraMinutes = 15
     var badWeatherConditions: Set<String> = ["pouring", "lightning-rainy", "snowy", "snowy-rainy", "hail"]
+    /// Conditions that need more (or less) than the default, e.g. ["snowy": 30].
+    /// "freezing" is rain or snow at or below freezing.
+    var weatherConditionMinutes: [String: Int] = [:]
     /// Also count any rain or snow at or below freezing.
     var addTimeWhenFreezing = true
+
+    /// Minutes for a condition: its own amount, or the default.
+    func weatherMinutes(for condition: String) -> Int {
+        weatherConditionMinutes[condition] ?? weatherExtraMinutes
+    }
+
+    /// Whether any ticked condition would add time, so the forecast is worth fetching.
+    var checksWeather: Bool {
+        badWeatherConditions.contains { weatherMinutes(for: $0) > 0 }
+            || (addTimeWhenFreezing && weatherMinutes(for: PlanAdjustments.freezing) > 0)
+    }
 
     // MARK: Leave-by reminder
 
@@ -230,6 +250,20 @@ final class SettingsStore {
     private func save() {
         if let data = try? JSONEncoder().encode(settings) {
             defaults.set(data, forKey: Self.key)
+        }
+    }
+}
+
+enum WeatherSource: String, Codable, CaseIterable, Identifiable {
+    case homeAssistant
+    case openMeteo
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .homeAssistant: "Home Assistant"
+        case .openMeteo: "Open-Meteo (free)"
         }
     }
 }

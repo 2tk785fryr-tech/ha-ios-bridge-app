@@ -281,7 +281,9 @@ extension WakePlan {
             "label": label,
             "reason": reason,
             "alarm_times": alarmTimes.map { iso.string(from: $0) },
-            "warnings": warnings,
+            "warnings": warnings + [getReadyShortfall(settings: settings).map {
+                "Only \($0.minutes) min to get ready before leaving at \(WakePlanner.format($0.leaveBy)); you've set \(settings.getReadyMinutes)."
+            }].compactMap { $0 },
             "weather_extra_minutes": weather?.minutes ?? 0,
             "alarm_style": settings.alarmStyle.rawValue,
         ]

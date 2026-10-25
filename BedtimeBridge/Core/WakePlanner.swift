@@ -127,6 +127,26 @@ struct WakePlan: Equatable {
     /// The drive to the shift, when its calendar event has a location.
     var commute: Commute? = nil
 
+    /// A shift whose alarm leaves less than the get-ready time before you have to leave:
+    /// how many minutes there are, and when to wake to have the full time.
+    func getReadyShortfall(settings: BridgeSettings) -> (minutes: Int, leaveBy: Date, earlierWake: Date)? {
+        guard source == .shift, let wake = wakeTime, let leaveBy = leaveBy(settings: settings) else { return nil }
+        let wanted = Double(settings.getReadyMinutes) * 60
+        let available = leaveBy.timeIntervalSince(wake)
+        guard available < wanted else { return nil }
+        return (Int((available / 60).rounded(.down)), leaveBy, leaveBy.addingTimeInterval(-wanted))
+    }
+
+    /// The same alarm series, moved so the wake-up time is `wake`.
+    func waking(at wake: Date) -> WakePlan {
+        guard let current = wakeTime else { return self }
+        let shift = wake.timeIntervalSince(current)
+        var plan = self
+        plan.wakeTime = wake
+        plan.alarmTimes = alarmTimes.map { $0.addingTimeInterval(shift) }
+        return plan
+    }
+
     /// When to leave home: for an appointment with a place, or a shift with its drive worked out.
     func leaveBy(settings: BridgeSettings) -> Date? {
         switch source {
