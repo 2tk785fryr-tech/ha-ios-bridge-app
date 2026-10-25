@@ -324,7 +324,16 @@ class BedtimeBridge:
         self.state["series_start"] = times[0].isoformat() if times else None
         self._set_rungs()
         await self._sync_sleep_in()
-        self._event(MSG_PLANNED)
+        # The phone reports a plan only once its alarms are scheduled, so with app alarms this
+        # means they're really set; in Clock app mode the shortcut still has to make them.
+        has_alarm = data.get("has_alarm", bool(data.get("alarm_times")))
+        if not has_alarm:
+            outcome = "no_alarm"
+        elif data.get("alarm_style") == "clock":
+            outcome = "planned_for_clock"
+        else:
+            outcome = "alarms_set"
+        self._event(MSG_PLANNED, last_event=outcome, alarms_set=outcome == "alarms_set")
 
     async def _up_check(self, data: dict[str, Any]) -> dict[str, Any]:
         """Are you really up? The phone asks on Stop before cancelling the rest of the alarms."""
@@ -818,8 +827,10 @@ class BedtimeBridge:
             return False
         return True
 
-    def _event(self, kind: str, **extra: Any) -> None:
-        self.state["last_event"] = kind
+    def _event(self, kind: str, last_event: str | None = None, **extra: Any) -> None:
+        """Fires a bedtime_bridge event of type `kind`; Last event shows `last_event` when
+        it says more than the type (a plan: alarms_set, planned_for_clock or no_alarm)."""
+        self.state["last_event"] = last_event or kind
         self.state["last_event_time"] = dt_util.utcnow().isoformat()
         # Snooze/stop events are skipped with "helpers only" and while you're away (so event
         # automations don't light an empty house); plan/cancel/leave-by/bedtime always fire.

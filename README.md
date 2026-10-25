@@ -275,7 +275,7 @@ private. Deleting the integration also deletes its Nabu Casa cloudhook.
 | `sensor.bedtime_bridge_alarm_cause` | `Days` / `Swings` / `calendar` / `automade` / `noalarm` |
 | `sensor.bedtime_bridge_reason` | "Dentist at 7:00 AM. Leave by 6:26 AM (…)". Attribute: warnings |
 | `sensor.bedtime_bridge_leave_by`, `_drive_time`, `_bad_weather_extra_time` | Appointment and weather details |
-| `sensor.bedtime_bridge_snooze_count`, `_last_event` | This morning's snoozes. Last event: planned/snoozed/stopped/cancelled/leave_by |
+| `sensor.bedtime_bridge_snooze_count`, `_last_event` | This morning's snoozes. Last event: after a plan, `alarms_set` (the app's alarms are scheduled), `planned_for_clock` (your shortcut makes Clock alarms) or `no_alarm`; otherwise the latest event (snoozed, stopped, cancelled, leave_by, …). *Preview plan* sends nothing. |
 | `binary_sensor.bedtime_bridge_snoozing` | On from a snooze until the alarm rings again |
 | `binary_sensor.bedtime_bridge_plan_out_of_date` | The shift override or next shift changed after you planned. Attribute: reason |
 | `sensor.bedtime_bridge_last_plan` | When the phone last planned. Attribute: error, if the last attempt failed |
@@ -284,7 +284,7 @@ private. Deleting the integration also deletes its Nabu Casa cloudhook.
 
 **Events:** `bedtime_bridge` with `type` (`planned`, `snoozed`, `stopped`, `cancelled`,
 `leave_by`) plus `alarm_cause`, `alarm_time`, `alarm_times`, `label`, `leave_by` and
-`snooze_count`. Also fired: `bedtime`, `plan_failed` (with `error`), `plan_outdated`
+`snooze_count`. `planned` also carries `alarms_set` (true only when the app's alarms are scheduled). Also fired: `bedtime`, `plan_failed` (with `error`), `plan_outdated`
 (with `reason`), `skipped` / `unskipped`, `temporary_snoozed` / `temporary_stopped`,
 `temporary_rearmed`, `bedtime_undone` and `bedtime_rerun`. Test alarms add `test: true`. With *helpers only*, or while you're away,
 snoozed/stopped aren't fired.
