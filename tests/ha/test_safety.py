@@ -203,3 +203,44 @@ async def test_missing_plan_blueprint_ignores_afternoon_naps(hass: HomeAssistant
     await hass.services.async_call("automation", "trigger", {"entity_id": "automation.missing_plan", "skip_condition": False}, blocking=True)
     await hass.async_block_till_done()
     assert notify == []
+
+
+# MARK: Are you really up?
+
+async def up_reply(hass, hass_client_no_auth):
+    return (await send(hass_client_no_auth, {"type": "up_check", "data": {}}))["up"]
+
+
+async def test_still_in_bed_is_not_up(hass, hass_client_no_auth):
+    hass.states.async_set("binary_sensor.bed", "on")
+    hass.states.async_set("input_boolean.exited", "off")
+    await setup(hass, bed_sensor="binary_sensor.bed", exit_latch="input_boolean.exited")
+    assert await up_reply(hass, hass_client_no_auth) is False
+
+
+async def test_door_opened_is_up(hass, hass_client_no_auth):
+    hass.states.async_set("binary_sensor.bed", "on")  # bed may still read occupied
+    hass.states.async_set("input_boolean.exited", "on")
+    await setup(hass, bed_sensor="binary_sensor.bed", exit_latch="input_boolean.exited")
+    assert await up_reply(hass, hass_client_no_auth) is True
+
+
+async def test_brief_bed_dropout_is_not_up(hass, hass_client_no_auth, freezer):
+    hass.states.async_set("input_boolean.exited", "off")
+    await setup(hass, bed_sensor="binary_sensor.bed", exit_latch="input_boolean.exited")
+    hass.states.async_set("binary_sensor.bed", "off")
+    freezer.tick(timedelta(seconds=19))
+    assert await up_reply(hass, hass_client_no_auth) is False
+    freezer.tick(timedelta(seconds=60))
+    assert await up_reply(hass, hass_client_no_auth) is True
+
+
+async def test_unavailable_bed_is_not_up(hass, hass_client_no_auth):
+    hass.states.async_set("binary_sensor.bed", "unavailable")
+    await setup(hass, bed_sensor="binary_sensor.bed")
+    assert await up_reply(hass, hass_client_no_auth) is False
+
+
+async def test_no_sensors_is_unknown(hass, hass_client_no_auth):
+    await setup(hass)
+    assert await up_reply(hass, hass_client_no_auth) is None

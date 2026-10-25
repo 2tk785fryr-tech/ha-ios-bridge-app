@@ -14,7 +14,9 @@ from homeassistant.helpers.network import NoURLAvailableError
 
 from .const import shift_types as parse_shift_types
 from .const import (
+    CONF_BED_SENSOR,
     CONF_BEDTIME_HELPER,
+    CONF_EXIT_LATCH,
     CONF_HOME_ONLY,
     CONF_NOTIFY,
     CONF_PRESENCE,
@@ -54,6 +56,8 @@ OPTION_KEYS = [
     CONF_SAFETY_MINUTES,
     CONF_NOTIFY,
     CONF_REPLAN_ALERT,
+    CONF_BED_SENSOR,
+    CONF_EXIT_LATCH,
 ]
 
 
@@ -108,6 +112,8 @@ def _schema(hass: HomeAssistant, current: dict[str, Any]) -> vol.Schema:
                 CONF_SAFETY_MINUTES, default=current.get(CONF_SAFETY_MINUTES) or DEFAULT_SAFETY_MINUTES
             ): selector.NumberSelector(selector.NumberSelectorConfig(min=5, max=60, step=5, unit_of_measurement="min")),
             vol.Optional(CONF_NOTIFY, description=notify_suggestion()): selector.TextSelector(),
+            vol.Optional(CONF_BED_SENSOR, description=suggested(CONF_BED_SENSOR)): entity(["binary_sensor"]),
+            vol.Optional(CONF_EXIT_LATCH, description=suggested(CONF_EXIT_LATCH)): entity(["input_boolean", "binary_sensor"]),
             vol.Required(CONF_REPLAN_ALERT, default=True if replan_alert is None else replan_alert): selector.BooleanSelector(),
         }
     )

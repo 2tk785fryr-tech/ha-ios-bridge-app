@@ -18,7 +18,9 @@
           "safety_net_causes": "Safety-net times for",
           "safety_net_minutes": "Safety-net margin",
           "notify_service": "Notify action for your phone",
-          "replan_alert": "Tell me when my plan goes out of date"
+          "replan_alert": "Tell me when my plan goes out of date",
+          "bed_sensor": "Bed sensor (your side)",
+          "exit_latch": "Left-the-bedroom helper"
         },
         "data_description": {
           "wake_action": "Helpers: turn on the entities below, for blueprints that watch them (Wake Snooze Fade, Wake Sequence). Events: fire a bedtime_bridge event for automations and blueprints to trigger on. Both: do both.",
@@ -27,7 +29,9 @@
           "bedtime_helper": "Turned on by the app's Start Bedtime Routine action (e.g. input_boolean.bedtime_routine).",
           "safety_net_causes": "Publishes safety-net times after the last alarm for these alarm causes, for a Wake Deadline Backstop instance: early at the last alarm, deadline (out of bed) one margin later, late (left the room) two margins later. Shift mornings already have your own rung sensors, so the default is calendar only.",
           "notify_service": "e.g. notify.mobile_app_mikes_iphone. Used for the re-plan notification.",
-          "replan_alert": "If the shift override or your next shift changes after you planned (and before you wake), send a notification with a Re-plan button."
+          "replan_alert": "If the shift override or your next shift changes after you planned (and before you wake), send a notification with a Re-plan button.",
+          "bed_sensor": "With the helper below, tells the app whether you're really up when you stop an alarm, so it keeps the later alarms if you're still in bed. Empty only counts after a minute (the sensor drops out briefly).",
+          "exit_latch": "e.g. input_boolean.bedroom_exited_today, set by Bedroom Exit Latch when you open the bedroom door."
         }
       },
       "pair": {
@@ -58,7 +62,9 @@
           "safety_net_causes": "Safety-net times for",
           "safety_net_minutes": "Safety-net margin",
           "notify_service": "Notify action for your phone",
-          "replan_alert": "Tell me when my plan goes out of date"
+          "replan_alert": "Tell me when my plan goes out of date",
+          "bed_sensor": "Bed sensor (your side)",
+          "exit_latch": "Left-the-bedroom helper"
         },
         "data_description": {
           "wake_action": "Helpers: turn on the entities below, for blueprints that watch them (Wake Snooze Fade, Wake Sequence). Events: fire a bedtime_bridge event for automations and blueprints to trigger on. Both: do both.",
@@ -67,7 +73,9 @@
           "bedtime_helper": "Turned on by the app's Start Bedtime Routine action (e.g. input_boolean.bedtime_routine).",
           "safety_net_causes": "Publishes safety-net times after the last alarm for these alarm causes, for a Wake Deadline Backstop instance: early at the last alarm, deadline (out of bed) one margin later, late (left the room) two margins later. Shift mornings already have your own rung sensors, so the default is calendar only.",
           "notify_service": "e.g. notify.mobile_app_mikes_iphone. Used for the re-plan notification.",
-          "replan_alert": "If the shift override or your next shift changes after you planned (and before you wake), send a notification with a Re-plan button."
+          "replan_alert": "If the shift override or your next shift changes after you planned (and before you wake), send a notification with a Re-plan button.",
+          "bed_sensor": "With the helper below, tells the app whether you're really up when you stop an alarm, so it keeps the later alarms if you're still in bed. Empty only counts after a minute (the sensor drops out briefly).",
+          "exit_latch": "e.g. input_boolean.bedroom_exited_today, set by Bedroom Exit Latch when you open the bedroom door."
         }
       }
     }

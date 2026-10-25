@@ -242,7 +242,9 @@ private struct AlarmSettingsSection: View {
                 .foregroundStyle(Theme.textMuted)
             if settings.alarmStyle == .app {
                 Stepper("Snooze: \(settings.snoozeMinutes) min", value: $settings.snoozeMinutes, in: 1...30)
-                Toggle("Stop cancels the rest", isOn: $settings.stopCancelsRemaining)
+                Picker("When I stop an alarm", selection: $settings.stopBehavior) {
+                    ForEach(StopBehavior.allCases) { Text($0.displayName).tag($0) }
+                }
                 TestAlarmButton(settings: settings)
             }
             Stepper("Look ahead \(settings.lookAheadHours) h", value: $settings.lookAheadHours, in: 6...72)
@@ -251,7 +253,7 @@ private struct AlarmSettingsSection: View {
         } footer: {
             switch settings.alarmStyle {
             case .app:
-                Text("Rings through Silent and Focus. Snooze and Stop tell Home Assistant directly (set it up below), because the Shortcuts \"alarm snoozed/stopped\" automations only see Clock app alarms.")
+                Text("Rings through Silent and Focus. Snooze and Stop tell Home Assistant directly (set it up below), because the Shortcuts \"alarm snoozed/stopped\" automations only see Clock app alarms. \"Keep the rest until I'm up\" cancels the later alarms only once Home Assistant sees the bedroom door opened or the bed empty for over a minute, so stopping the first alarm and dozing off still leaves the others.")
             case .clock:
                 Text("The app works out the times and your shortcut creates Clock alarms from Wake Plan › Alarm Dates. Your snooze/stop automations keep working, but Apple fixes Clock snooze at 9 minutes.")
             }
@@ -317,6 +319,8 @@ private struct HomeAssistantSection: View {
                 EntityField(title: "Next-alarm sensor", text: $settings.nextAlarmSensor)
                 EntityField(title: "Bedtime routine", text: $settings.bedtimeHelper)
                 EntityField(title: "You", text: $settings.presenceEntity)
+                EntityField(title: "Bed sensor", text: $settings.bedSensor)
+                EntityField(title: "Left the bedroom", text: $settings.exitLatch)
                 Toggle("Only run routines when home", isOn: $settings.homeOnly)
             }
             Button("Test connection") { Task { await test() } }

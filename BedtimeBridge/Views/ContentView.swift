@@ -468,7 +468,12 @@ private struct StatusCard: View {
 
     private var snoozeText: String {
         switch settings.alarmStyle {
-        case .app: "\(settings.snoozeMinutes) min" + (settings.stopCancelsRemaining ? " · Stop ends the series" : "")
+        case .app:
+            switch settings.stopBehavior {
+            case .keepUntilUp: "\(settings.snoozeMinutes) min · rest stay until you're up"
+            case .cancelRest: "\(settings.snoozeMinutes) min · Stop ends the series"
+            case .keepAll: "\(settings.snoozeMinutes) min"
+            }
         case .clock: "Clock app · 9 min"
         }
     }

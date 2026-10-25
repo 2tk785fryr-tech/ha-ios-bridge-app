@@ -102,8 +102,10 @@ struct BridgeSettings: Codable, Equatable {
     var alarmStyle: AlarmStyle = .app
     /// App alarms only. Clock app snooze is fixed at 9 minutes by Apple.
     var snoozeMinutes = 9
-    /// App alarms only: stopping one alarm cancels the rest of tonight's series.
-    var stopCancelsRemaining = true
+    /// App alarms only: what Stop does to the rest of the series. Default keeps them until
+    /// Home Assistant confirms you're up: stopping the first alarm and falling back asleep is
+    /// exactly how Wake Deadline Backstop came to exist.
+    var stopBehavior: StopBehavior = .keepUntilUp
 
     // MARK: Home Assistant
 
@@ -125,6 +127,9 @@ struct BridgeSettings: Codable, Equatable {
     var presenceEntity = "person.michael_perschy"
     /// Skip the wake helpers and the bedtime routine while you're away.
     var homeOnly = true
+    /// For "keep the rest until you're up" (token mode; the integration has its own).
+    var bedSensor = "binary_sensor.master_bedroom_bed_presence_bed_occupied_left"
+    var exitLatch = "input_boolean.bedroom_exited_today"
 
     // MARK: Weather
 
@@ -156,6 +161,23 @@ enum WakeTimeAlarm: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .last: "Last alarm"
         case .first: "First alarm"
+        }
+    }
+}
+
+enum StopBehavior: String, Codable, CaseIterable, Identifiable {
+    /// Cancel the later alarms only if HA says you're up (door opened, or bed empty > 1 min).
+    case keepUntilUp
+    case cancelRest
+    case keepAll
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .keepUntilUp: "Keep the rest until I'm up"
+        case .cancelRest: "Cancel the rest"
+        case .keepAll: "Keep them all"
         }
     }
 }

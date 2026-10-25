@@ -28,6 +28,8 @@ protocol HomeAssistantLink {
     func report(_ event: BridgeEvent, data: [String: Any], settings: BridgeSettings) async throws
     /// Turns on the bedtime routine helper, only when you're home (if that's set).
     func startBedtime(settings: BridgeSettings) async throws -> (started: Bool, atHome: Bool)
+    /// Are you really up (door opened, or bed empty a while)? nil when HA can't tell.
+    func isUp(settings: BridgeSettings) async -> Bool?
 }
 
 /// Presence states that count as home; unknown/unavailable also count, so a glitching
@@ -83,6 +85,11 @@ struct IntegrationLink: HomeAssistantLink {
             atHome: reply["at_home"] as? Bool,
             settings: reply["settings"] as? [String: Any] ?? [:]
         )
+    }
+
+    func isUp(settings: BridgeSettings) async -> Bool? {
+        guard let reply = try? await send("up_check") else { return nil }
+        return reply["up"] as? Bool
     }
 
     /// The integration checks presence and turns on its bedtime helper.
@@ -166,6 +173,16 @@ struct TokenLink: HomeAssistantLink {
         guard !settings.bedtimeHelper.isEmpty, atHome || !settings.homeOnly else { return (false, atHome) }
         try await client.turnOn(settings.bedtimeHelper)
         return (true, atHome)
+    }
+
+    func isUp(settings: BridgeSettings) async -> Bool? {
+        let latch = settings.exitLatch.isEmpty ? nil : try? await client.state(of: settings.exitLatch)
+        let bed = settings.bedSensor.isEmpty ? nil : try? await client.state(of: settings.bedSensor)
+        return PlanAdjustments.isUp(
+            latchState: latch?.state,
+            bedState: bed?.state,
+            bedUnchangedFor: bed?.lastChanged.map { Date.now.timeIntervalSince($0) }
+        )
     }
 
     private func isHome(_ settings: BridgeSettings) async -> Bool {

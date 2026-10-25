@@ -295,8 +295,17 @@ final class BedtimeCoordinator {
             await report(.stopped, data: ["test": true], settings: settings)
             return
         }
-        if settings.stopCancelsRemaining {
+        switch settings.stopBehavior {
+        case .cancelRest:
             alarms.cancelAll(except: id)
+        case .keepAll:
+            break
+        case .keepUntilUp:
+            // Only once HA confirms you're up. Still in bed, HA unreachable or no sensors:
+            // the later alarms stay as your phone's own backstop.
+            if await HomeAssistantLinks.current(settings)?.isUp(settings: settings) == true {
+                alarms.cancelAll(except: id)
+            }
         }
         let remaining = scheduledAlarmTimes().filter { $0 > .now }
         updateWidget { snapshot in

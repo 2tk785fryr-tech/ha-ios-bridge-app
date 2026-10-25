@@ -59,6 +59,16 @@ enum PlanAdjustments {
         }
     }
 
+    /// Are you really up? True: the bedroom door was opened (exit latch on), or the bed has been
+    /// empty for over a minute (it drops out for up to ~19 s while you're in it). False: still
+    /// in bed, or the bed reads unavailable. nil: neither sensor is available.
+    static func isUp(latchState: String?, bedState: String?, bedUnchangedFor: TimeInterval?) -> Bool? {
+        if latchState == nil && bedState == nil { return nil }
+        if latchState == "on" { return true }
+        if bedState == "off" { return (bedUnchangedFor ?? 0) >= 60 }
+        return false
+    }
+
     /// Looks at every forecast hour overlapping `window` (wake-up until you need to arrive).
     static func weather(
         forecast: [ForecastHour],

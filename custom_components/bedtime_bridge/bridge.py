@@ -15,7 +15,10 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    BED_EMPTY_SECONDS,
+    CONF_BED_SENSOR,
     CONF_BEDTIME_HELPER,
+    CONF_EXIT_LATCH,
     CONF_HOME_ONLY,
     CONF_NOTIFY,
     CONF_PRESENCE,
@@ -44,6 +47,7 @@ from .const import (
     MSG_PLANNED,
     MSG_SNOOZED,
     MSG_STOPPED,
+    MSG_UP_CHECK,
     REPLAN_URL,
     SETTINGS,
     SHIFT_LEAD_PREFIX,
@@ -191,6 +195,7 @@ class BedtimeBridge:
             MSG_LEAVE_BY: self._leave_by,
             MSG_BEDTIME: self._bedtime,
             MSG_PLAN_FAILED: self._plan_failed,
+            MSG_UP_CHECK: self._up_check,
         }.get(kind)
         if handler is None:
             return {"error": f"unknown message type: {kind}"}
@@ -243,6 +248,25 @@ class BedtimeBridge:
         self.state["planned_shift_start"] = self._next_shift_start()
         self._set_rungs()
         self._event(MSG_PLANNED)
+
+    async def _up_check(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Are you really up? The phone asks on Stop before cancelling the rest of the alarms."""
+        return {"up": self.is_up()}
+
+    def is_up(self) -> bool | None:
+        """True: the bedroom door was opened (exit latch on) or the bed has been empty for over
+        a minute. False: still in bed (or the bed reads unavailable). None: neither is set up.
+        Stopping the first alarm and falling back asleep is exactly what this guards against,
+        so anything uncertain counts as not up."""
+        latch = self.hass.states.get(self.options.get(CONF_EXIT_LATCH) or "")
+        bed = self.hass.states.get(self.options.get(CONF_BED_SENSOR) or "")
+        if latch is None and bed is None:
+            return None
+        if latch is not None and latch.state == "on":
+            return True
+        if bed is not None and bed.state == "off":
+            return (dt_util.utcnow() - bed.last_changed).total_seconds() >= BED_EMPTY_SECONDS
+        return False
 
     async def _plan_failed(self, data: dict[str, Any]) -> None:
         """The phone couldn't plan. The previous plan's alarms may still be set."""

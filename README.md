@@ -52,7 +52,18 @@ Settings → Alarms chooses one of two styles:
 | Who makes the alarms | The app (AlarmKit). Rings through Silent and Focus. | Your shortcut, with *Create Alarm* for each item in `Wake Plan › Alarm Dates`. |
 | Snooze | Snooze button. **Length is adjustable** (default 9 min). The countdown shows on the Lock Screen and in the Dynamic Island. | Apple's fixed 9 minutes. |
 | Morning routines | **Snooze** turns on `input_boolean.wake_fade` (Wake Snooze Fade). **Stop** turns on `input_boolean.wake_mike` (Wake Sequence). The app tells HA directly and retries if HA doesn't answer. | Your existing "Alarm is snoozed / stopped" Shortcuts automations, unchanged. |
-| After Stop | Cancels the rest of the series (setting), rechecks traffic for the leave-by reminder. | Whatever your shortcut does. |
+| After Stop | **Keeps the later alarms until you're up** (default; see below), rechecks traffic for the leave-by reminder. | Whatever your shortcut does. |
+
+**Stop keeps the rest until you're up.** Turning off the first alarm, switching the lights off
+and falling back asleep is how Wake Deadline Backstop came to exist. So by default, Stop only
+cancels the later alarms once Home Assistant confirms you're up: the bedroom door opened
+(`input_boolean.bedroom_exited_today`) or the bed empty for over a minute. The bed sensor drops
+out for up to 19 s while you're in it, so shorter gaps don't count. Stop the 4:20 alarm in bed
+and 4:25 and 4:30 still ring. Get up at 4:20 and stop the 4:25 alarm from the bathroom, and
+4:30 is cancelled. If HA can't be reached or the sensors are unavailable, the alarms stay.
+Settings → Alarms → *When I stop an alarm* also offers *Cancel the rest* (old behavior) and
+*Keep them all*. The sensors are chosen in the integration's options (or in the app, in token
+mode).
 
 Why two styles: the Shortcuts "Alarm is snoozed / stopped" triggers only fire for **Clock app**
 alarms. They never see app alarms, so in app-alarm mode the app has to tell HA itself.

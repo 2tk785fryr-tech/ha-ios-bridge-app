@@ -85,6 +85,26 @@ final class PlanAdjustmentsTests: XCTestCase {
         XCTAssertEqual(plan.wakeTime, hours(7).addingTimeInterval(-(10 + 45 + 60) * 60))
     }
 
+    // MARK: Are you really up?
+
+    func testStillInBedKeepsTheRest() {
+        XCTAssertEqual(PlanAdjustments.isUp(latchState: "off", bedState: "on", bedUnchangedFor: 600), false)
+        XCTAssertEqual(PlanAdjustments.isUp(latchState: "off", bedState: "unavailable", bedUnchangedFor: nil), false)
+    }
+
+    func testDoorOpenedOrBedEmptyAWhileMeansUp() {
+        XCTAssertEqual(PlanAdjustments.isUp(latchState: "on", bedState: "on", bedUnchangedFor: 0), true)
+        XCTAssertEqual(PlanAdjustments.isUp(latchState: "off", bedState: "off", bedUnchangedFor: 90), true)
+    }
+
+    func testBriefBedDropoutIsNotUp() {
+        XCTAssertEqual(PlanAdjustments.isUp(latchState: "off", bedState: "off", bedUnchangedFor: 19), false)
+    }
+
+    func testNoSensorsIsUnknown() {
+        XCTAssertNil(PlanAdjustments.isUp(latchState: nil, bedState: nil, bedUnchangedFor: nil))
+    }
+
     // MARK: Settings from the Home Assistant integration
 
     func testHomeAssistantSettingsOverridePhone() {

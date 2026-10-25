@@ -18,6 +18,8 @@ CONF_NOTIFY = "notify_service"
 CONF_REPLAN_ALERT = "replan_alert"
 CONF_SAFETY_CAUSES = "safety_net_causes"
 CONF_SAFETY_MINUTES = "safety_net_minutes"
+CONF_BED_SENSOR = "bed_sensor"
+CONF_EXIT_LATCH = "exit_latch"
 
 # What Snooze/Stop on the phone do in Home Assistant.
 WAKE_BOTH = "both"
@@ -30,6 +32,8 @@ SUGGESTED = {
     CONF_SNOOZE_HELPER: "input_boolean.wake_fade",
     CONF_STOP_HELPER: "input_boolean.wake_mike",
     CONF_BEDTIME_HELPER: "input_boolean.bedtime_routine",
+    CONF_BED_SENSOR: "binary_sensor.master_bedroom_bed_presence_bed_occupied_left",
+    CONF_EXIT_LATCH: "input_boolean.bedroom_exited_today",
     CONF_SHIFT_OVERRIDE: "input_select.select_shift_override",
     CONF_SHIFT_SENSOR: "sensor.current_shift",
     CONF_WEATHER: "weather.forecast_home",
@@ -60,6 +64,9 @@ MSG_CANCELLED = "cancelled"
 MSG_LEAVE_BY = "leave_by"
 MSG_BEDTIME = "bedtime"
 MSG_PLAN_FAILED = "plan_failed"
+MSG_UP_CHECK = "up_check"
+# The bed sensor drops out for up to ~19 s while you're in it; "empty" must last longer.
+BED_EMPTY_SECONDS = 60
 EVENT_PLAN_OUTDATED = "plan_outdated"
 
 # Presence states that count as home. Anything unknown/unavailable also counts as home, so a

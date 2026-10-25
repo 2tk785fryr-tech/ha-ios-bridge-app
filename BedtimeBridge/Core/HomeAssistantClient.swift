@@ -5,6 +5,7 @@ struct HomeAssistantClient {
     struct EntityState {
         var state: String
         var attributes: [String: Any]
+        var lastChanged: Date? = nil
     }
 
     let baseURL: URL
@@ -25,7 +26,17 @@ struct HomeAssistantClient {
 
     func state(of entityID: String) async throws -> EntityState {
         let json = try await send("GET", path: "/api/states/\(entityID)") as? [String: Any]
-        return EntityState(state: json?["state"] as? String ?? "unknown", attributes: json?["attributes"] as? [String: Any] ?? [:])
+        return EntityState(
+            state: json?["state"] as? String ?? "unknown",
+            attributes: json?["attributes"] as? [String: Any] ?? [:],
+            lastChanged: (json?["last_changed"] as? String).flatMap(Self.parseHADate)
+        )
+    }
+
+    /// HA writes microseconds ("…:53.960229+00:00"); drop the fraction so any iOS parses it.
+    static func parseHADate(_ text: String) -> Date? {
+        let trimmed = text.replacingOccurrences(of: #"\.\d+"#, with: "", options: .regularExpression)
+        return ISO8601DateFormatter().date(from: trimmed)
     }
 
     /// `turn_on` for whatever domain the entity is in (input_boolean, script, …).
