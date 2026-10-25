@@ -3,6 +3,8 @@ import UIKit
 
 @main
 struct BedtimeBridgeApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+
     init() {
         // Navigation titles (e.g. Settings) in Sora to match the Tonight screen.
         let appearance = UINavigationBar.appearance()

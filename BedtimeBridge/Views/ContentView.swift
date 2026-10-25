@@ -410,7 +410,7 @@ private struct MissingLocationCard: View {
             Label("\(appointment.title) at \(WakePlanner.format(appointment.start)) has no location", systemImage: "mappin.slash")
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(Theme.text)
-            Text("Planned with no drive. Was it supposed to have one?")
+            Text("Planned with a drive to be safe. Was it supposed to have a location?")
                 .font(.footnote)
                 .foregroundStyle(Theme.textMuted)
             TextField("Address or place name", text: $location)

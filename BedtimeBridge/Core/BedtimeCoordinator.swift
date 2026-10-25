@@ -186,6 +186,12 @@ final class BedtimeCoordinator {
             leaveReminder.clear()
         }
 
+        // Ask about appointments saved without a location: by notification, so the bedtime
+        // shortcut (which runs with nobody tapping) never waits on an answer.
+        if settings.askAboutMissingLocations {
+            await LocationQuestions.ask(about: plan.missingLocations)
+        }
+
         updateWidget { snapshot in
             snapshot = NextAlarmSnapshot(
                 alarmTimes: plan.alarmTimes,
@@ -216,14 +222,25 @@ final class BedtimeCoordinator {
 
     func markNoLocationNeeded(_ appointment: AppointmentCandidate) {
         guard let id = appointment.eventID else { return }
-        noLocationNeeded.insert(id)
+        markNoLocationNeeded(eventID: id)
+    }
+
+    func markNoLocationNeeded(eventID: String) {
+        noLocationNeeded.insert(eventID)
+        LocationQuestions.clear(eventID: eventID)
     }
 
     /// Saves the location on the calendar event, so the next plan gets a real drive time.
     func addLocation(_ location: String, to appointment: AppointmentCandidate) throws {
+        guard let id = appointment.eventID else { return }
+        try addLocation(location, eventID: id)
+    }
+
+    func addLocation(_ location: String, eventID: String) throws {
         let trimmed = location.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let id = appointment.eventID, !trimmed.isEmpty else { return }
-        try calendar.setLocation(trimmed, eventID: id)
+        guard !trimmed.isEmpty else { return }
+        try calendar.setLocation(trimmed, eventID: eventID)
+        LocationQuestions.clear(eventID: eventID)
     }
 
     // MARK: Test alarm
@@ -364,18 +381,19 @@ final class BedtimeCoordinator {
             .filter { WakePlanner.notesRequestWakeUp($0.notes, keyword: settings.appointmentKeyword) }
         let hasPlace = { (event: EKEvent) in !(event.location ?? "").trimmingCharacters(in: .whitespaces).isEmpty }
 
-        // No location: no drive, just be ready by arrive-by time. Ask whether it should have one
-        // unless you've already said it doesn't.
+        // No location: if you've said it needs none, no drive. Otherwise plan the fallback
+        // drive (so it errs early) and ask by notification, which never blocks the shortcut.
         let skipAsking = noLocationNeeded
         var candidates: [AppointmentCandidate] = allEvents.filter { !hasPlace($0) }.map { event in
-            AppointmentCandidate(
+            let confirmed = skipAsking.contains(event.eventIdentifier ?? "")
+            return AppointmentCandidate(
                 title: event.title ?? "Appointment",
                 start: event.startDate,
                 location: "",
-                travelSeconds: 0,
+                travelSeconds: confirmed ? 0 : Double(settings.fallbackTravelMinutes) * 60,
                 eventID: event.eventIdentifier,
                 hasLocation: false,
-                askAboutLocation: !skipAsking.contains(event.eventIdentifier ?? "")
+                askAboutLocation: !confirmed
             )
         }
 

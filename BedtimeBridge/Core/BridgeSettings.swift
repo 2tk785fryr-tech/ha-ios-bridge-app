@@ -82,6 +82,8 @@ struct BridgeSettings: Codable, Equatable {
     // MARK: Leave-by reminder
 
     var leaveReminderEnabled = true
+    /// Notify about "wake up" appointments with no location (answer from the notification).
+    var askAboutMissingLocations = true
     /// Notification this many minutes before leave-by time.
     var leaveReminderLeadMinutes = 15
 }

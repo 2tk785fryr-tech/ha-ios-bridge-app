@@ -33,10 +33,11 @@ struct SettingsView: View {
                 TextField("Notes contain", text: $store.settings.appointmentKeyword)
                 Stepper("Get ready: \(store.settings.getReadyMinutes) min", value: $store.settings.getReadyMinutes, in: 0...240, step: 5)
                 Stepper("Arrive early: \(store.settings.arrivalBufferMinutes) min", value: $store.settings.arrivalBufferMinutes, in: 0...60, step: 5)
+                Toggle("Ask about missing locations", isOn: $store.settings.askAboutMissingLocations)
             } header: {
                 Text("Appointments")
             } footer: {
-                Text("Wake time = start − arrive-early buffer − drive time − get-ready time. Only used when it's earlier than your shift alarm.")
+                Text("Wake time = start − arrive-early buffer − drive time − get-ready time. Only used when it's earlier than your shift alarm. A \"wake up\" appointment without a location is planned with the fallback drive until you answer the notification about it.")
             }
 
             Section {

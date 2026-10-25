@@ -54,20 +54,24 @@ final class WakePlannerTests: XCTestCase {
         XCTAssertEqual(plan.warnings.count, 1)
     }
 
-    func testAppointmentWithoutLocationNeedsNoDrive() {
-        // 9h start − 10 min early − 0 drive − 60 min ready = 7h50m. No weather time either.
-        let call = AppointmentCandidate(title: "Video call", start: hours(9), location: "", travelSeconds: 0, eventID: "e1", hasLocation: false, askAboutLocation: true)
+    func testUnansweredMissingLocationErrsEarly() {
+        // Not confirmed yet: planned with the fallback drive (the coordinator passes 30 min)
+        // plus weather. 9h − 10 early − (30 + 15) drive − 60 ready = 7h05m.
+        let dentist = AppointmentCandidate(title: "Dentist", start: hours(9), location: "", travelSeconds: 1800, eventID: "e1", hasLocation: false, askAboutLocation: true)
+        let weather = WeatherAdjustment(minutes: 15, reason: "pouring at 8 AM")
+        let plan = WakePlanner.plan(shift: nil, appointments: [dentist], settings: settings, now: now, weather: weather)
+        XCTAssertEqual(plan.wakeTime, hours(7).addingTimeInterval(5 * 60))
+        XCTAssertEqual(plan.missingLocations.map(\.eventID), ["e1"])
+        XCTAssertTrue(plan.reason.contains("to be safe"))
+    }
+
+    func testConfirmedNoLocationHasNoDriveAndIsNotAskedAgain() {
+        // "No location needed": 9h − 10 early − 0 drive − 60 ready = 7h50m, no weather time.
+        let call = AppointmentCandidate(title: "Video call", start: hours(9), location: "", travelSeconds: 0, eventID: "e1", hasLocation: false, askAboutLocation: false)
         let weather = WeatherAdjustment(minutes: 15, reason: "pouring at 8 AM")
         let plan = WakePlanner.plan(shift: nil, appointments: [call], settings: settings, now: now, weather: weather)
         XCTAssertEqual(plan.wakeTime, hours(7).addingTimeInterval(50 * 60))
         XCTAssertNil(plan.weather)
-        XCTAssertEqual(plan.missingLocations.map(\.eventID), ["e1"])
-        XCTAssertTrue(plan.reason.contains("no location"))
-    }
-
-    func testConfirmedNoLocationIsNotAskedAgain() {
-        let call = AppointmentCandidate(title: "Video call", start: hours(9), location: "", travelSeconds: 0, eventID: "e1", hasLocation: false, askAboutLocation: false)
-        let plan = WakePlanner.plan(shift: nil, appointments: [call], settings: settings, now: now)
         XCTAssertTrue(plan.missingLocations.isEmpty)
         XCTAssertNil(plan.homeAssistantPayload(settings: settings)["leave_by"])
     }

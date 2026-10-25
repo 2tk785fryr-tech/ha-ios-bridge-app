@@ -161,10 +161,24 @@ bypasses the check. Route it through the app's actions instead.
   Routine refreshes with the same shift time don't count. Calendar edits on the phone itself
   can't be seen by HA; the app picks those up the next time it plans.
 - **Appointments without a location.** A "wake up" appointment with no location still gets an
-  alarm: no drive, just ready by start − arrive-early. Unless you've already said it doesn't
-  need one, the bedtime shortcut asks *"Dentist at 9:00 AM has no location. Should it have
-  one?"* Add Location saves your answer to the calendar event and plans again. No Location
-  Needed remembers that for the event. The Tonight screen shows the same question as a card.
+  alarm. Until you answer, it's planned with the fallback drive time (30 min), so an unanswered
+  question errs toward waking early. You get a quiet notification, *"Dentist has no location.
+  Should it have a location?"*, that you can answer from the Lock Screen:
+  - **Add location:** type the place right in the notification. It's saved to the calendar
+    event and the app re-plans in the background with the real drive time.
+  - **No location needed:** remembered for that event. The app re-plans with no drive.
+  - **Ignore it:** the safe plan stands. The Tonight screen shows the same question as a card.
+
+  The shortcut never waits on this (see below).
+
+## Hands-free bedtime
+
+The bedtime flow runs with nobody tapping: the bed sensor → HA's notification → the shortcut.
+So **Plan Wake-Up Alarms**, **Start Bedtime Routine** and **Set Wake-Up Alarms** never ask
+questions or wait for input. Anything that needs you (a missing location, an out-of-date
+plan, a missing plan) comes as a notification you can answer later or ignore, with a safe
+default. The shortcut's own day-off questions are unchanged: no answer still means no alarm
+and Sleep In.
 
 ## Lock Screen widget
 
@@ -245,8 +259,7 @@ the fallback drive time from Settings. You'll see a warning in `Warnings`, and t
 Replace the calendar, maps and alarm part of the shortcut with:
 
 ```
-Plan Wake-Up Alarms (Set Alarms: on,
-                     Ask About Missing Locations: on)  → Wake Plan
+Plan Wake-Up Alarms (Set Alarms: on)            → Wake Plan
 If  Wake Plan › Has Alarm  is  false
     Ask for Input (Time) "Alarm for your day off?"
     If  Provided Input has any value

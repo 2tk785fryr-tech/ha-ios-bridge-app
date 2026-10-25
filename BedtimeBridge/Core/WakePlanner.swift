@@ -26,10 +26,15 @@ struct AppointmentCandidate: Equatable {
     /// The calendar event, so a missing location can be filled in.
     var eventID: String? = nil
     /// False for a "wake up" appointment with no location (a call, or one saved without
-    /// its place): no drive, you just need to be ready by arrive-by time.
+    /// its place).
     var hasLocation = true
-    /// No location and you haven't said "no location needed" for it yet.
+    /// No location and you haven't said "no location needed" yet. Until you answer it's
+    /// planned with the fallback drive time, so an unanswered question errs toward waking
+    /// early; once you confirm, it has no drive.
     var askAboutLocation = false
+
+    /// Planned as a trip somewhere (a real location, or one we're not sure about yet).
+    var plannedWithDrive: Bool { hasLocation || askAboutLocation }
 
     var usedFallbackTravel: Bool { fallbackReason != nil }
 
@@ -134,7 +139,7 @@ enum WakePlanner {
         let appointments = appointments.map { appointment -> AppointmentCandidate in
             var appointment = appointment
             // Bad weather slows the drive; it doesn't matter for a call from home.
-            if appointment.hasLocation { appointment.travelSeconds += extra }
+            if appointment.plannedWithDrive { appointment.travelSeconds += extra }
             return appointment
         }
         let missing = appointments.filter(\.askAboutLocation)
@@ -172,9 +177,14 @@ enum WakePlanner {
             let (appointment, wake) = best
             let minutes = Int((appointment.travelSeconds / 60).rounded())
             let leaveBy = appointment.leaveBy(bufferMinutes: settings.arrivalBufferMinutes)
-            let reason = appointment.hasLocation
-                ? "\(appointment.title) at \(format(appointment.start)). Leave by \(format(leaveBy)) (\(minutes) min drive, \(settings.arrivalBufferMinutes) min early)\(weatherNote)"
-                : "\(appointment.title) at \(format(appointment.start)). Ready by \(format(leaveBy)) (no location, so no drive)"
+            let reason: String
+            if appointment.hasLocation {
+                reason = "\(appointment.title) at \(format(appointment.start)). Leave by \(format(leaveBy)) (\(minutes) min drive, \(settings.arrivalBufferMinutes) min early)\(weatherNote)"
+            } else if appointment.askAboutLocation {
+                reason = "\(appointment.title) at \(format(appointment.start)) has no location; planned with a \(minutes) min drive to be safe\(weatherNote)"
+            } else {
+                reason = "\(appointment.title) at \(format(appointment.start)). Ready by \(format(leaveBy)) (no location needed)"
+            }
             return WakePlan(
                 source: .appointment,
                 wakeTime: wake,
@@ -182,7 +192,7 @@ enum WakePlanner {
                 reason: reason,
                 shift: shift,
                 appointment: appointment,
-                weather: appointment.hasLocation ? weather : nil,
+                weather: appointment.plannedWithDrive ? weather : nil,
                 warnings: warnings,
                 missingLocations: missing
             )
