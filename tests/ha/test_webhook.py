@@ -256,3 +256,28 @@ async def test_context_reports_presence(hass, hass_client_no_auth):
     await setup_with_presence(hass, "not_home")
     reply = await send(hass_client_no_auth, {"type": "context", "data": {}})
     assert reply["at_home"] is False
+
+
+async def test_last_event_says_whether_alarms_were_set(hass, hass_client_no_auth):
+    await setup(hass)
+    events = async_capture_events(hass, "bedtime_bridge")
+    last_event = lambda: hass.states.get("sensor.bedtime_bridge_last_event").state  # noqa: E731
+
+    await send(hass_client_no_auth, {"type": "planned", "data": {**PLAN["data"], "has_alarm": True}})
+    await hass.async_block_till_done()
+    assert last_event() == "alarms_set"
+    assert events[-1].data["type"] == "planned", "event type unchanged for automations"
+    assert events[-1].data["alarms_set"] is True
+
+    clock = {**PLAN["data"], "has_alarm": True, "alarm_style": "clock"}
+    await send(hass_client_no_auth, {"type": "planned", "data": clock})
+    await hass.async_block_till_done()
+    assert last_event() == "planned_for_clock"
+    assert events[-1].data["alarms_set"] is False
+
+    nothing = {"alarm_cause": "noalarm", "alarm_times": [], "has_alarm": False, "alarm_style": "app"}
+    await send(hass_client_no_auth, {"type": "planned", "data": nothing})
+    await hass.async_block_till_done()
+    assert last_event() == "no_alarm"
+    assert events[-1].data["type"] == "planned"
+    assert events[-1].data["alarms_set"] is False
