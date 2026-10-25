@@ -137,6 +137,25 @@ enum WakePlanner {
         return notes.range(of: keyword, options: [.caseInsensitive, .diacriticInsensitive]) != nil
     }
 
+    /// Notes with the keyword added on its own line, or every mention of it taken out.
+    /// A line left empty by the removal goes too; the rest of the notes are kept as written.
+    static func notes(_ notes: String?, settingWakeUp wakeUp: Bool, keyword: String) -> String? {
+        let keyword = keyword.trimmingCharacters(in: .whitespaces)
+        guard !keyword.isEmpty, notesRequestWakeUp(notes, keyword: keyword) != wakeUp else { return notes }
+        let notes = notes ?? ""
+        if wakeUp {
+            return notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? keyword : notes + "\n" + keyword
+        }
+        let lines = notes.components(separatedBy: .newlines).compactMap { line -> String? in
+            let removed = line.replacingOccurrences(of: keyword, with: "", options: [.caseInsensitive, .diacriticInsensitive])
+            guard removed != line else { return line }
+            let trimmed = removed.trimmingCharacters(in: .whitespaces)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+        let result = lines.joined(separator: "\n")
+        return result.isEmpty ? nil : result
+    }
+
     /// The alarm series around a wake-up time. With `.last` the wake-up time is the final
     /// alarm and the others count back from it; with `.first` they follow it.
     static func alarmTimes(wakeTime: Date, count: Int, spacingMinutes: Int, wakeIs: WakeTimeAlarm) -> [Date] {

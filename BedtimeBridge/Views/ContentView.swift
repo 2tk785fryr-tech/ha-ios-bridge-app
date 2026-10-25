@@ -1,3 +1,4 @@
+import EventKit
 import SwiftUI
 
 /// "Tonight": the plan, the alarm series and the two main actions, in the Nightfall style.
@@ -8,6 +9,7 @@ struct ContentView: View {
     @State private var errorMessage: String?
     @State private var isWorking = false
     @State private var pairingMessage: String?
+    @State private var needsALookCount: Int?
 
     private let coordinator = BedtimeCoordinator.shared
 
@@ -19,6 +21,15 @@ struct ContentView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     header
+
+                    if let count = needsALookCount, count > 0 {
+                        NavigationLink {
+                            UpcomingEventsView()
+                        } label: {
+                            UpcomingEventsBanner(count: count)
+                        }
+                        .buttonStyle(.plain)
+                    }
 
                     if let plan {
                         PlanCard(plan: plan)
@@ -112,6 +123,17 @@ struct ContentView: View {
             }
             Spacer()
             NavigationLink {
+                UpcomingEventsView()
+            } label: {
+                Image(systemName: "calendar")
+                    .font(.system(size: 19, weight: .medium))
+                    .foregroundStyle(Theme.accentIcon)
+                    .frame(width: 44, height: 44)
+                    .background(Theme.surface, in: Circle())
+                    .overlay(Circle().stroke(Theme.border, lineWidth: 1))
+            }
+            .accessibilityLabel("Upcoming events")
+            NavigationLink {
                 SettingsView()
             } label: {
                 Image(systemName: "gearshape")
@@ -190,6 +212,16 @@ struct ContentView: View {
 
     private func refreshScheduled() {
         scheduled = coordinator.scheduledAlarmTimes()
+        refreshUpcoming()
+    }
+
+    /// Counted only once calendar access is allowed, so opening the app never prompts for it.
+    private func refreshUpcoming() {
+        guard EKEventStore.authorizationStatus(for: .event) == .fullAccess else {
+            needsALookCount = nil
+            return
+        }
+        needsALookCount = UpcomingEvent.load(from: coordinator.calendar, settings: store.settings).filter(\.needsALook).count
     }
 
     /// Saves the place on the calendar event, then plans again with a real drive time.
@@ -556,6 +588,38 @@ private struct ScheduledAlarmsCard: View {
             }
         }
         .nightfallCard()
+    }
+}
+
+/// "There are 3 events in the next week without a location or a wake-up."
+private struct UpcomingEventsBanner: View {
+    let count: Int
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "calendar.badge.exclamationmark")
+                .font(.system(size: 20))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(count == 1
+                     ? "There is 1 event in the next week without a location or a wake-up."
+                     : "There are \(count) events in the next week without a location or a wake-up.")
+                    .font(.system(size: 14, weight: .semibold))
+                Text("Add them now, or ignore the ones that don't need it.")
+                    .font(.footnote)
+                    .opacity(0.8)
+            }
+            .multilineTextAlignment(.leading)
+            Spacer(minLength: 4)
+            Image(systemName: "chevron.right")
+                .font(.system(size: 13, weight: .semibold))
+        }
+        .foregroundStyle(Theme.warning.text)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.warning.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.warning.border, lineWidth: 1))
+        .contentShape(Rectangle())
     }
 }
 

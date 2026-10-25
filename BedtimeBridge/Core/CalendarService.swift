@@ -1,4 +1,5 @@
 import EventKit
+import MapKit
 
 enum BridgeError: LocalizedError {
     case calendarAccessDenied
@@ -56,6 +57,24 @@ final class CalendarService {
     func setLocation(_ location: String, eventID: String) throws {
         guard let event = store.event(withIdentifier: eventID) else { throw BridgeError.eventNotFound }
         event.location = location
+        try store.save(event, span: .thisEvent)
+    }
+
+    /// Saves the location on this occurrence only. A place picked from Maps also stores its
+    /// coordinates, which drive times use instead of searching the text.
+    func setLocation(_ location: String, mapItem: MKMapItem?, on event: EKEvent) throws {
+        event.location = location
+        if let mapItem {
+            let structured = EKStructuredLocation(mapItem: mapItem)
+            structured.title = location
+            event.structuredLocation = structured
+        }
+        try store.save(event, span: .thisEvent)
+    }
+
+    /// Adds or removes the wake-up keyword in this occurrence's notes.
+    func setWakeUp(_ wakeUp: Bool, keyword: String, on event: EKEvent) throws {
+        event.notes = WakePlanner.notes(event.notes, settingWakeUp: wakeUp, keyword: keyword)
         try store.save(event, span: .thisEvent)
     }
 
