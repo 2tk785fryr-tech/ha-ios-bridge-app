@@ -1,0 +1,66 @@
+blueprint:
+  name: Bedtime Bridge alarm event
+  description: >
+    Runs your actions when the Bedtime Bridge iPhone app reports an alarm event:
+    snoozed, stopped, planned, cancelled, or leave-by updated.
+
+    Use this instead of (or as well as) the snooze/stop helpers. Set the integration's
+    "When you snooze or stop an alarm" option to "Fire events only" or "Turn on helpers and
+    fire events". With "Turn on helpers only", snoozed/stopped events are not fired.
+
+    The event data is available to your actions as trigger.event.data, with keys type,
+    alarm_cause (Days / Swings / calendar / automade / noalarm), alarm_time, alarm_times,
+    label, leave_by and snooze_count.
+
+    One instance per event type: for example "snoozed → start the light ramp" and
+    "stopped → run the wake sequence".
+  domain: automation
+  source_url: https://github.com/2tk785fryr-tech/ha-ios-bridge-app/blob/main/blueprints/automation/bedtime_bridge/bedtime_bridge_alarm_event.yaml
+  input:
+    event_type:
+      name: Event
+      default: snoozed
+      selector:
+        select:
+          options:
+            - label: Alarm snoozed
+              value: snoozed
+            - label: Alarm stopped
+              value: stopped
+            - label: Alarms planned at bedtime
+              value: planned
+            - label: Alarms cancelled
+              value: cancelled
+            - label: Leave-by time updated
+              value: leave_by
+    causes:
+      name: Only for these causes (optional)
+      description: >
+        Leave empty to run for every alarm. Values are your shift types plus
+        calendar, automade and noalarm.
+      default: []
+      selector:
+        text:
+          multiple: true
+    actions:
+      name: Actions
+      selector:
+        action: {}
+
+mode: queued
+max_exceeded: silent
+
+triggers:
+  - trigger: event
+    event_type: bedtime_bridge
+    event_data:
+      type: !input event_type
+
+variables:
+  causes: !input causes
+
+conditions:
+  - condition: template
+    value_template: "{{ causes | count == 0 or trigger.event.data.alarm_cause in causes }}"
+
+actions: !input actions
