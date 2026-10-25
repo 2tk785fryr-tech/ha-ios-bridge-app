@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Bedtime Bridge app icon: Bridge to morning. Nightfall palette. -->
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1C2550"/>
+      <stop offset="1" stop-color="#0B1026"/>
+    </linearGradient>
+    <clipPath id="aboveDeck">
+      <rect width="1024" height="700"/>
+    </clipPath>
+    <mask id="cut">
+      <rect width="1024" height="1024" fill="#FFFFFF"/>
+      <circle cx="266" cy="222" r="62" fill="#000000"/>
+    </mask>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#sky)"/>
+  <circle cx="700" cy="190" r="9" fill="#C4B5FD"/>
+  <circle cx="840" cy="320" r="7" fill="#A9B1D6" opacity="0.8"/>
+  <circle cx="560" cy="120" r="6" fill="#A9B1D6" opacity="0.7"/>
+  <circle cx="230" cy="250" r="72" fill="#DDD6FE" mask="url(#cut)"/>
+  <circle cx="512" cy="700" r="150" fill="#FCD9B0"/>
+  <rect x="0" y="700" width="1024" height="324" fill="#141B3A"/>
+  <path d="M 256 570 V 700 M 384 491 V 700 M 512 465 V 700 M 640 491 V 700 M 768 570 V 700" stroke="#C4B5FD" stroke-width="14" stroke-linecap="round" opacity="0.75"/>
+  <path d="M 130 700 Q 512 230 894 700" fill="none" stroke="#6D4AFF" stroke-width="56" clip-path="url(#aboveDeck)"/>
+  <path d="M 90 700 H 934" stroke="#DDD6FE" stroke-width="26" stroke-linecap="round"/>
+  <path d="M 300 800 H 520 M 600 800 H 720 M 380 880 H 640" stroke="#2A3366" stroke-width="16" stroke-linecap="round"/>
+</svg>
