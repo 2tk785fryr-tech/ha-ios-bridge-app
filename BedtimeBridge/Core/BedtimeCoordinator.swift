@@ -227,6 +227,36 @@ final class BedtimeCoordinator {
         LocationQuestions.clear(eventID: eventID)
     }
 
+    func isNoLocationNeeded(eventID: String) -> Bool {
+        noLocationNeeded.contains(eventID)
+    }
+
+    /// Undoes "No location needed", so the next plan asks about it again.
+    func clearNoLocationNeeded(eventID: String) {
+        noLocationNeeded.remove(eventID)
+    }
+
+    private static let noWakeUpKey = "noWakeUpNeededOccurrences"
+
+    /// Upcoming events you've said don't need a wake-up, so the list stops flagging them.
+    /// Keyed per occurrence, since a repeating event's occurrences share one identifier.
+    private var noWakeUpNeeded: Set<String> {
+        get { Set(UserDefaults.standard.stringArray(forKey: Self.noWakeUpKey) ?? []) }
+        set { UserDefaults.standard.set(Array(newValue), forKey: Self.noWakeUpKey) }
+    }
+
+    func isNoWakeUpNeeded(occurrence: String) -> Bool {
+        noWakeUpNeeded.contains(occurrence)
+    }
+
+    func setNoWakeUpNeeded(_ ignored: Bool, occurrence: String) {
+        if ignored { noWakeUpNeeded.insert(occurrence) } else { noWakeUpNeeded.remove(occurrence) }
+    }
+
+    func setNoLocationNeeded(_ ignored: Bool, eventID: String) {
+        if ignored { markNoLocationNeeded(eventID: eventID) } else { clearNoLocationNeeded(eventID: eventID) }
+    }
+
     /// Saves the location on the calendar event, so the next plan gets a real drive time.
     func addLocation(_ location: String, to appointment: AppointmentCandidate) throws {
         guard let id = appointment.eventID else { return }

@@ -90,6 +90,22 @@ final class WakePlannerTests: XCTestCase {
         XCTAssertFalse(WakePlanner.notesRequestWakeUp(nil, keyword: "wake up"))
     }
 
+    func testAddingWakeUpToNotes() {
+        XCTAssertEqual(WakePlanner.notes(nil, settingWakeUp: true, keyword: "wake up"), "wake up")
+        XCTAssertEqual(WakePlanner.notes("  \n", settingWakeUp: true, keyword: "wake up"), "wake up")
+        XCTAssertEqual(WakePlanner.notes("Bring forms", settingWakeUp: true, keyword: "wake up"), "Bring forms\nwake up")
+        // Already there: left alone, not added twice.
+        XCTAssertEqual(WakePlanner.notes("Bring forms. Wake Up", settingWakeUp: true, keyword: "wake up"), "Bring forms. Wake Up")
+    }
+
+    func testRemovingWakeUpFromNotes() {
+        XCTAssertNil(WakePlanner.notes("wake up", settingWakeUp: false, keyword: "wake up"))
+        XCTAssertEqual(WakePlanner.notes("Bring forms\nWake Up\nParking on 3rd", settingWakeUp: false, keyword: "wake up"), "Bring forms\nParking on 3rd")
+        XCTAssertEqual(WakePlanner.notes("Bring forms. wake up", settingWakeUp: false, keyword: "wake up"), "Bring forms.")
+        XCTAssertEqual(WakePlanner.notes("Bring forms", settingWakeUp: false, keyword: "wake up"), "Bring forms")
+        XCTAssertNil(WakePlanner.notes(nil, settingWakeUp: false, keyword: "wake up"))
+    }
+
     func testCustomAlarmSeries() {
         XCTAssertEqual(WakePlanner.alarmTimes(wakeTime: now, count: 2, spacingMinutes: 5, wakeIs: .first), [now, now.addingTimeInterval(300)])
         XCTAssertEqual(WakePlanner.alarmTimes(wakeTime: now, count: 2, spacingMinutes: 5, wakeIs: .last), [now.addingTimeInterval(-300), now])
