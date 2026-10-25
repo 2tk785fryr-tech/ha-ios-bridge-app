@@ -28,11 +28,20 @@ struct SettingsView: View {
                 Button("Add shift type", systemImage: "plus") {
                     store.settings.shiftRules.append(ShiftRule(keyword: ""))
                 }
-                Stepper("Arrive at work early: \(store.settings.workArrivalBufferMinutes) min", value: $store.settings.workArrivalBufferMinutes, in: 0...60, step: 5)
             } header: {
                 Text("Shifts")
             } footer: {
-                Text("A calendar event whose title contains the word counts as a shift. Each shift has its own timing and alarm series. When the event has a location, Tonight shows when to leave to get there this early.")
+                Text("A calendar event whose title contains the word counts as a shift. Each shift has its own timing and alarm series.")
+            }
+
+            Section {
+                Stepper("Get ready: \(store.settings.getReadyMinutes) min", value: $store.settings.getReadyMinutes, in: 0...240, step: 5)
+                Stepper("Arrive at work early: \(store.settings.workArrivalBufferMinutes) min", value: $store.settings.workArrivalBufferMinutes, in: 0...60, step: 5)
+                Toggle("Wake early enough to get ready", isOn: $store.settings.wakeEarlyToGetReady)
+            } header: {
+                Text("Mornings")
+            } footer: {
+                Text("When a shift's event has a location, Tonight shows when to leave to arrive this early. If the drive or bad weather leaves less than the get-ready time, you're warned and can wake earlier for that night; with the switch on, shift alarms move earlier by themselves. Appointments always plan the get-ready time.")
             }
 
             Section {
@@ -59,7 +68,7 @@ struct SettingsView: View {
                 SettingsLink(title: "Home Assistant", icon: "house", value: homeAssistantSummary(settings)) {
                     SettingsPage(title: "Home Assistant") { HomeAssistantSection(settings: $store.settings) }
                 }
-                SettingsLink(title: "Bad weather", icon: "cloud.rain", value: settings.weatherExtraMinutes > 0 ? "+\(settings.weatherExtraMinutes) min" : "Off") {
+                SettingsLink(title: "Bad weather", icon: "cloud.rain", value: settings.checksWeather ? "Default +\(settings.weatherExtraMinutes) min" : "Off") {
                     SettingsPage(title: "Bad weather") { WeatherSection(settings: $store.settings) }
                 }
                 SettingsLink(title: "Calendars", icon: "calendar", value: calendarSummary(settings)) {
@@ -130,13 +139,12 @@ private struct AppointmentsSection: View {
     var body: some View {
         Section {
             TextField("Notes contain", text: $settings.appointmentKeyword)
-            Stepper("Get ready: \(settings.getReadyMinutes) min", value: $settings.getReadyMinutes, in: 0...240, step: 5)
             Stepper("Arrive early: \(settings.arrivalBufferMinutes) min", value: $settings.arrivalBufferMinutes, in: 0...60, step: 5)
             Toggle("Ask about missing locations", isOn: $settings.askAboutMissingLocations)
         } header: {
             Text("Appointments")
         } footer: {
-            Text("Wake time = start − arrive-early buffer − drive time − get-ready time. Only used when it's earlier than your shift alarm. A \"wake up\" appointment without a location is planned with the fallback drive until you answer the notification about it.")
+            Text("Wake time = start − arrive-early buffer − drive time − get-ready time (on the main Settings page). Only used when it's earlier than your shift alarm. A \"wake up\" appointment without a location is planned with the fallback drive until you answer the notification about it.")
         }
     }
 }
@@ -509,31 +517,92 @@ private struct HomeAssistantSection: View {
 private struct WeatherSection: View {
     @Binding var settings: BridgeSettings
 
-    private static let conditions = [
-        "rainy", "pouring", "lightning-rainy", "lightning", "fog", "windy", "snowy", "snowy-rainy", "hail", "exceptional",
+    /// Paired with the integration, which reads the forecast from its own weather setting.
+    private var usesIntegration: Bool { HomeAssistantLinks.current(settings) is IntegrationLink }
+
+    private var sourceFooter: String {
+        switch settings.weatherSource {
+        case .homeAssistant where usesIntegration:
+            "From the weather entity picked in Home Assistant: Settings › Devices & services › Bedtime Bridge › Configure › Weather."
+        case .homeAssistant:
+            "From this Home Assistant weather entity, e.g. weather.forecast_home. Needs Home Assistant set up."
+        case .openMeteo:
+            "Free, no key or Home Assistant needed: the hourly forecast for your home address (your current location if it's blank). Weather data by Open-Meteo.com."
+        }
+    }
+
+    /// Home Assistant's condition names, and what to call them here.
+    private static let conditions: [(key: String, name: String)] = [
+        ("snowy", "Snow"), ("snowy-rainy", "Sleet"), ("hail", "Hail"), ("pouring", "Heavy rain"),
+        ("lightning-rainy", "Thunderstorms"), ("rainy", "Rain"), ("lightning", "Lightning"),
+        ("fog", "Fog"), ("windy", "Wind"), ("exceptional", "Severe weather"),
     ]
 
     var body: some View {
         Section {
-            Stepper("Extra time: \(settings.weatherExtraMinutes) min", value: $settings.weatherExtraMinutes, in: 0...60, step: 5)
-            if settings.weatherExtraMinutes > 0 {
-                EntityField(title: "Weather", text: $settings.weatherEntity)
-                ForEach(Self.conditions, id: \.self) { condition in
-                    Toggle(condition, isOn: Binding(
-                        get: { settings.badWeatherConditions.contains(condition) },
-                        set: { on in
-                            if on { settings.badWeatherConditions.insert(condition) } else { settings.badWeatherConditions.remove(condition) }
-                        }
-                    ))
+            Stepper("Default extra time: \(settings.weatherExtraMinutes) min", value: $settings.weatherExtraMinutes, in: 0...60, step: 5)
+            Picker("Forecast from", selection: $settings.weatherSource) {
+                ForEach(WeatherSource.allCases) { Text($0.displayName).tag($0) }
+            }
+            if settings.weatherSource == .homeAssistant {
+                if usesIntegration {
+                    LabeledContent("Weather entity", value: "Chosen in Home Assistant")
+                } else {
+                    EntityField(title: "Weather entity", text: $settings.weatherEntity)
                 }
-                Toggle("Any rain or snow at freezing", isOn: $settings.addTimeWhenFreezing)
             }
         } header: {
             Text("Bad weather")
         } footer: {
-            Text("If the hourly forecast between your first alarm and when you need to be there matches a ticked condition, the alarm moves earlier by the extra time. Appointment drives get the extra time added. Needs Home Assistant.")
+            Text(sourceFooter + " The forecast covers your first alarm until you need to be there; a matching condition moves the alarm and your leave-by earlier.")
+        }
+
+        Section {
+            ForEach(Self.conditions, id: \.key) { condition in
+                amountPicker(condition.name, key: condition.key, ticked: Binding(
+                    get: { settings.badWeatherConditions.contains(condition.key) },
+                    set: { on in
+                        if on { settings.badWeatherConditions.insert(condition.key) } else { settings.badWeatherConditions.remove(condition.key) }
+                    }
+                ))
+            }
+            amountPicker("Rain or snow at freezing", key: PlanAdjustments.freezing, ticked: $settings.addTimeWhenFreezing)
+        } header: {
+            Text("Extra time for")
+        } footer: {
+            Text("Each condition uses the default or its own amount. If several turn up, the largest one is used, not the total.")
         }
     }
+
+    /// One condition: off, the default, or its own minutes.
+    private func amountPicker(_ title: String, key: String, ticked: Binding<Bool>) -> some View {
+        Picker(title, selection: Binding<WeatherAmount>(
+            get: {
+                guard ticked.wrappedValue else { return .off }
+                return settings.weatherConditionMinutes[key].map(WeatherAmount.minutes) ?? .standard
+            },
+            set: { amount in
+                ticked.wrappedValue = amount != .off
+                if case .minutes(let minutes) = amount {
+                    settings.weatherConditionMinutes[key] = minutes
+                } else {
+                    settings.weatherConditionMinutes[key] = nil
+                }
+            }
+        )) {
+            Text("Off").tag(WeatherAmount.off)
+            Text("Default (\(settings.weatherExtraMinutes) min)").tag(WeatherAmount.standard)
+            ForEach(Array(stride(from: 5, through: 60, by: 5)), id: \.self) { minutes in
+                Text("\(minutes) min").tag(WeatherAmount.minutes(minutes))
+            }
+        }
+    }
+}
+
+private enum WeatherAmount: Hashable {
+    case off
+    case standard
+    case minutes(Int)
 }
 
 private struct EntityField: View {

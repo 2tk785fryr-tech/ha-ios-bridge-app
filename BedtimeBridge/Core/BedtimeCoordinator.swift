@@ -142,16 +142,18 @@ final class BedtimeCoordinator {
         var plan = WakePlanner.plan(shift: shift, appointments: appointments, settings: settings, now: now)
 
         // Weather depends on the plan (wake-up until arrival), so check it second and re-plan.
-        if let link, context != nil, settings.weatherExtraMinutes > 0, let window = travelWindow(for: plan) {
+        if settings.checksWeather, let window = travelWindow(for: plan),
+           let source = weatherForecast(settings: settings, link: context == nil ? nil : link) {
             do {
-                let (forecast, unit) = try await link.forecast(settings: settings)
+                let (forecast, unit) = try await source()
                 let freezing: Double? = settings.addTimeWhenFreezing ? ((unit ?? "°F").contains("C") ? 0 : 32) : nil
                 if let adjustment = PlanAdjustments.weather(
                     forecast: forecast,
                     window: window,
                     conditions: settings.badWeatherConditions,
                     freezingAt: freezing,
-                    extraMinutes: settings.weatherExtraMinutes
+                    extraMinutes: settings.weatherExtraMinutes,
+                    minutes: settings.weatherConditionMinutes
                 ) {
                     plan = WakePlanner.plan(shift: shift, appointments: appointments, settings: settings, now: now, weather: adjustment)
                 }
@@ -163,8 +165,11 @@ final class BedtimeCoordinator {
         // Shift alarms keep their rule's timing; the drive only says when to leave.
         if plan.source == .shift, let shift = plan.shift, !shift.location.trimmingCharacters(in: .whitespaces).isEmpty {
             plan.commute = await commute(to: shift, settings: settings)
-            if let leaveBy = plan.leaveBy(settings: settings), let wake = plan.wakeTime, leaveBy < wake {
-                extraWarnings.append("To be at \(shift.title) \(settings.workArrivalBufferMinutes) min early you'd leave at \(WakePlanner.format(leaveBy)), before your alarm at \(WakePlanner.format(wake)).")
+            // Bad weather slows the drive to work too, as it does an appointment's.
+            if let weather = plan.weather { plan.commute?.travelSeconds += Double(weather.minutes) * 60 }
+            if settings.wakeEarlyToGetReady, let short = plan.getReadyShortfall(settings: settings), short.earlierWake > now {
+                plan = plan.waking(at: short.earlierWake)
+                extraWarnings.append("Alarm moved to \(WakePlanner.format(short.earlierWake)) so you have \(settings.getReadyMinutes) min to get ready before leaving at \(WakePlanner.format(short.leaveBy)).")
             }
         }
 
@@ -174,6 +179,15 @@ final class BedtimeCoordinator {
         }
         plan.warnings = extraWarnings + plan.warnings
         return (plan, settings)
+    }
+
+    /// Tonight only: the plan's alarms moved to `wake` (earlier, to have time to get ready).
+    func wakeEarlier(_ plan: WakePlan, to wake: Date, settings phoneSettings: BridgeSettings) async throws -> WakePlan {
+        let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
+        var moved = plan.waking(at: wake)
+        moved.warnings.insert("Alarm moved to \(WakePlanner.format(wake)) for tonight, so you have time to get ready.", at: 0)
+        try await apply(moved, settings: settings)
+        return moved
     }
 
     /// For the day-off path: you pick the time, the app sets the usual alarm series.
@@ -540,6 +554,27 @@ final class BedtimeCoordinator {
             candidate.fallbackReason = error.localizedDescription
         }
         return candidate
+    }
+
+    /// The forecast fetch for the chosen source, or nil when it can't be reached
+    /// (Home Assistant chosen but not connected).
+    private func weatherForecast(settings: BridgeSettings, link: HomeAssistantLink?) -> (() async throws -> (hours: [ForecastHour], temperatureUnit: String?))? {
+        switch settings.weatherSource {
+        case .homeAssistant:
+            guard let link else { return nil }
+            return { try await link.forecast(settings: settings) }
+        case .openMeteo:
+            return { [travel] in
+                let place = try await Self.weatherLocation(homeAddress: settings.homeAddress, travel: travel)
+                return (try await OpenMeteoForecast().hourly(at: place), "°C")
+            }
+        }
+    }
+
+    /// Home, for the forecast: the home address, or where the phone is when that's blank.
+    private static func weatherLocation(homeAddress: String, travel: TravelTimeService) async throws -> CLLocation {
+        let item = try await travel.origin(homeAddress: homeAddress)
+        return item.isCurrentLocation ? try await CurrentLocation.fetch() : item.location
     }
 
     /// The drive from home to the shift's location, arriving the work buffer early.

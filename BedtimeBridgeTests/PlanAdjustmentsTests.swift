@@ -40,6 +40,32 @@ final class PlanAdjustmentsTests: XCTestCase {
         XCTAssertEqual(plan.leaveBy(settings: work), hours(9).addingTimeInterval(-35 * 60))
     }
 
+    func testShortGetReadyTimeIsFlaggedWithAnEarlierWake() {
+        // Days at +9 h, alarm 60 min before (+8 h). 45 min drive, 10 min early: leave at +8:05,
+        // which leaves 5 min to get ready instead of 60.
+        var plan = WakePlanner.plan(shift: daysShift, appointments: [], settings: settings, now: now)
+        plan.commute = Commute(travelSeconds: 45 * 60)
+        var morning = settings
+        morning.getReadyMinutes = 60
+        morning.workArrivalBufferMinutes = 10
+        let short = plan.getReadyShortfall(settings: morning)
+        XCTAssertEqual(short?.minutes, 5)
+        XCTAssertEqual(short?.earlierWake, hours(8).addingTimeInterval(5 * 60 - 60 * 60))
+
+        // 10 min drive: leave at +8:40, 40 min after the alarm. Fine with a 30 min goal.
+        plan.commute = Commute(travelSeconds: 10 * 60)
+        morning.getReadyMinutes = 30
+        XCTAssertNil(plan.getReadyShortfall(settings: morning))
+    }
+
+    func testWakingAtMovesTheWholeSeries() {
+        let plan = WakePlanner.plan(shift: daysShift, appointments: [], settings: settings, now: now)
+        let earlier = plan.wakeTime!.addingTimeInterval(-20 * 60)
+        let moved = plan.waking(at: earlier)
+        XCTAssertEqual(moved.wakeTime, earlier)
+        XCTAssertEqual(moved.alarmTimes, plan.alarmTimes.map { $0.addingTimeInterval(-20 * 60) })
+    }
+
     func testOverrideKeepsTheShiftsLocation() {
         var shift = daysShift
         shift.location = "General Hospital, 1 Main St"
@@ -108,6 +134,37 @@ final class PlanAdjustmentsTests: XCTestCase {
     func testWeatherOutsideWindowIgnored() {
         let forecast = [ForecastHour(start: hours(12), condition: "pouring", temperature: 60)]
         XCTAssertNil(PlanAdjustments.weather(forecast: forecast, window: hours(7)...hours(9), conditions: settings.badWeatherConditions, freezingAt: 32, extraMinutes: 15))
+    }
+
+    func testConditionsUseTheirOwnMinutesAndTheLargestWins() {
+        let forecast = [
+            ForecastHour(start: hours(7), condition: "pouring", temperature: 40),
+            ForecastHour(start: hours(8), condition: "snowy", temperature: 30),
+        ]
+        let result = PlanAdjustments.weather(
+            forecast: forecast, window: hours(7)...hours(9), conditions: ["pouring", "snowy"],
+            freezingAt: nil, extraMinutes: 15, minutes: ["snowy": 30]
+        )
+        XCTAssertEqual(result?.minutes, 30, "Snow's 30 beats heavy rain's default 15; they don't add")
+        XCTAssertTrue(result?.reason.hasPrefix("snowy") ?? false)
+    }
+
+    func testConditionCanBeLessThanTheDefault() {
+        let forecast = [ForecastHour(start: hours(7), condition: "fog", temperature: 50)]
+        let result = PlanAdjustments.weather(
+            forecast: forecast, window: hours(7)...hours(9), conditions: ["fog"],
+            freezingAt: nil, extraMinutes: 15, minutes: ["fog": 5]
+        )
+        XCTAssertEqual(result?.minutes, 5)
+    }
+
+    func testFreezingHasItsOwnMinutes() {
+        let forecast = [ForecastHour(start: hours(7), condition: "rainy", temperature: 31)]
+        let result = PlanAdjustments.weather(
+            forecast: forecast, window: hours(7)...hours(9), conditions: [],
+            freezingAt: 32, extraMinutes: 15, minutes: [PlanAdjustments.freezing: 25]
+        )
+        XCTAssertEqual(result?.minutes, 25)
     }
 
     func testFreezingRainCounts() {

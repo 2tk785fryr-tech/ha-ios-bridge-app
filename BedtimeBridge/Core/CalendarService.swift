@@ -12,6 +12,7 @@ enum BridgeError: LocalizedError {
     case homeAssistant(Int, String)
     case homeAssistantNotSetUp
     case eventNotFound
+    case weatherService(String, Int)
 
     var errorDescription: String? {
         switch self {
@@ -35,6 +36,8 @@ enum BridgeError: LocalizedError {
             "Connect Home Assistant in Bedtime Bridge's settings first."
         case .eventNotFound:
             "That calendar event couldn't be found. It may have been moved or deleted."
+        case .weatherService(let service, let status):
+            "\(service) returned an error (\(status))."
         }
     }
 }

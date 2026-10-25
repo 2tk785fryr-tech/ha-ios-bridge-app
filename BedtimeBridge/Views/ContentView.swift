@@ -43,10 +43,15 @@ struct ContentView: View {
                             WarningBanner(text: "+\(weather.minutes) min for \(weather.reason)", systemImage: "cloud.rain")
                         }
                         if plan.source == .appointment, let appointment = plan.appointment, let wake = plan.wakeTime {
-                            MorningTimeline(appointment: appointment, wake: wake, bufferMinutes: settings.arrivalBufferMinutes)
+                            MorningTimeline(appointment: appointment, weather: plan.weather, wake: wake, bufferMinutes: settings.arrivalBufferMinutes)
+                        }
+                        if let short = plan.getReadyShortfall(settings: settings), short.earlierWake > .now {
+                            GetReadyCard(minutes: short.minutes, wanted: settings.getReadyMinutes, leaveBy: short.leaveBy, earlierWake: short.earlierWake) {
+                                wakeEarlier(plan, to: short.earlierWake)
+                            }
                         }
                         if plan.source == .shift, let shift = plan.shift, let commute = plan.commute, let wake = plan.wakeTime {
-                            MorningTimeline(shift: shift, commute: commute, wake: wake, bufferMinutes: settings.workArrivalBufferMinutes)
+                            MorningTimeline(shift: shift, commute: commute, weather: plan.weather, wake: wake, bufferMinutes: settings.workArrivalBufferMinutes, getReadyGoal: settings.getReadyMinutes)
                         }
                         ForEach(plan.missingLocations, id: \.eventID) { appointment in
                             MissingLocationCard(appointment: appointment) { location in
@@ -246,6 +251,21 @@ struct ContentView: View {
         }
     }
 
+    /// Tonight only: sets the alarms earlier so there's time to get ready.
+    private func wakeEarlier(_ current: WakePlan, to wake: Date) {
+        isWorking = true
+        errorMessage = nil
+        Task {
+            defer { isWorking = false }
+            do {
+                plan = try await coordinator.wakeEarlier(current, to: wake, settings: store.settings)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            refreshScheduled()
+        }
+    }
+
     private func unskip() {
         isWorking = true
         errorMessage = nil
@@ -409,10 +429,14 @@ private struct MorningTimeline: View {
     let travelSeconds: TimeInterval
     let estimates: [DriveEstimate]
     let fallbackReason: String?
+    /// Extra time for bad weather, already included in `travelSeconds`.
+    let weather: WeatherAdjustment?
     let wake: Date
     let bufferMinutes: Int
+    /// The get-ready time from Settings; less than this is flagged.
+    var getReadyGoal = 0
 
-    init(appointment: AppointmentCandidate, wake: Date, bufferMinutes: Int) {
+    init(appointment: AppointmentCandidate, weather: WeatherAdjustment?, wake: Date, bufferMinutes: Int) {
         title = appointment.title
         start = appointment.start
         location = appointment.location
@@ -420,11 +444,12 @@ private struct MorningTimeline: View {
         travelSeconds = appointment.travelSeconds
         estimates = appointment.driveEstimates
         fallbackReason = appointment.fallbackReason
+        self.weather = weather
         self.wake = wake
         self.bufferMinutes = bufferMinutes
     }
 
-    init(shift: ShiftCandidate, commute: Commute, wake: Date, bufferMinutes: Int) {
+    init(shift: ShiftCandidate, commute: Commute, weather: WeatherAdjustment?, wake: Date, bufferMinutes: Int, getReadyGoal: Int) {
         title = "\(shift.title) starts"
         start = shift.start
         location = shift.location
@@ -432,8 +457,10 @@ private struct MorningTimeline: View {
         travelSeconds = commute.travelSeconds
         estimates = commute.driveEstimates
         fallbackReason = commute.fallbackReason
+        self.weather = weather
         self.wake = wake
         self.bufferMinutes = bufferMinutes
+        self.getReadyGoal = getReadyGoal
     }
 
     var body: some View {
@@ -456,7 +483,8 @@ private struct MorningTimeline: View {
                 TimelineStep(
                     title: "Get ready",
                     value: readyMinutes >= 0 ? "\(readyMinutes) min" : "\(-readyMinutes) min short",
-                    dot: .ring(readyMinutes >= 0 ? Theme.accent : Theme.danger)
+                    dot: .ring(readyMinutes >= getReadyGoal ? Theme.accent : Theme.danger),
+                    highlight: readyMinutes >= getReadyGoal ? nil : Theme.warning.text
                 )
                 TimelineStep(
                     title: "Leave by",
@@ -473,14 +501,18 @@ private struct MorningTimeline: View {
         .nightfallCard(padding: 20)
     }
 
-    /// "32 min drive with expected traffic\nApple 28 · TomTom 30 · Google 29 · Google worst case 41 min"
+    /// "32 min drive with expected traffic + 30 min for snowy at 5:00 AM\nApple 28 · TomTom 30 · Google 29 · Google worst case 41 min"
     private func driveDetail(minutes: Int) -> String {
+        let weatherMinutes = weather?.minutes ?? 0
+        let drive = minutes - weatherMinutes
+        let weatherNote = weather.map { " + \($0.minutes) min for \($0.reason)" } ?? ""
         if let fallbackReason {
-            return "\(minutes) min assumed: no drive time (\(fallbackReason))"
+            return "\(drive) min assumed: no drive time (\(fallbackReason))" + weatherNote
         }
-        guard estimates.count > 1 else { return "\(minutes) min drive with expected traffic" }
+        let line = "\(drive) min drive with expected traffic" + weatherNote
+        guard estimates.count > 1 else { return line }
         let parts = estimates.map { "\($0.service.displayName) \(Int(($0.seconds / 60).rounded()))" }
-        return "\(minutes) min drive with expected traffic\n" + parts.joined(separator: " · ") + " min"
+        return line + "\n" + parts.joined(separator: " · ") + " min"
     }
 }
 
@@ -623,7 +655,7 @@ private struct StatusCard: View {
     }
 
     private var weatherText: String {
-        guard settings.weatherExtraMinutes > 0, link != nil else { return "Not checked" }
+        guard settings.checksWeather, settings.weatherSource == .openMeteo || link != nil else { return "Not checked" }
         if let weather = plan?.weather { return "+\(weather.minutes) min, \(weather.reason)" }
         return plan == nil ? "Checked when you plan" : "No extra time"
     }
@@ -652,6 +684,41 @@ private struct StatusRow: View {
         .font(.system(size: 15))
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
+    }
+}
+
+/// "Only 40 min to get ready" with the way to fix it for tonight.
+private struct GetReadyCard: View {
+    let minutes: Int
+    let wanted: Int
+    let leaveBy: Date
+    let earlierWake: Date
+    let wakeEarlier: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(
+                minutes > 0
+                    ? "Only \(minutes) min to get ready before you leave at \(WakePlanner.format(leaveBy))"
+                    : "You'd need to leave at \(WakePlanner.format(leaveBy)), before your alarm",
+                systemImage: "exclamationmark.triangle"
+            )
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(Theme.warning.text)
+            Text("You've set \(wanted) min to get ready. Waking at \(WakePlanner.format(earlierWake)) gives you that. To always do it, turn on Wake early enough to get ready in Settings.")
+                .font(.footnote)
+                .foregroundStyle(Theme.textMuted)
+            Button(action: wakeEarlier) {
+                Text("Set alarms to wake at \(WakePlanner.format(earlierWake))")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .background(Theme.accent, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+        }
+        .padding(16)
+        .background(Theme.warning.background, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(Theme.warning.border, lineWidth: 1))
     }
 }
 
