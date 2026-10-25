@@ -142,6 +142,11 @@ the next time it runs (bedtime, snooze or stop).
 HACS offers that as an update, the same way your washer-and-dryer card does. So a change ships
 by bumping the version and merging. After updating in HACS, restart Home Assistant.
 
+**Icon and logo:** the Crescent icon and a Bedtime Bridge logo ship in
+`custom_components/bedtime_bridge/brand/`, so Home Assistant 2026.3 and later show them on
+the integration card instead of the "icon not available" placeholder. Older versions show the
+placeholder.
+
 The integration has its own tests (`pytest`, with `pytest-homeassistant-custom-component`).
 
 ## Only when you're home
@@ -387,6 +392,7 @@ BedtimeBridgeWidgets/  Lock Screen "Next Alarm" widget and the snooze-countdown 
 Shared/       Nightfall theme, alarm metadata and widget snapshot used by the app and the widgets
 BedtimeBridgeTests/
 custom_components/bedtime_bridge/  Home Assistant integration (HACS)
+  brand/      integration icon and logo (rendered from design/icons/crescent.svg)
 blueprints/automation/bedtime_bridge/  "Bedtime Bridge alarm event" blueprint
 tests/ha/     integration tests
 BedtimeBridge.xcodeproj  Xcode project (open this)
