@@ -211,7 +211,8 @@ snooze and stop like the others, but don't turn on the wake helpers.
 while? *Not going to sleep yet* turns off the regular alarms (temporary ones stay), and Home
 Assistant disarms the house, turns Awake For Day back on and Sleep In off. Once you've been
 back in bed for 15 minutes (adjustable), it sends `RUN_BEDTIME` and the whole bedtime routine
-runs again.
+runs again. Both waits ignore the bed sensor's short dropouts; only an empty bed for a
+minute or more starts them over.
 
 **Day off.** No shift and no appointment? *Set a day-off alarm* picks a time (six hours from now
 by default) and sets your usual series around it.

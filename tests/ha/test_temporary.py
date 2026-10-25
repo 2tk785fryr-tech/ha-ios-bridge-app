@@ -235,6 +235,53 @@ async def test_undo_bedtime_resets_the_house_then_runs_again_back_in_bed(hass, h
     assert messages(notify) == ["RUN_DISARM", "RUN_BEDTIME"]
 
 
+async def _wait(hass, freezer, **delta) -> None:
+    freezer.tick(timedelta(**delta))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+
+
+async def test_short_bed_dropouts_dont_restart_the_wait(hass, hass_client_no_auth, freezer):
+    notify = async_mock_service(hass, "notify", "mobile_app_test")
+    hass.states.async_set(BED, "off")
+    await setup(hass, bed_sensor=BED, rerun_minutes=15, **COMMANDS)
+    await send(hass_client_no_auth, {"type": "bedtime_undone", "data": {}})
+    await _wait(hass, freezer, minutes=30)
+
+    hass.states.async_set(BED, "on")
+    await hass.async_block_till_done()
+    # Lying still, the sensor drops out for ~19 s every few minutes.
+    for _ in range(3):
+        await _wait(hass, freezer, minutes=4)
+        hass.states.async_set(BED, "off")
+        await _wait(hass, freezer, seconds=19)
+        hass.states.async_set(BED, "on")
+        await hass.async_block_till_done()
+    assert messages(notify) == ["RUN_DISARM"], "only ~13 minutes in bed so far"
+
+    await _wait(hass, freezer, minutes=3)
+    assert messages(notify) == ["RUN_DISARM", "RUN_BEDTIME"]
+
+
+async def test_getting_up_again_restarts_the_wait(hass, hass_client_no_auth, freezer):
+    notify = async_mock_service(hass, "notify", "mobile_app_test")
+    hass.states.async_set(BED, "on")
+    await setup(hass, bed_sensor=BED, rerun_minutes=15, **COMMANDS)
+    await send(hass_client_no_auth, {"type": "bedtime_undone", "data": {}})
+    await _wait(hass, freezer, minutes=10)
+
+    # Up for two minutes: a real trip out, not a dropout.
+    hass.states.async_set(BED, "off")
+    await _wait(hass, freezer, minutes=2)
+    hass.states.async_set(BED, "on")
+    await hass.async_block_till_done()
+    await _wait(hass, freezer, minutes=10)
+    assert messages(notify) == ["RUN_DISARM"], "the wait started over when you got up"
+
+    await _wait(hass, freezer, minutes=6)
+    assert messages(notify) == ["RUN_DISARM", "RUN_BEDTIME"]
+
+
 async def test_a_new_plan_cancels_the_rerun(hass, hass_client_no_auth, freezer):
     notify = async_mock_service(hass, "notify", "mobile_app_test")
     hass.states.async_set(BED, "off")
