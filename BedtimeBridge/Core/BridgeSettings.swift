@@ -109,6 +109,8 @@ struct BridgeSettings: Codable, Equatable {
     var alarmStyle: AlarmStyle = .app
     /// App alarms only. Clock app snooze is fixed at 9 minutes by Apple.
     var snoozeMinutes = 9
+    /// App alarms only: what they ring with.
+    var alarmSound: AlarmSound = .standard
     /// App alarms only: what Stop does to the rest of the series. Default keeps them until
     /// Home Assistant confirms you're up: stopping the first alarm and falling back asleep is
     /// exactly how Wake Deadline Backstop came to exist.
@@ -204,6 +206,35 @@ enum StopBehavior: String, Codable, CaseIterable, Identifiable {
         case .keepAll: "Keep them all"
         }
     }
+}
+
+/// What app alarms ring with: iOS's own alarm sound, or one of the sounds that ship in
+/// BedtimeBridge/Sounds (AlarmKit can't use the system ringtones).
+enum AlarmSound: String, Codable, CaseIterable, Identifiable {
+    case standard
+    case sunrise
+    case chimes
+    case marimba
+    case harp
+    case classic
+    case pulse
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .standard: "iPhone alarm (default)"
+        case .sunrise: "Sunrise (builds slowly)"
+        case .chimes: "Chimes"
+        case .marimba: "Marimba"
+        case .harp: "Harp"
+        case .classic: "Classic beeps"
+        case .pulse: "Pulse (loud)"
+        }
+    }
+
+    /// The bundled file, or nil for the system sound.
+    var fileName: String? { self == .standard ? nil : "\(rawValue).caf" }
 }
 
 enum AlarmStyle: String, Codable, CaseIterable, Identifiable {

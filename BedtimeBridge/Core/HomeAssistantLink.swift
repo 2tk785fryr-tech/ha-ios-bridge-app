@@ -20,6 +20,7 @@ enum BridgeEvent: String {
     case temporarySnoozed = "temporary_snoozed"
     case temporaryStopped = "temporary_stopped"
     case bedtimeUndone = "bedtime_undone"
+    case commandRan = "command_ran"
 }
 
 /// The two ways the app can talk to Home Assistant: the Bedtime Bridge integration

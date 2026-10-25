@@ -14,6 +14,10 @@ final class BedtimeCoordinator {
     let alarms = AlarmScheduler()
     let leaveReminder = LeaveReminder()
 
+    /// The plan whose alarms were last set (by the app or the bedtime shortcut), so Tonight
+    /// can show it when it comes back to the front. Cleared when the alarms are cleared.
+    private(set) var lastAppliedPlan: WakePlan?
+
     // MARK: Planning
 
     /// Works out tonight's wake-up without touching any alarms.
@@ -72,6 +76,7 @@ final class BedtimeCoordinator {
         await report(.skipped, data: skipped, settings: settings)
         try alarms.cancelAll(keeping: keptAlarms)
         leaveReminder.clear()
+        lastAppliedPlan = nil
         updateWidget { $0 = NextAlarmSnapshot(alarmStyle: settings.alarmStyle.rawValue, temporaryAlarms: temporaryAlarms.map(\.time)) }
         lastCause = AlarmCause.none
         guard case .wakeAt(let time, let wakeIs) = choice else { return nil }
@@ -120,6 +125,7 @@ final class BedtimeCoordinator {
         let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
         try alarms.cancelAll(keeping: keptAlarms)
         leaveReminder.clear()
+        lastAppliedPlan = nil
         updateWidget { $0 = NextAlarmSnapshot(alarmStyle: settings.alarmStyle.rawValue, temporaryAlarms: temporaryAlarms.map(\.time)) }
         lastCause = AlarmCause.none
         await report(.bedtimeUndone, data: [:], settings: settings)
@@ -168,7 +174,7 @@ final class BedtimeCoordinator {
     func setTemporaryAlarm(at time: Date, disarmHouse: Bool, settings phoneSettings: BridgeSettings) async throws -> TemporaryAlarm {
         let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
         let when = Self.nextOccurrence(ofTimeIn: time)
-        let id = try await alarms.scheduleSingle(at: when, title: "Temporary wake-up", cause: AlarmCause.temporary, snoozeMinutes: settings.snoozeMinutes)
+        let id = try await alarms.scheduleSingle(at: when, title: "Temporary wake-up", cause: AlarmCause.temporary, snoozeMinutes: settings.snoozeMinutes, sound: settings.alarmSound)
         let alarm = TemporaryAlarm(id: id, time: when, disarmHouse: disarmHouse)
         temporaryAlarms = temporaryAlarms + [alarm]
         updateWidget { $0.temporaryAlarms = temporaryAlarms.map(\.time) }
@@ -348,6 +354,7 @@ final class BedtimeCoordinator {
     func cancelAlarms(settings: BridgeSettings) async throws {
         try alarms.cancelAll(keeping: keptAlarms)
         leaveReminder.clear()
+        lastAppliedPlan = nil
         updateWidget { $0 = NextAlarmSnapshot(alarmStyle: settings.alarmStyle.rawValue, temporaryAlarms: temporaryAlarms.map(\.time)) }
         lastCause = AlarmCause.none
         await report(.cancelled, data: [:], settings: settings)
@@ -355,12 +362,14 @@ final class BedtimeCoordinator {
 
     /// Sets (or clears) alarms, the leave-by reminder and the HA sensor for a plan.
     private func apply(_ plan: WakePlan, settings: BridgeSettings) async throws {
+        lastAppliedPlan = plan
         if plan.hasAlarm, settings.alarmStyle == .app {
             try await alarms.replaceAlarms(
                 with: plan.alarmTimes,
                 title: alarmTitle(for: plan),
                 cause: plan.cause,
                 snoozeMinutes: settings.snoozeMinutes,
+                sound: settings.alarmSound,
                 keeping: keptAlarms
             )
         } else {
@@ -509,7 +518,7 @@ final class BedtimeCoordinator {
         let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
         if let old = testAlarmID { alarms.cancel(old) }
         let time = Date.now.addingTimeInterval(120)
-        testAlarmID = try await alarms.scheduleTest(at: time, snoozeMinutes: settings.snoozeMinutes)
+        testAlarmID = try await alarms.scheduleTest(at: time, snoozeMinutes: settings.snoozeMinutes, sound: settings.alarmSound)
         return time
     }
 
@@ -613,6 +622,12 @@ final class BedtimeCoordinator {
     func startBedtime(settings: BridgeSettings) async throws -> (started: Bool, atHome: Bool) {
         guard let link = HomeAssistantLinks.current(settings) else { throw BridgeError.homeAssistantNotSetUp }
         return try await link.startBedtime(settings: settings)
+    }
+
+    /// The shortcut a Home Assistant phone command asked for has run, so HA can take its
+    /// notification off the phone.
+    func commandRan(_ command: String, settings: BridgeSettings) async {
+        await report(.commandRan, data: ["command": command], settings: settings)
     }
 
     /// Clock app mode: the Shortcuts "Alarm is snoozed/stopped" automations call this instead

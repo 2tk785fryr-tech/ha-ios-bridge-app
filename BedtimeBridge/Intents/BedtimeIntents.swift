@@ -240,6 +240,44 @@ struct ReportAlarmEventIntent: AppIntent {
     }
 }
 
+/// The shortcuts Home Assistant's phone commands run, by the marker in their push.
+enum PhoneCommand: String, AppEnum {
+    case disarm = "RUN_DISARM"
+    case armStay = "RUN_ARM_STAY"
+    case goodMorning = "RUN_GOOD_MORNING"
+    case bedtime = "RUN_BEDTIME"
+
+    static var typeDisplayRepresentation: TypeDisplayRepresentation = "Phone Command"
+    static var caseDisplayRepresentations: [PhoneCommand: DisplayRepresentation] = [
+        .disarm: "Disarm (RUN_DISARM)",
+        .armStay: "Arm Stay (RUN_ARM_STAY)",
+        .goodMorning: "Good Morning (RUN_GOOD_MORNING)",
+        .bedtime: "Bedtime (RUN_BEDTIME)",
+    ]
+}
+
+/// The last step of a shortcut a phone command runs: tells Home Assistant it ran, so the
+/// command's notification is taken off the phone.
+struct ReportShortcutRanIntent: AppIntent {
+    static var title: LocalizedStringResource = "Report Shortcut Ran"
+    static var description = IntentDescription(
+        "Put this last in a shortcut that a Home Assistant phone command runs. Home Assistant then clears that command's notification. The bedtime shortcut doesn't need it: Start Bedtime Routine already tells Home Assistant."
+    )
+
+    @Parameter(title: "Command")
+    var command: PhoneCommand
+
+    static var parameterSummary: some ParameterSummary {
+        Summary("Report \(\.$command) ran")
+    }
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        await BedtimeCoordinator.shared.commandRan(command.rawValue, settings: SettingsStore.shared.settings)
+        return .result()
+    }
+}
+
 struct BedtimeBridgeShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(

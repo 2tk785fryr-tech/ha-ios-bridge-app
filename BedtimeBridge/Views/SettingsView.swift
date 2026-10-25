@@ -1,3 +1,4 @@
+import AVFoundation
 import EventKit
 import SwiftUI
 
@@ -388,6 +389,7 @@ private struct AlarmSettingsSection: View {
                 .foregroundStyle(Theme.textMuted)
             if settings.alarmStyle == .app {
                 Stepper("Snooze: \(settings.snoozeMinutes) min", value: $settings.snoozeMinutes, in: 1...30)
+                AlarmSoundPicker(sound: $settings.alarmSound)
                 Picker("When I stop an alarm", selection: $settings.stopBehavior) {
                     ForEach(StopBehavior.allCases) { Text($0.displayName).tag($0) }
                 }
@@ -399,11 +401,52 @@ private struct AlarmSettingsSection: View {
         } footer: {
             switch settings.alarmStyle {
             case .app:
-                Text("Rings through Silent and Focus. Snooze and Stop tell Home Assistant directly (set it up below), because the Shortcuts \"alarm snoozed/stopped\" automations only see Clock app alarms. \"Keep the rest until I'm up\" cancels the later alarms only once Home Assistant sees the bedroom door opened or the bed empty for over a minute, so stopping the first alarm and dozing off still leaves the others.")
+                Text("Rings through Silent and Focus. Snooze and Stop tell Home Assistant directly (set it up below), because the Shortcuts \"alarm snoozed/stopped\" automations only see Clock app alarms. \"Keep the rest until I'm up\" cancels the later alarms only once Home Assistant sees the bedroom door opened or the bed empty for over a minute, so stopping the first alarm and dozing off still leaves the others. A new sound is used from the next time alarms are set.")
             case .clock:
                 Text("The app works out the times and your shortcut creates Clock alarms from Wake Plan › Alarm Dates. Your snooze/stop automations keep working, but Apple fixes Clock snooze at 9 minutes.")
             }
         }
+    }
+}
+
+/// Which sound app alarms ring with, with a play button to hear it first.
+private struct AlarmSoundPicker: View {
+    @Binding var sound: AlarmSound
+    @State private var player: AVAudioPlayer?
+
+    var body: some View {
+        HStack {
+            Picker("Sound", selection: $sound) {
+                ForEach(AlarmSound.allCases) { Text($0.displayName).tag($0) }
+            }
+            if sound.fileName != nil {
+                Button {
+                    toggle()
+                } label: {
+                    Image(systemName: player?.isPlaying == true ? "stop.circle.fill" : "play.circle.fill")
+                        .font(.title2)
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(player?.isPlaying == true ? "Stop preview" : "Play preview")
+            }
+        }
+        .onChange(of: sound) { stop() }
+        .onDisappear { stop() }
+    }
+
+    private func toggle() {
+        if player?.isPlaying == true { return stop() }
+        guard let name = sound.fileName,
+              let url = Bundle.main.url(forResource: name, withExtension: nil) else { return }
+        // Heard even with the ring switch on silent, like the alarm itself.
+        try? AVAudioSession.sharedInstance().setCategory(.playback)
+        player = try? AVAudioPlayer(contentsOf: url)
+        player?.play()
+    }
+
+    private func stop() {
+        player?.stop()
+        player = nil
     }
 }
 
