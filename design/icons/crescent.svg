@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Bedtime Bridge app icon: Crescent (default). Nightfall palette. -->
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1C2550"/>
+      <stop offset="1" stop-color="#0B1026"/>
+    </linearGradient>
+    <mask id="cut">
+      <rect width="1024" height="1024" fill="#FFFFFF"/>
+      <circle cx="610" cy="390" r="250" fill="#000000"/>
+    </mask>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#sky)"/>
+  <circle cx="198" cy="214" r="10" fill="#C4B5FD"/>
+  <circle cx="820" cy="760" r="8" fill="#C4B5FD" opacity="0.8"/>
+  <circle cx="300" cy="840" r="6" fill="#A9B1D6" opacity="0.7"/>
+  <circle cx="470" cy="520" r="290" fill="#DDD6FE" mask="url(#cut)"/>
+  <path d="M 690 300 A 230 230 0 0 1 760 470" fill="none" stroke="#8B5CF6" stroke-width="34" stroke-linecap="round"/>
+  <path d="M 745 215 A 340 340 0 0 1 860 480" fill="none" stroke="#8B5CF6" stroke-width="34" stroke-linecap="round" opacity="0.6"/>
+</svg>

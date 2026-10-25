@@ -81,6 +81,8 @@ struct SettingsView: View {
                 Text("Appointment mornings only. Set at bedtime; when you stop a Bedtime Bridge alarm, traffic is rechecked and the reminder moves if it changed.")
             }
 
+            AppIconSection()
+
             Section("Shift calendars") {
                 CalendarPicker(calendars: calendars, selection: $store.settings.shiftCalendarIDs)
             }

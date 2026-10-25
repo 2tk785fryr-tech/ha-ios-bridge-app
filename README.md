@@ -259,6 +259,13 @@ mint for connected, sky blue for leave-by, amber for weather warnings. Colors li
 `Shared/Fonts` are static cuts of Google Fonts' variable Sora, made with fontTools. They're
 used under the SIL Open Font License (`Shared/Fonts/OFL.txt`, shipped inside the app).
 
+## App icon
+
+Three Nightfall icons: **Crescent** (the default), **Bridge** and **Night dial**. Pick one under
+Settings → App icon. Sources are in `design/icons/*.svg`. The 1024 px PNGs in
+`BedtimeBridge/Assets.xcassets` (`AppIcon`, `AppIcon-Bridge`, `AppIcon-Dial`) were rendered from
+them; re-render after editing a design.
+
 ## Shortcuts actions
 
 | Action | Use |
