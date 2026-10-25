@@ -46,7 +46,7 @@ struct ContentView: View {
                     }
 
                     if let plan {
-                        PlanCard(plan: plan)
+                        PlanCard(plan: plan, isSet: isSet(plan), setCount: scheduled.filter { $0 > .now }.count)
                         if let weather = plan.weather {
                             WarningBanner(text: "+\(weather.minutes) min for \(weather.reason)", systemImage: "cloud.rain")
                         }
@@ -69,8 +69,11 @@ struct ContentView: View {
                                 self.plan?.missingLocations.removeAll { $0.eventID == appointment.eventID }
                             }
                         }
+                    } else if !scheduled.isEmpty {
+                        // Set earlier (the bedtime shortcut, or before the app was closed).
+                        SetAlarmsCard(scheduled: scheduled, snapshot: NextAlarmSnapshot.load())
                     } else {
-                        EmptyPlanCard(scheduled: scheduled)
+                        EmptyPlanCard()
                     }
 
                     if let errorMessage {
@@ -95,6 +98,8 @@ struct ContentView: View {
                             skip(morning, then: .sleepIn)
                         } differentTime: {
                             sheet = .skipToTime
+                        } undoBedtime: {
+                            undoBedtime()
                         }
                     } else if skippedMorning == nil, scheduled.isEmpty, plan?.hasAlarm != true {
                         DayOffCard { sheet = .dayOff }
@@ -252,6 +257,13 @@ struct ContentView: View {
         .background(Theme.ground)
     }
 
+    /// Every alarm the plan still has to ring is set on this iPhone.
+    private func isSet(_ plan: WakePlan) -> Bool {
+        let upcoming = plan.alarmTimes.filter { $0 > .now }
+        guard !upcoming.isEmpty, store.settings.alarmStyle == .app else { return false }
+        return upcoming.allSatisfy { time in scheduled.contains { abs($0.timeIntervalSince(time)) < 60 } }
+    }
+
     private var primaryTitle: String {
         if let wake = plan?.wakeTime, plan?.hasAlarm == true {
             return "Set \(plan?.alarmTimes.count ?? settings.alarmCount) alarms, up by \(WakePlanner.format(wake))"
@@ -293,6 +305,21 @@ struct ContentView: View {
             do {
                 let replacement = try await coordinator.skipMorning(plan, morning: morning, then: choice, settings: store.settings)
                 plan = replacement ?? plan.map { PlanAdjustments.skipping($0, morning: morning) }
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            refreshScheduled()
+        }
+    }
+
+    private func undoBedtime() {
+        isWorking = true
+        errorMessage = nil
+        Task {
+            defer { isWorking = false }
+            do {
+                try await coordinator.undoBedtime(settings: store.settings)
+                plan = nil
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -381,13 +408,20 @@ struct ContentView: View {
 
 private struct PlanCard: View {
     let plan: WakePlan
+    /// The plan's alarms are set on this iPhone (not just previewed).
+    let isSet: Bool
+    let setCount: Int
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Text(plan.hasAlarm ? "Wake-up time" : "Tomorrow")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(Theme.textMuted)
+                if plan.hasAlarm {
+                    SetStatus(isSet: isSet, count: setCount)
+                } else {
+                    Text("Tomorrow")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(Theme.textMuted)
+                }
                 Spacer()
                 if plan.hasAlarm { CauseChip(plan: plan) }
             }
@@ -464,29 +498,85 @@ private struct CauseChip: View {
     }
 }
 
-private struct EmptyPlanCard: View {
-    let scheduled: [Date]
+/// "✓ 3 alarms set" or "Preview, not set yet", so it's clear whether anything will ring.
+private struct SetStatus: View {
+    let isSet: Bool
+    let count: Int
 
+    var body: some View {
+        Label(isSet ? (count == 1 ? "1 alarm set" : "\(count) alarms set") : "Preview, not set yet",
+              systemImage: isSet ? "checkmark.circle.fill" : "eye")
+            .font(.footnote.weight(.bold))
+            .foregroundStyle(isSet ? Theme.good : Theme.warning.text)
+    }
+}
+
+/// Alarms already set (by the bedtime shortcut, or before the app was last closed), shown
+/// the same way as a plan.
+private struct SetAlarmsCard: View {
+    let scheduled: [Date]
+    let snapshot: NextAlarmSnapshot
+
+    private var upcoming: [Date] { scheduled.filter { $0 > .now } }
+    private var wake: Date? {
+        if let wake = snapshot.wakeTime, upcoming.contains(where: { abs($0.timeIntervalSince(wake)) < 60 }) { return wake }
+        return upcoming.last
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                SetStatus(isSet: true, count: upcoming.count)
+                Spacer()
+                if !snapshot.label.isEmpty {
+                    Text(snapshot.label)
+                        .font(.footnote.weight(.bold))
+                        .foregroundStyle(Theme.shiftChip.text)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Theme.shiftChip.background, in: Capsule())
+                }
+            }
+            if let wake { BigTime(date: wake) }
+            if let reason = snapshot.reason, !reason.isEmpty {
+                Text(reason)
+                    .font(.subheadline)
+                    .foregroundStyle(Theme.textSoft)
+            }
+            if let leaveBy = snapshot.leaveBy, leaveBy > .now {
+                Label("Leave by \(WakePlanner.format(leaveBy))", systemImage: "car")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Theme.leaveBy)
+            }
+            if upcoming.count > 1 {
+                HStack(spacing: 8) {
+                    ForEach(upcoming, id: \.self) { time in
+                        let isWake = time == wake
+                        Text(time.formatted(.dateTime.hour(.defaultDigits(amPM: .omitted)).minute()))
+                            .font(.system(size: 15, weight: isWake ? .bold : .semibold))
+                            .foregroundStyle(isWake ? .white : Theme.textSoft)
+                            .frame(maxWidth: .infinity, minHeight: 40)
+                            .background(isWake ? Theme.accent : Theme.raised, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                }
+            }
+        }
+        .nightfallCard(radius: 28, padding: 24)
+    }
+}
+
+private struct EmptyPlanCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Image(systemName: "moon.stars")
                 .font(.system(size: 28))
                 .foregroundStyle(Theme.accentIcon)
-            if let first = scheduled.first {
-                Text("Alarms set from \(WakePlanner.format(first))")
-                    .font(.sora(22, .semibold, relativeTo: .title2))
-                    .foregroundStyle(Theme.text)
-                Text("Preview to see why, or plan again if your calendar changed.")
-                    .font(.subheadline)
-                    .foregroundStyle(Theme.textSoft)
-            } else {
-                Text("Nothing planned yet")
-                    .font(.sora(22, .semibold, relativeTo: .title2))
-                    .foregroundStyle(Theme.text)
-                Text("Preview to check your shifts and \"wake up\" appointments.")
-                    .font(.subheadline)
-                    .foregroundStyle(Theme.textSoft)
-            }
+            Text("No alarms set")
+                .font(.sora(22, .semibold, relativeTo: .title2))
+                .foregroundStyle(Theme.text)
+            Text("Preview to check your shifts and \"wake up\" appointments.")
+                .font(.subheadline)
+                .foregroundStyle(Theme.textSoft)
         }
         .nightfallCard(radius: 28, padding: 24)
     }
@@ -809,7 +899,9 @@ private struct ScheduledAlarmsCard: View {
     let isShift: Bool
     let sleepIn: () -> Void
     let differentTime: () -> Void
+    let undoBedtime: () -> Void
     @State private var confirming = false
+    @State private var confirmingUndo = false
 
     private var day: String { morning.formatted(.dateTime.weekday(.wide)) }
 
@@ -822,6 +914,19 @@ private struct ScheduledAlarmsCard: View {
                 Text(times.map { $0.formatted(.dateTime.weekday(.abbreviated).hour().minute()) }.joined(separator: " · "))
                     .font(.system(size: 15))
                     .foregroundStyle(Theme.text)
+            }
+            if !times.isEmpty {
+                Button { confirmingUndo = true } label: {
+                    Label("Not going to sleep yet", systemImage: "figure.walk")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Theme.accentText)
+                        .frame(minHeight: 44)
+                }
+                .confirmationDialog("Not going to sleep yet?", isPresented: $confirmingUndo, titleVisibility: .visible) {
+                    Button("Undo bedtime", action: undoBedtime)
+                } message: {
+                    Text("Turns these alarms off. Home Assistant disarms the house and turns Awake For Day back on and Sleep In off. When you're back in bed for a while, bedtime runs again.")
+                }
             }
             Button(role: .destructive) { confirming = true } label: {
                 Label("Skip \(day)'s wake-up", systemImage: "bell.slash")

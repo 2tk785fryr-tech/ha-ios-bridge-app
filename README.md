@@ -1,11 +1,113 @@
-# Bedtime Bridge
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="custom_components/bedtime_bridge/brand/dark_logo@2x.png">
+    <img src="custom_components/bedtime_bridge/brand/logo@2x.png" alt="Bedtime Bridge" width="320">
+  </picture>
+</p>
 
-An iOS app that takes over the parts of the bedtime shortcut that Shortcuts does badly:
-reading the calendar, working out drive time, and setting the alarms. Your shortcut still
-runs the routine and still talks to Home Assistant. It just calls this app's actions
-instead of a long chain of calendar, maps and alarm actions.
+<p align="center">
+  <b>Shift-aware wake-up alarms for iPhone, wired into Home Assistant.</b><br>
+  Reads your calendar, works out the drive, sets the alarms, and tells your house when you're up.
+</p>
 
-## What it does
+<p align="center">
+  <img alt="iOS 27" src="https://img.shields.io/badge/iOS-27-6D4AFF?style=flat-square&logo=apple&logoColor=white">
+  <img alt="Swift" src="https://img.shields.io/badge/SwiftUI-AlarmKit-6D4AFF?style=flat-square&logo=swift&logoColor=white">
+  <img alt="Home Assistant" src="https://img.shields.io/badge/Home%20Assistant-integration-18BCF2?style=flat-square&logo=homeassistant&logoColor=white">
+  <img alt="HACS" src="https://img.shields.io/badge/HACS-custom-41BDF5?style=flat-square">
+</p>
+
+<p align="center">
+  <img src="docs/images/tonight.png" width="200" alt="Tonight screen with a Days shift preview">
+  &nbsp;
+  <img src="docs/images/tonight-morning.png" width="200" alt="Morning timeline with leave-by and drive time">
+  &nbsp;
+  <img src="docs/images/slide-to-stop.gif" width="200" alt="Slide to stop a snoozed alarm">
+</p>
+
+Bedtime Bridge takes over the parts of a bedtime shortcut that Shortcuts does badly: reading
+the calendar, working out drive time, and setting the alarms. Your shortcut still runs the
+routine and still talks to Home Assistant. It just calls this app's actions instead of a long
+chain of calendar, maps and alarm actions. A companion Home Assistant integration
+(`custom_components/bedtime_bridge`) turns every plan, snooze and stop into sensors, events and
+helpers your automations can use.
+
+- [A quick tour](#a-quick-tour)
+- [How it fits together](#how-it-fits-together)
+- [How planning works](#how-planning-works)
+- [Alarms and snooze](#alarms-and-snooze)
+- [Changing tonight's plan](#changing-tonights-plan)
+- [Home Assistant integration](#home-assistant-integration-recommended)
+- [Phone commands](#phone-commands)
+- [Away from home](#only-when-youre-home)
+- [Shortcuts actions](#shortcuts-actions) · [Rewiring the bedtime shortcut](#rewiring-the-bedtime-shortcut)
+- [Building](#building)
+
+## A quick tour
+
+<table>
+  <tr>
+    <td width="33%" align="center"><img src="docs/images/tonight.png" width="240" alt="Tonight"></td>
+    <td width="33%" align="center"><img src="docs/images/tonight-morning.png" width="240" alt="Your morning"></td>
+    <td width="33%" align="center"><img src="docs/images/upcoming-events.png" width="240" alt="Upcoming events"></td>
+  </tr>
+  <tr>
+    <td valign="top"><b>Tonight.</b> The next shift or appointment, the wake-up time it needs, and the whole alarm series. Preview first, or set the alarms in one tap.</td>
+    <td valign="top"><b>Your morning.</b> Wake up, get ready, leave by, arrive early, start: with the live drive time and any extra time for bad weather.</td>
+    <td valign="top"><b>Upcoming events.</b> Next week's appointments that have no location or no "wake up" note, so you can fix them before the night they matter.</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/images/ignore-event.gif" width="240" alt="Swipe to ignore an event"></td>
+    <td align="center"><img src="docs/images/skip.png" width="240" alt="Skip a morning"></td>
+    <td align="center"><img src="docs/images/temporary-alarm.png" width="240" alt="Temporary alarm"></td>
+  </tr>
+  <tr>
+    <td valign="top"><b>Swipe to ignore.</b> An event that needs no wake-up or no location moves to the Ignored tab. Swipe right there to undo.</td>
+    <td valign="top"><b>Skip a morning.</b> Sleep in, or wake at a different time. Skipping the night before also turns off the house's wake failsafes.</td>
+    <td valign="top"><b>Temporary alarms.</b> One extra wake-up (take the trash out, make a call) that leaves your regular alarms, Sleep In and Awake For Day alone.</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/images/settings-pages.png" width="240" alt="Settings"></td>
+    <td align="center"><img src="docs/images/drive-time.png" width="240" alt="Drive time settings"></td>
+    <td align="center"><img src="docs/images/bad-weather.png" width="240" alt="Bad weather settings"></td>
+  </tr>
+  <tr>
+    <td valign="top"><b>Settings.</b> Shifts, get-ready time and home up front; everything else grouped into pages.</td>
+    <td valign="top"><b>Drive time.</b> Apple Maps for free, or TomTom and Google with your own keys. Use one, or the longest of all of them. Google's worst case is always shown.</td>
+    <td valign="top"><b>Bad weather.</b> Forecast from Home Assistant or Open-Meteo. Each condition gets the default extra time, its own amount, or none.</td>
+  </tr>
+</table>
+
+## How it fits together
+
+```mermaid
+flowchart LR
+    subgraph Phone["iPhone"]
+        SC["Bedtime shortcut"] -->|Plan Wake-Up Alarms| APP["Bedtime Bridge app"]
+        APP --> CAL[("Calendar")]
+        APP --> MAPS["Apple Maps / TomTom / Google"]
+        APP --> AK["AlarmKit alarms<br>+ Lock Screen widget"]
+    end
+    subgraph HA["Home Assistant"]
+        INT["Bedtime Bridge integration"]
+        INT --> ENT["Sensors, events,<br>wake_fade / wake_mike"]
+        INT --> AUTO["Your automations<br>and blueprints"]
+    end
+    APP <-->|private webhook| INT
+    INT -.->|phone commands<br>RUN_DISARM, RUN_BEDTIME, …| SC
+```
+
+1. At bedtime your shortcut asks the app to **plan**. The app finds the next shift or "wake up"
+   appointment, gets the drive time for arriving early, checks the forecast and your shift
+   override, and sets the alarms.
+2. The plan goes to Home Assistant, which keeps it as sensors (next alarm, leave-by, failsafe
+   times) and fires a `bedtime_bridge` event.
+3. In the morning, **snooze** and **stop** go straight to Home Assistant, which turns on your
+   wake helpers. Stop keeps the later alarms until HA sees you're actually up.
+4. When the house needs the phone (disarm the alarm system, run Good Morning or bedtime
+   again), the integration sends a **phone command** that a Shortcuts automation picks up.
+
+## How planning works
 
 1. **Next shift.** Finds the first event within the look-ahead window (24 h by default) whose
    title contains one of your shift words (`Days`, `Swings`, …). Each shift type has its own
@@ -50,9 +152,11 @@ Settings → Alarms chooses one of two styles:
 | | **Bedtime Bridge alarms** (default) | **Clock app (via shortcut)** |
 |---|---|---|
 | Who makes the alarms | The app (AlarmKit). Rings through Silent and Focus. | Your shortcut, with *Create Alarm* for each item in `Wake Plan › Alarm Dates`. |
-| Snooze | Snooze button. **Length is adjustable** (default 9 min). The countdown shows on the Lock Screen and in the Dynamic Island. | Apple's fixed 9 minutes. |
+| Snooze | Snooze button. **Length is adjustable** (default 9 min). The countdown shows on the Lock Screen and in the Dynamic Island. While snoozing, stopping takes a **slide**, like the Clock app, so a stray tap can't end it. | Apple's fixed 9 minutes. |
 | Morning routines | **Snooze** turns on `input_boolean.wake_fade` (Wake Snooze Fade). **Stop** turns on `input_boolean.wake_mike` (Wake Sequence). The app tells HA directly and retries if HA doesn't answer. | Your existing "Alarm is snoozed / stopped" Shortcuts automations, unchanged. |
 | After Stop | **Keeps the later alarms until you're up** (default; see below), rechecks traffic for the leave-by reminder. | Whatever your shortcut does. |
+
+<p align="center"><img src="docs/images/slide-to-stop.gif" width="220" alt="Slide to stop while snoozing"></p>
 
 **Stop keeps the rest until you're up.** Turning off the first alarm, switching the lights off
 and falling back asleep is how Wake Deadline Backstop came to exist. So by default, Stop only
@@ -69,6 +173,56 @@ Why two styles: the Shortcuts "Alarm is snoozed / stopped" triggers only fire fo
 alarms. They never see app alarms, so in app-alarm mode the app has to tell HA itself.
 **Turn off those Shortcuts automations when you use app alarms,** or a Clock alarm and an app
 alarm could both fire. Also delete the Clock alarms the old shortcut toggled.
+
+## Changing tonight's plan
+
+Plans change after bedtime. The Tonight screen (and matching Shortcuts actions) covers the
+common cases without touching Home Assistant by hand.
+
+<table>
+  <tr>
+    <td width="50%" align="center"><img src="docs/images/skip.png" width="260" alt="Skip Monday's wake-up"></td>
+    <td width="50%" align="center"><img src="docs/images/temporary-alarm.png" width="260" alt="Temporary alarm sheet"></td>
+  </tr>
+</table>
+
+**Skip a morning.** *Skip Monday's wake-up* asks what you want instead:
+- **Sleep in:** the alarms are cancelled, Sleep In turns on, and the shift override is set to
+  Off, so the house's wake failsafes stay quiet too. Skipping the night before is treated like
+  the event doesn't exist.
+- **Wake at a different time:** pick a time and whether it's the first or last alarm of your
+  usual series. Later plans (the bedtime shortcut, a re-plan) keep it instead of clearing it.
+
+You can undo a skip from the same card, and Home Assistant puts the shift override back.
+**Stopping an alarm in the morning is different:** that keeps the failsafes, because they're
+there for the times you turn the alarm off and fall back asleep.
+
+**Temporary alarms.** One extra alarm beside the regular ones, for getting up early and going
+back to bed. Choose what happens to the house alarm:
+- **Disarm, then re-arm:** stopping it sends `RUN_DISARM`. Once the bed sensor has seen you
+  back in bed for 5 minutes (adjustable), Home Assistant sends `RUN_ARM_STAY`. If you don't
+  get back into bed before the regular alarms (or within 6 hours), it doesn't re-arm.
+- **Keep armed:** for a phone call or anything else you do from bed.
+
+Either way Awake For Day, Sleep In and the regular alarms stay as they are. Temporary alarms
+snooze and stop like the others, but don't turn on the wake helpers.
+
+**Not going to sleep yet.** Got into bed early, bedtime ran, and now you want to get up for a
+while? *Not going to sleep yet* turns off the regular alarms (temporary ones stay), and Home
+Assistant disarms the house, turns Awake For Day back on and Sleep In off. Once you've been
+back in bed for 15 minutes (adjustable), it sends `RUN_BEDTIME` and the whole bedtime routine
+runs again.
+
+**Day off.** No shift and no appointment? *Set a day-off alarm* picks a time (six hours from now
+by default) and sets your usual series around it.
+
+**Get-ready warning.** If the drive or bad weather leaves less than your get-ready time before
+a shift, Tonight warns you and offers a one-tap earlier wake-up for that night. Turn on
+*Wake early enough to get ready* and shift alarms move earlier by themselves.
+
+**Is it set?** The Tonight card says **Preview, not set yet** until alarms are actually
+scheduled, then **✓ 3 alarms set**. The Lock Screen widget shows the same count
+("3 alarms set · Leave by 6:26").
 
 ## Home Assistant integration (recommended)
 
@@ -88,6 +242,15 @@ Bedtime Bridge. Or copy `custom_components/bedtime_bridge` into your config fold
 | Turn on when snoozed / stopped | `input_boolean.wake_fade` / `input_boolean.wake_mike` (any input_boolean, script, automation, switch or scene) |
 | Shift override, shift sensor, weather | `input_select.select_shift_override`, `sensor.current_shift`, `weather.forecast_home` |
 | Shift types | `Days, Swings` |
+| You / Only run routines when you're home / Turn on to start the bedtime routine | your person entity / on / `input_boolean.bedtime_routine` |
+| Bed sensor, Left-the-bedroom helper | your bed occupancy sensor, `input_boolean.bedroom_exited_today` |
+| Safety-net times for / margin | `calendar` / 15 min |
+| Notify action for your phone, Tell me when my plan goes out of date | e.g. `notify.mobile_app_…` / on |
+| Send phone commands | off. Turn on for [phone commands](#phone-commands) |
+| Sleep In helper, Awake For Day helper | `input_boolean.sleep_in`, `input_boolean.awake_for_day` |
+| Curtains open after sunrise | 15 min |
+| Re-arm after back in bed for / Bedtime again after back in bed for | 5 min / 15 min |
+| Check these when I'm away | garage door, entry doors and front lock, when they exist |
 
 The last step shows two addresses and a **pairing link**:
 - **Anywhere:** with Home Assistant Cloud (Nabu Casa), a `https://hooks.nabu.casa/…` cloudhook,
@@ -119,8 +282,9 @@ private. Deleting the integration also deletes its Nabu Casa cloudhook.
 
 **Events:** `bedtime_bridge` with `type` (`planned`, `snoozed`, `stopped`, `cancelled`,
 `leave_by`) plus `alarm_cause`, `alarm_time`, `alarm_times`, `label`, `leave_by` and
-`snooze_count`. Also fired: `bedtime`, `plan_failed` (with `error`) and `plan_outdated`
-(with `reason`). Test alarms add `test: true`. With *helpers only*, or while you're away,
+`snooze_count`. Also fired: `bedtime`, `plan_failed` (with `error`), `plan_outdated`
+(with `reason`), `skipped` / `unskipped`, `temporary_snoozed` / `temporary_stopped`,
+`temporary_rearmed`, `bedtime_undone` and `bedtime_rerun`. Test alarms add `test: true`. With *helpers only*, or while you're away,
 snoozed/stopped aren't fired.
 
 **Helpers or blueprints, your choice:**
@@ -133,8 +297,8 @@ snoozed/stopped aren't fired.
 - *Both* is the default, so you can move routines over one at a time. Don't let a helper-driven
   automation and an event-driven automation do the same thing, or it will run twice.
 
-What it can't do: HA can't push commands to the phone. Settings changed in HA reach the app
-the next time it runs (bedtime, snooze or stop).
+Settings changed in HA reach the app the next time it runs (bedtime, snooze or stop). HA can
+reach the phone only through [phone commands](#phone-commands), which run shortcuts.
 
 **Updates through HACS:** every time the `version` in
 `custom_components/bedtime_bridge/manifest.json` changes on `main`, a GitHub Action
@@ -148,6 +312,25 @@ the integration card instead of the "icon not available" placeholder. Older vers
 placeholder.
 
 The integration has its own tests (`pytest`, with `pytest-homeassistant-custom-component`).
+
+## Phone commands
+
+Some things only the phone can do (in my case the house alarm lives in a phone app, not in
+Home Assistant). With **Send phone commands** on in the integration's options, Home Assistant
+sends a notification with a marker word, and a Shortcuts **When I receive a notification**
+automation (iOS 27) runs the matching shortcut:
+
+| Marker | Sent when | Run this |
+|---|---|---|
+| `RUN_DISARM` | A temporary alarm (disarm mode) is stopped, or *Not going to sleep yet* | Your disarm shortcut |
+| `RUN_ARM_STAY` | You've been back in bed long enough after a temporary alarm | Your arm-stay shortcut |
+| `RUN_GOOD_MORNING` | A regular alarm is stopped while you're home | Good Morning (curtains, house alarm, briefing) |
+| `RUN_BEDTIME` | Back in bed after *Not going to sleep yet* (and the existing bedtime nudge) | The bedtime shortcut |
+
+Set each automation to *Run Immediately* and match on the message containing the marker.
+The integration also keeps **Sleep In** in sync with the plan (while you're home): on when the
+first alarm is after the curtains would open (sunrise + **Curtains open after sunrise**,
+default 15 min), off when it's before. Skipping a morning with *Sleep in* turns it on.
 
 ## Only when you're home
 
@@ -166,6 +349,13 @@ doesn't light up an empty house.
   automations, replace the HomeKit helper steps with **Report Alarm Event** (Snoozed / Stopped),
   so the same check applies.
 - **Wake Plan › At Home** is false when you're away, and the Tonight screen shows "away".
+- **Away bedtime.** The bedtime shortcut branches on *At Home*. Away, it skips every house step
+  (no disarm, no car charging check) and speaks the **Away Bedtime Summary** instead: your
+  alarms, tomorrow's weather where you are, and a check of the house (alarm still armed, the
+  entities in *Check these when I'm away*). When nothing's wrong it just says "Everything at
+  home is good."
+- **Drives from where you are.** With *Start from where I am when away* (Settings → Drive
+  time), appointment drives start from your current location instead of home.
 
 Set it up in the integration's options: **You** (defaults to your person entity), **Only run
 routines when you're home** (on), and **Turn on to start the bedtime routine**
@@ -247,9 +437,12 @@ see Clock snoozes. The app and widget share data through the App Group
   before leave-by. When you stop an app alarm, the app re-asks the drive-time service with that
   morning's traffic and moves the reminder ("Traffic is 8 min worse than planned"). In Clock
   mode it stays at the bedtime estimate.
-- **Bad weather.** Uses `weather.forecast_home`'s hourly forecast from your first alarm until
-  you need to be there. If a ticked condition shows up (default: pouring, lightning-rainy,
-  snowy, snowy-rainy, hail, or rain/snow at freezing), it adds 15 min. Shift alarms go off
+- **Bad weather.** Uses an hourly forecast, from Home Assistant (`weather.forecast_home`) or
+  the free **Open-Meteo** service (Settings → Bad weather → *Forecast from*). Each condition can
+  use the default extra time, its own amount (snow: 30 min), or be off. It reads the forecast
+  from your first alarm until you need to be there. If a condition that's on shows up (by
+  default snow, sleet, hail, heavy rain and thunderstorms, or rain at freezing), it adds that
+  condition's time (default 15 min; the longest wins). Shift alarms go off
   earlier. Appointment drives get the time added, so leave-by moves too. The Wake Plan reason
   says why ("+15 min for pouring at 6 AM").
 
@@ -277,6 +470,11 @@ them; re-render after editing a design.
 | **Plan Wake-Up Alarms** | The main step. Returns a *Wake Plan*: `Has Alarm`, `Wake-Up Time`, `First Alarm`, `Alarm Times`, `Alarm Dates`, `Needs Clock Alarms`, `Alarm Cause`, `Reason`, `Warnings`, `Home Assistant JSON`. Turn off *Set Alarms* to preview only. If nothing needs an alarm, it also clears the app's old alarms. |
 | **Set Wake-Up Alarms** | The day-off path. Give it your wake-up time and it sets the usual alarm series around it (ending at it by default). A time already past today rolls to tomorrow. |
 | **Cancel Wake-Up Alarms** | Clears every alarm the app has set and the leave-by reminder. |
+| **Set Temporary Alarm** | One extra alarm at a time, with *House Alarm*: disarm then re-arm, or keep armed. See [temporary alarms](#changing-tonights-plan). |
+| **Undo Bedtime** | *Not going to sleep yet*: regular alarms off, house disarmed, Awake For Day on, Sleep In off; bedtime runs again once you're back in bed. |
+| **Away Bedtime Summary** | Text to speak at bedtime away from home: alarms, weather, house check. Changes nothing. |
+| **Start Bedtime Routine** | Turns on the bedtime helper through the integration, only if you're home. Returns *Started*. |
+| **Report Alarm Event** | For Clock app mode: reports a snooze or stop so the home check applies. |
 | **Get Drive Time** | Drive minutes from home to a place, arriving by a given time. Useful in other shortcuts. |
 
 ## Alarm cause
@@ -303,6 +501,10 @@ Pick the service in Settings → Drive time. All three plan for arriving by *sta
 | **Apple Maps** (default) | Takes an arrival time directly and uses the traffic it predicts for that hour. | Nothing. Free. |
 | **TomTom** | Takes an arrival time directly (`arriveAt`) and uses its historical traffic for that time and day. One request per appointment. | API key from developer.tomtom.com (the free tier is plenty), home address |
 | **Google** (Routes API) | Driving routes only take a **departure** time, so the app works backwards. It tries leaving 30 min early, sees when you'd arrive, moves the departure by the difference and repeats (at most 4 requests). It keeps the latest departure that still arrives on time. Optional *Plan for heavy traffic* uses Google's pessimistic traffic model. | Routes API key, home address |
+
+**Longest of all** asks every service you have a key for (and Apple Maps) and plans with the
+longest drive. With a Google key, its heavy-traffic worst case is always fetched and shown on
+the morning timeline, whichever service you plan with.
 
 API keys are stored in the iOS Keychain. If a service fails (no signal, bad key), the app uses
 the fallback drive time from Settings. You'll see a warning in `Warnings`, and the JSON marks it

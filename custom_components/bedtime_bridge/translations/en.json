@@ -25,7 +25,9 @@
           "rearm_minutes": "Re-arm after back in bed for",
           "sleep_in_helper": "Sleep In helper",
           "curtain_offset_minutes": "Curtains open after sunrise",
-          "home_check_entities": "Check these when I'm away"
+          "home_check_entities": "Check these when I'm away",
+          "awake_helper": "Awake For Day helper",
+          "rerun_minutes": "Bedtime again after back in bed for"
         },
         "data_description": {
           "wake_action": "Helpers: turn on the entities below, for blueprints that watch them (Wake Snooze Fade, Wake Sequence). Events: fire a bedtime_bridge event for automations and blueprints to trigger on. Both: do both.",
@@ -37,11 +39,13 @@
           "replan_alert": "If the shift override or your next shift changes after you planned (and before you wake), send a notification with a Re-plan button.",
           "bed_sensor": "With the helper below, tells the app whether you're really up when you stop an alarm, so it keeps the later alarms if you're still in bed. Empty only counts after a minute (the sensor drops out briefly).",
           "exit_latch": "e.g. input_boolean.bedroom_exited_today, set by Bedroom Exit Latch when you open the bedroom door.",
-          "phone_commands": "Pushes RUN_DISARM, RUN_ARM_STAY and RUN_GOOD_MORNING to the notify action above, for Shortcuts \"When I receive a notification\" automations on the phone: disarm for a temporary alarm, re-arm once you're back in bed, and your morning shortcut when you stop a regular alarm (app alarms don't trigger Clock automations).",
+          "phone_commands": "Pushes RUN_DISARM, RUN_ARM_STAY, RUN_GOOD_MORNING and RUN_BEDTIME to the notify action above, for Shortcuts \"When I receive a notification\" automations on the phone: disarm and re-arm around a temporary alarm, your morning shortcut when you stop an app alarm (they don't trigger Clock automations), and bedtime again after you undo it. Snooze needs none: it turns on the snooze helper above.",
           "rearm_minutes": "After a temporary alarm that disarmed the house, the bed sensor must read occupied this long without a break before RUN_ARM_STAY is sent. Not back in bed before your regular alarms (or within 6 hours): it doesn't re-arm.",
           "sleep_in_helper": "Turned on when your first alarm is after the curtains open and off when it's before, each time the phone plans, and on when you skip a morning to sleep in. Only while you're home. Temporary alarms never touch it.",
           "curtain_offset_minutes": "Match your curtain automation's open time (sunrise plus this).",
-          "home_check_entities": "Doors, locks and the garage the app's Away Bedtime Summary checks when you go to bed away from home. Anything open, unlocked or not responding is read out; otherwise it says everything at home is good."
+          "home_check_entities": "Doors, locks and the garage the app's Away Bedtime Summary checks when you go to bed away from home. Anything open, unlocked or not responding is read out; otherwise it says everything at home is good.",
+          "awake_helper": "Turned back on when you undo bedtime (\"Not going to sleep yet\" in the app), so the house is in day mode while you're up.",
+          "rerun_minutes": "After undoing bedtime, once the bed reads occupied this long without a break, RUN_BEDTIME is sent so your bedtime shortcut runs again (within 6 hours)."
         }
       },
       "pair": {
@@ -79,7 +83,9 @@
           "rearm_minutes": "Re-arm after back in bed for",
           "sleep_in_helper": "Sleep In helper",
           "curtain_offset_minutes": "Curtains open after sunrise",
-          "home_check_entities": "Check these when I'm away"
+          "home_check_entities": "Check these when I'm away",
+          "awake_helper": "Awake For Day helper",
+          "rerun_minutes": "Bedtime again after back in bed for"
         },
         "data_description": {
           "wake_action": "Helpers: turn on the entities below, for blueprints that watch them (Wake Snooze Fade, Wake Sequence). Events: fire a bedtime_bridge event for automations and blueprints to trigger on. Both: do both.",
@@ -91,11 +97,13 @@
           "replan_alert": "If the shift override or your next shift changes after you planned (and before you wake), send a notification with a Re-plan button.",
           "bed_sensor": "With the helper below, tells the app whether you're really up when you stop an alarm, so it keeps the later alarms if you're still in bed. Empty only counts after a minute (the sensor drops out briefly).",
           "exit_latch": "e.g. input_boolean.bedroom_exited_today, set by Bedroom Exit Latch when you open the bedroom door.",
-          "phone_commands": "Pushes RUN_DISARM, RUN_ARM_STAY and RUN_GOOD_MORNING to the notify action above, for Shortcuts \"When I receive a notification\" automations on the phone: disarm for a temporary alarm, re-arm once you're back in bed, and your morning shortcut when you stop a regular alarm (app alarms don't trigger Clock automations).",
+          "phone_commands": "Pushes RUN_DISARM, RUN_ARM_STAY, RUN_GOOD_MORNING and RUN_BEDTIME to the notify action above, for Shortcuts \"When I receive a notification\" automations on the phone: disarm and re-arm around a temporary alarm, your morning shortcut when you stop an app alarm (they don't trigger Clock automations), and bedtime again after you undo it. Snooze needs none: it turns on the snooze helper above.",
           "rearm_minutes": "After a temporary alarm that disarmed the house, the bed sensor must read occupied this long without a break before RUN_ARM_STAY is sent. Not back in bed before your regular alarms (or within 6 hours): it doesn't re-arm.",
           "sleep_in_helper": "Turned on when your first alarm is after the curtains open and off when it's before, each time the phone plans, and on when you skip a morning to sleep in. Only while you're home. Temporary alarms never touch it.",
           "curtain_offset_minutes": "Match your curtain automation's open time (sunrise plus this).",
-          "home_check_entities": "Doors, locks and the garage the app's Away Bedtime Summary checks when you go to bed away from home. Anything open, unlocked or not responding is read out; otherwise it says everything at home is good."
+          "home_check_entities": "Doors, locks and the garage the app's Away Bedtime Summary checks when you go to bed away from home. Anything open, unlocked or not responding is read out; otherwise it says everything at home is good.",
+          "awake_helper": "Turned back on when you undo bedtime (\"Not going to sleep yet\" in the app), so the house is in day mode while you're up.",
+          "rerun_minutes": "After undoing bedtime, once the bed reads occupied this long without a break, RUN_BEDTIME is sent so your bedtime shortcut runs again (within 6 hours)."
         }
       }
     }

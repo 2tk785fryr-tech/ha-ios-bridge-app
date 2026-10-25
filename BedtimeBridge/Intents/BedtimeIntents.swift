@@ -102,6 +102,21 @@ struct SetTemporaryAlarmIntent: AppIntent {
     }
 }
 
+/// Up again after bedtime ran: alarms off, house disarmed, Awake For Day back on, Sleep In
+/// off. Bedtime runs again once you're back in bed.
+struct UndoBedtimeIntent: AppIntent {
+    static var title: LocalizedStringResource = "Undo Bedtime"
+    static var description = IntentDescription(
+        "For getting up again after bedtime ran: turns off the regular alarms (temporary ones stay), and Home Assistant disarms the house, turns Awake For Day back on and Sleep In off. Once you're back in bed for a while, it runs your bedtime shortcut again."
+    )
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        try await BedtimeCoordinator.shared.undoBedtime(settings: SettingsStore.shared.settings)
+        return .result()
+    }
+}
+
 /// Bedtime away from home: speaks your alarms, tomorrow's weather where you are and whether
 /// everything at home is good. Runs nothing in the house.
 struct AwayBedtimeSummaryIntent: AppIntent {

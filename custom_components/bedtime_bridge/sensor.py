@@ -96,7 +96,7 @@ SENSORS = (
         translation_key="last_plan",
         device_class=SensorDeviceClass.TIMESTAMP,
         value=lambda s: _time(s.get("last_plan")),
-        attributes=lambda s: {"error": s.get("plan_error")},
+        attributes=lambda s: {"error": s.get("plan_error"), "undone_at": s.get("undone_at")},
     ),
     *(
         BridgeSensorDescription(

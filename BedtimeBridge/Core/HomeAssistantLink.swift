@@ -19,6 +19,7 @@ enum BridgeEvent: String {
     case planFailed = "plan_failed"
     case temporarySnoozed = "temporary_snoozed"
     case temporaryStopped = "temporary_stopped"
+    case bedtimeUndone = "bedtime_undone"
 }
 
 /// The two ways the app can talk to Home Assistant: the Bedtime Bridge integration
@@ -146,7 +147,7 @@ struct IntegrationLink: HomeAssistantLink {
     /// The integration turns on helpers and/or fires events for snooze and stop, as chosen
     /// in its options. Snooze/stop retry: a missed one means the morning routine doesn't run.
     func report(_ event: BridgeEvent, data: [String: Any], settings: BridgeSettings) async throws {
-        let attempts: Int = [.snoozed, .stopped, .temporaryStopped, .skipped].contains(event) ? 3 : 1
+        let attempts: Int = [.snoozed, .stopped, .temporaryStopped, .skipped, .bedtimeUndone].contains(event) ? 3 : 1
         var lastError: Error?
         for attempt in 0..<attempts {
             do {

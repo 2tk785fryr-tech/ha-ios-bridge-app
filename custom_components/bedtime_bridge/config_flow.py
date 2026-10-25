@@ -15,6 +15,7 @@ from .pairing import async_placeholders
 
 from .const import shift_types as parse_shift_types
 from .const import (
+    CONF_AWAKE_HELPER,
     CONF_BED_SENSOR,
     CONF_BEDTIME_HELPER,
     CONF_CURTAIN_OFFSET,
@@ -26,6 +27,7 @@ from .const import (
     CONF_PRESENCE,
     CONF_REARM_MINUTES,
     CONF_REPLAN_ALERT,
+    CONF_RERUN_MINUTES,
     CONF_SAFETY_CAUSES,
     CONF_SAFETY_MINUTES,
     CONF_SHIFT_OVERRIDE,
@@ -39,6 +41,7 @@ from .const import (
     CONF_WEBHOOK_ID,
     DEFAULT_CURTAIN_OFFSET,
     DEFAULT_REARM_MINUTES,
+    DEFAULT_RERUN_MINUTES,
     DEFAULT_SAFETY_CAUSES,
     DEFAULT_SAFETY_MINUTES,
     DEFAULT_SHIFT_TYPES,
@@ -72,6 +75,8 @@ OPTION_KEYS = [
     CONF_SLEEP_IN,
     CONF_CURTAIN_OFFSET,
     CONF_HOME_CHECKS,
+    CONF_AWAKE_HELPER,
+    CONF_RERUN_MINUTES,
 ]
 
 
@@ -157,6 +162,10 @@ def _schema(hass: HomeAssistant, current: dict[str, Any]) -> vol.Schema:
                 CONF_REARM_MINUTES, default=current.get(CONF_REARM_MINUTES) or DEFAULT_REARM_MINUTES
             ): selector.NumberSelector(selector.NumberSelectorConfig(min=1, max=30, step=1, unit_of_measurement="min")),
             vol.Optional(CONF_SLEEP_IN, description=suggested(CONF_SLEEP_IN)): entity(["input_boolean"]),
+            vol.Optional(CONF_AWAKE_HELPER, description=suggested(CONF_AWAKE_HELPER)): entity(["input_boolean"]),
+            vol.Required(
+                CONF_RERUN_MINUTES, default=current.get(CONF_RERUN_MINUTES) or DEFAULT_RERUN_MINUTES
+            ): selector.NumberSelector(selector.NumberSelectorConfig(min=1, max=60, step=1, unit_of_measurement="min")),
             vol.Optional(CONF_HOME_CHECKS, description=home_checks_suggestion()): selector.EntitySelector(
                 selector.EntitySelectorConfig(domain=["cover", "lock", "binary_sensor"], multiple=True)
             ),
