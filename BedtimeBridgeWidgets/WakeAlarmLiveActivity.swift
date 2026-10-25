@@ -28,6 +28,7 @@ struct WakeAlarmLiveActivity: Widget {
                 SnoozeCountdown(state: context.state)
                     .font(.sora(fixed: 30, .semibold).monospacedDigit())
                     .foregroundStyle(Theme.accentText)
+                StopButton(alarmID: context.state.alarmID)
             }
             .padding()
             .activityBackgroundTint(Theme.surface)
@@ -41,7 +42,11 @@ struct WakeAlarmLiveActivity: Widget {
                     SnoozeCountdown(state: context.state).monospacedDigit()
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    Text(context.attributes.presentation.alert.title).font(.caption)
+                    HStack {
+                        Text(context.attributes.presentation.alert.title).font(.caption)
+                        Spacer()
+                        StopButton(alarmID: context.state.alarmID)
+                    }
                 }
             } compactLeading: {
                 Image(systemName: "zzz").foregroundStyle(Theme.accentIcon)
@@ -51,6 +56,25 @@ struct WakeAlarmLiveActivity: Widget {
                 Image(systemName: "alarm").foregroundStyle(Theme.accentIcon)
             }
         }
+    }
+}
+
+/// Opens the app's slide-to-stop screen. Widgets only take taps, so the slide that keeps a
+/// sleepy tap from ending the snooze happens in the app; the ringing alarm's own Stop
+/// comes from the system.
+private struct StopButton: View {
+    let alarmID: UUID
+
+    var body: some View {
+        Link(destination: URL(string: "bedtimebridge://stop?id=\(alarmID.uuidString)")!) {
+            Label("Stop", systemImage: "stop.fill")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(Theme.accent, in: Capsule())
+        }
+        .accessibilityLabel("Stop alarm")
     }
 }
 

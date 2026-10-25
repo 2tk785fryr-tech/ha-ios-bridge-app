@@ -47,6 +47,8 @@ struct AppointmentCandidate: Equatable {
     var travelSeconds: TimeInterval
     /// Set when the drive time could not be calculated and the fallback was used.
     var fallbackReason: String? = nil
+    /// Every service's answer (Apple, TomTom, Google typical and worst case), for comparing.
+    var driveEstimates: [DriveEstimate] = []
     /// Where the appointment is, kept so the leave-by reminder can recheck traffic.
     var latitude: Double? = nil
     var longitude: Double? = nil

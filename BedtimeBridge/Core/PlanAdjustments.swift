@@ -16,6 +16,19 @@ struct WeatherAdjustment: Equatable {
 /// Pure rules for the Home Assistant inputs, kept apart from the network code so they
 /// can be unit tested.
 enum PlanAdjustments {
+    /// A plan whose alarms fall on a morning you turned off becomes one with no alarms,
+    /// keeping what it found so the Tonight screen can still say why.
+    static func skipping(_ plan: WakePlan, morning skipped: Date?, calendar: Calendar = .current) -> WakePlan {
+        guard let skipped, let first = plan.firstAlarm, calendar.isDate(first, inSameDayAs: skipped) else { return plan }
+        let day = skipped.formatted(.dateTime.weekday(.wide))
+        var off = WakePlan(source: .none, alarmTimes: [], reason: "Alarms off for \(day) morning")
+        off.shift = plan.shift
+        off.appointment = plan.appointment
+        off.atHome = plan.atHome
+        off.warnings = ["You turned off alarms for \(day) morning (\(plan.reason), first alarm \(WakePlanner.format(first))). Undo on the Tonight screen."] + plan.warnings
+        return off
+    }
+
     /// Applies `input_select.select_shift_override`:
     /// "Auto" (or unknown) leaves the calendar alone, "Off" drops the work alarm, and a
     /// shift name ("Days", "Swings") swaps in that shift's rule for the calendar shift.
