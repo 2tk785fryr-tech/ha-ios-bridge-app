@@ -92,7 +92,7 @@ struct ContentView: View {
     private var header: some View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(Date.now.formatted(.dateTime.weekday(.wide)).uppercased() + " NIGHT")
+                Text(nightName)
                     .font(.footnote.weight(.semibold))
                     .tracking(1)
                     .foregroundStyle(Theme.textMuted)
@@ -114,6 +114,14 @@ struct ContentView: View {
             .accessibilityLabel("Settings")
         }
         .padding(.top, 8)
+    }
+
+    /// "SATURDAY NIGHT", still Saturday at 1:30 AM after a swing shift.
+    private var nightName: String {
+        let night = Calendar.current.component(.hour, from: .now) < 5
+            ? Date.now.addingTimeInterval(-6 * 3600)
+            : Date.now
+        return night.formatted(.dateTime.weekday(.wide)).uppercased() + " NIGHT"
     }
 
     private var actions: some View {
@@ -149,7 +157,7 @@ struct ContentView: View {
 
     private var primaryTitle: String {
         if let wake = plan?.wakeTime, plan?.hasAlarm == true {
-            return "Set \(settings.alarmCount) alarms, up by \(WakePlanner.format(wake))"
+            return "Set \(plan?.alarmTimes.count ?? settings.alarmCount) alarms, up by \(WakePlanner.format(wake))"
         }
         return "Plan and set alarms"
     }

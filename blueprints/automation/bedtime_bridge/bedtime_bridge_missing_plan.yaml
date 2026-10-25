@@ -5,19 +5,41 @@ blueprint:
     alarms tonight, or its last attempt failed. It catches the quiet failures: the bedtime
     shortcut never ran, the app errored, or calendar access was turned off.
 
-    At the check time it looks at your shift sensor's next_shift_start. If a shift starts
-    within the look-ahead window and the last plan is older than the max age (or ended in
-    an error), it sends one notification. Optionally it only checks while you're home.
+    It checks once you've been in bed for a while (your bedtime routine starts from the bed
+    sensor), so a late night after Swings, home at midnight and asleep at 2 AM, is checked
+    then, not at a fixed clock time while you're still on the road. If a shift starts within
+    the look-ahead window and the last plan is older than the max age (or ended in an
+    error), it sends one notification.
 
     Pair it with "Bedtime Bridge alarm event" or your own automation if you want something
     louder than a notification.
   domain: automation
   source_url: https://github.com/2tk785fryr-tech/ha-ios-bridge-app/blob/main/blueprints/automation/bedtime_bridge/bedtime_bridge_missing_plan.yaml
   input:
-    check_time:
-      name: Check at
-      description: When to check each night. Pick a time after you're normally in bed.
-      default: "23:30:00"
+    bed_sensor:
+      name: Bed sensor
+      description: "Expected: binary_sensor.master_bedroom_bed_presence_bed_occupied_left"
+      selector:
+        entity:
+          domain: binary_sensor
+    in_bed_minutes:
+      name: Check after this long in bed
+      description: Long enough for the bedtime routine to have finished.
+      default: 20
+      selector:
+        number:
+          min: 5
+          max: 120
+          unit_of_measurement: min
+    window_start:
+      name: Only between
+      description: Start of the night window, so an afternoon nap doesn't count.
+      default: "20:00:00"
+      selector:
+        time: {}
+    window_end:
+      name: And
+      default: "05:00:00"
       selector:
         time: {}
     last_plan_sensor:
@@ -67,8 +89,11 @@ mode: single
 max_exceeded: silent
 
 triggers:
-  - trigger: time
-    at: !input check_time
+  - trigger: state
+    entity_id: !input bed_sensor
+    to: "on"
+    for:
+      minutes: !input in_bed_minutes
 
 variables:
   last_plan_sensor: !input last_plan_sensor
@@ -83,6 +108,10 @@ variables:
   plan_error: "{{ state_attr(last_plan_sensor, 'error') or '' }}"
 
 conditions:
+  - alias: Night time (the window can cross midnight)
+    condition: time
+    after: !input window_start
+    before: !input window_end
   - alias: Home, or no presence filter
     condition: template
     value_template: >-

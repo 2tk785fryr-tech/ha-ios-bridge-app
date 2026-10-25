@@ -135,16 +135,18 @@ async def test_changes_after_wake_time_are_ignored(hass, hass_client_no_auth):
 
 
 async def test_missing_plan_blueprint(hass: HomeAssistant, freezer):
-    freezer.move_to(dt_util.parse_datetime("2026-10-26T03:00:00+00:00"))  # 23:00 New York
+    # Home from Swings, in bed at 01:40 New York time.
+    freezer.move_to(dt_util.parse_datetime("2026-10-26T05:40:00+00:00"))
     await hass.config.async_set_time_zone("America/New_York")
     target = Path(hass.config.path("blueprints/automation/bedtime_bridge"))
     target.mkdir(parents=True, exist_ok=True)
     shutil.copy(REPO / "blueprints/automation/bedtime_bridge/bedtime_bridge_missing_plan.yaml", target)
     notify = async_mock_service(hass, "notify", "mobile_app_test")
 
-    hass.states.async_set("sensor.current_shift", "Day off", {"next_shift_start": "2026-10-26T06:30:00-04:00"})
-    # Last plan was yesterday afternoon: stale.
-    hass.states.async_set("sensor.bedtime_bridge_last_plan", "2026-10-25T18:00:00+00:00", {"device_class": "timestamp", "error": None})
+    hass.states.async_set("binary_sensor.bed", "off")
+    hass.states.async_set("sensor.current_shift", "Day off", {"next_shift_start": "2026-10-26T14:30:00-04:00"})
+    # Last plan was yesterday: stale.
+    hass.states.async_set("sensor.bedtime_bridge_last_plan", "2026-10-25T04:00:00+00:00", {"device_class": "timestamp", "error": None})
 
     assert await async_setup_component(
         hass,
@@ -155,7 +157,7 @@ async def test_missing_plan_blueprint(hass: HomeAssistant, freezer):
                 "use_blueprint": {
                     "path": "bedtime_bridge/bedtime_bridge_missing_plan.yaml",
                     "input": {
-                        "check_time": "23:30:00",
+                        "bed_sensor": "binary_sensor.bed",
                         "last_plan_sensor": "sensor.bedtime_bridge_last_plan",
                         "shift_sensor": "sensor.current_shift",
                         "notify_action": "notify.mobile_app_test",
@@ -166,16 +168,37 @@ async def test_missing_plan_blueprint(hass: HomeAssistant, freezer):
     )
     await hass.async_block_till_done()
 
-    later = dt_util.parse_datetime("2026-10-26T03:30:01+00:00")
+    hass.states.async_set("binary_sensor.bed", "on")
+    await hass.async_block_till_done()
+    later = dt_util.parse_datetime("2026-10-26T06:00:01+00:00")  # 20 min in bed, 02:00 local
     freezer.move_to(later)
     async_fire_time_changed(hass, later)
     await hass.async_block_till_done()
     assert len(notify) == 1
-    assert "6:30 AM" in notify[0].data["message"]
+    assert "2:30 PM" in notify[0].data["message"]
 
-    # A fresh plan tonight: no warning the next time it checks.
+    # A fresh plan tonight: no warning.
     notify.clear()
-    hass.states.async_set("sensor.bedtime_bridge_last_plan", "2026-10-26T03:20:00+00:00", {"device_class": "timestamp", "error": None})
+    hass.states.async_set("sensor.bedtime_bridge_last_plan", "2026-10-26T05:45:00+00:00", {"device_class": "timestamp", "error": None})
+    await hass.services.async_call("automation", "trigger", {"entity_id": "automation.missing_plan", "skip_condition": False}, blocking=True)
+    await hass.async_block_till_done()
+    assert notify == []
+
+
+async def test_missing_plan_blueprint_ignores_afternoon_naps(hass: HomeAssistant, freezer):
+    freezer.move_to(dt_util.parse_datetime("2026-10-25T18:00:00+00:00"))  # 14:00 local
+    await hass.config.async_set_time_zone("America/New_York")
+    target = Path(hass.config.path("blueprints/automation/bedtime_bridge"))
+    target.mkdir(parents=True, exist_ok=True)
+    shutil.copy(REPO / "blueprints/automation/bedtime_bridge/bedtime_bridge_missing_plan.yaml", target)
+    notify = async_mock_service(hass, "notify", "mobile_app_test")
+    hass.states.async_set("sensor.current_shift", "Day off", {"next_shift_start": "2026-10-26T06:30:00-04:00"})
+    hass.states.async_set("sensor.bedtime_bridge_last_plan", "2026-10-24T04:00:00+00:00", {"device_class": "timestamp"})
+    assert await async_setup_component(hass, "automation", {"automation": {"alias": "Missing plan", "use_blueprint": {
+        "path": "bedtime_bridge/bedtime_bridge_missing_plan.yaml",
+        "input": {"bed_sensor": "binary_sensor.bed", "last_plan_sensor": "sensor.bedtime_bridge_last_plan",
+                  "shift_sensor": "sensor.current_shift", "notify_action": "notify.mobile_app_test"}}}})
+    await hass.async_block_till_done()
     await hass.services.async_call("automation", "trigger", {"entity_id": "automation.missing_plan", "skip_condition": False}, blocking=True)
     await hass.async_block_till_done()
     assert notify == []

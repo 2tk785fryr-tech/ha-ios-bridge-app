@@ -13,20 +13,25 @@ struct SettingsView: View {
             Group {
             Section {
                 ForEach($store.settings.shiftRules) { $rule in
-                    HStack {
-                        TextField("Title contains", text: $rule.keyword)
-                        Stepper("\(rule.wakeMinutesBefore) min", value: $rule.wakeMinutesBefore, in: 0...240, step: 5)
-                            .fixedSize()
+                    NavigationLink {
+                        ShiftRuleEditor(rule: $rule, general: store.settings)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(rule.keyword.isEmpty ? "New shift" : rule.keyword)
+                            Text(ShiftRuleEditor.summary(rule, general: store.settings))
+                                .font(.footnote)
+                                .foregroundStyle(Theme.textMuted)
+                        }
                     }
                 }
                 .onDelete { store.settings.shiftRules.remove(atOffsets: $0) }
                 Button("Add shift type", systemImage: "plus") {
-                    store.settings.shiftRules.append(ShiftRule(keyword: "", wakeMinutesBefore: 60))
+                    store.settings.shiftRules.append(ShiftRule(keyword: ""))
                 }
             } header: {
                 Text("Shifts")
             } footer: {
-                Text("A calendar event whose title contains the word counts as a shift. The first alarm goes off this long before it starts.")
+                Text("A calendar event whose title contains the word counts as a shift. Each shift has its own timing and alarm series.")
             }
 
             Section {
@@ -102,6 +107,116 @@ struct SettingsView: View {
     }
 }
 
+/// One shift type: when to wake for it, and its own alarm series.
+struct ShiftRuleEditor: View {
+    @Binding var rule: ShiftRule
+    let general: BridgeSettings
+
+    var body: some View {
+        Form {
+            Group {
+                Section {
+                    TextField("Title contains, e.g. Days", text: $rule.keyword)
+                        .textInputAutocapitalization(.words)
+                } footer: {
+                    Text("Matched against calendar event titles, and sent to Home Assistant as the alarm cause.")
+                }
+
+                Section("Timing") {
+                    Picker("Alarm time", selection: $rule.timing) {
+                        Text("Before the shift").tag(ShiftRule.Timing.beforeShift)
+                        Text("Fixed time").tag(ShiftRule.Timing.fixedTime)
+                    }
+                    .pickerStyle(.segmented)
+                    switch rule.timing {
+                    case .beforeShift:
+                        Stepper("\(rule.wakeMinutesBefore) min before it starts", value: $rule.wakeMinutesBefore, in: 0...300, step: 5)
+                    case .fixedTime:
+                        DatePicker("Time", selection: fixedTime, displayedComponents: .hourAndMinute)
+                    }
+                }
+
+                Section {
+                    Toggle("Use my usual series", isOn: usesGeneralSeries)
+                    if !usesGeneralSeries.wrappedValue {
+                        Picker("Set time is the", selection: Binding(get: { rule.wakeIs ?? general.wakeTimeIs }, set: { rule.wakeIs = $0 })) {
+                            ForEach(WakeTimeAlarm.allCases) { Text($0.displayName).tag($0) }
+                        }
+                        Stepper("\(rule.alarmCount ?? general.alarmCount) alarms", value: Binding(get: { rule.alarmCount ?? general.alarmCount }, set: { rule.alarmCount = $0 }), in: 1...10)
+                        Stepper("\(rule.alarmSpacingMinutes ?? general.alarmSpacingMinutes) min apart", value: Binding(get: { rule.alarmSpacingMinutes ?? general.alarmSpacingMinutes }, set: { rule.alarmSpacingMinutes = $0 }), in: 1...60)
+                    }
+                } header: {
+                    Text("Alarm series")
+                } footer: {
+                    Text(Self.example(rule, general: general))
+                }
+            }
+            .listRowBackground(Theme.surface)
+        }
+        .scrollContentBackground(.hidden)
+        .background(Theme.ground.ignoresSafeArea())
+        .navigationTitle(rule.keyword.isEmpty ? "Shift" : rule.keyword)
+    }
+
+    private var fixedTime: Binding<Date> {
+        Binding {
+            Calendar.current.date(bySettingHour: rule.fixedHour, minute: rule.fixedMinute, second: 0, of: .now) ?? .now
+        } set: { date in
+            let parts = Calendar.current.dateComponents([.hour, .minute], from: date)
+            rule.fixedHour = parts.hour ?? 8
+            rule.fixedMinute = parts.minute ?? 0
+        }
+    }
+
+    private var usesGeneralSeries: Binding<Bool> {
+        Binding {
+            rule.wakeIs == nil && rule.alarmCount == nil && rule.alarmSpacingMinutes == nil
+        } set: { usesGeneral in
+            if usesGeneral {
+                rule.wakeIs = nil
+                rule.alarmCount = nil
+                rule.alarmSpacingMinutes = nil
+            } else {
+                rule.wakeIs = general.wakeTimeIs
+                rule.alarmCount = general.alarmCount
+                rule.alarmSpacingMinutes = general.alarmSpacingMinutes
+            }
+        }
+    }
+
+    /// "First alarm 8:00 AM, 3 alarms 10 min apart" / "Up 60 min before, last of 3"
+    static func summary(_ rule: ShiftRule, general: BridgeSettings) -> String {
+        let wakeIs = rule.wakeIs ?? general.wakeTimeIs
+        let count = rule.alarmCount ?? general.alarmCount
+        let spacing = rule.alarmSpacingMinutes ?? general.alarmSpacingMinutes
+        let which = wakeIs == .first ? "First" : "Last"
+        let when: String
+        switch rule.timing {
+        case .beforeShift: when = "\(rule.wakeMinutesBefore) min before the shift"
+        case .fixedTime:
+            let time = Calendar.current.date(bySettingHour: rule.fixedHour, minute: rule.fixedMinute, second: 0, of: .now) ?? .now
+            when = WakePlanner.format(time)
+        }
+        return "\(which) alarm \(when) · \(count) alarms, \(spacing) min apart"
+    }
+
+    /// The series for an example shift, so the effect is visible while editing.
+    static func example(_ rule: ShiftRule, general: BridgeSettings) -> String {
+        var calendar = Calendar.current
+        calendar.timeZone = .current
+        let start = calendar.date(bySettingHour: rule.timing == .fixedTime ? 14 : 6, minute: 30, second: 0, of: .now) ?? .now
+        let (shift, warning) = ShiftCandidate.make(title: rule.keyword, start: start, rule: rule)
+        let times = WakePlanner.alarmTimes(
+            wakeTime: shift.wakeTime,
+            count: rule.alarmCount ?? general.alarmCount,
+            spacingMinutes: rule.alarmSpacingMinutes ?? general.alarmSpacingMinutes,
+            wakeIs: rule.wakeIs ?? general.wakeTimeIs
+        )
+        let line = "Shift at \(WakePlanner.format(start)) → alarms " + times.map(WakePlanner.format).joined(separator: ", ")
+        return warning.map { line + "\n" + $0 } ?? line
+    }
+}
+
 private struct AlarmSettingsSection: View {
     @Binding var settings: BridgeSettings
 
@@ -119,7 +234,7 @@ private struct AlarmSettingsSection: View {
             }
             Stepper("\(settings.alarmCount) alarms", value: $settings.alarmCount, in: 1...10)
             Stepper("\(settings.alarmSpacingMinutes) min apart", value: $settings.alarmSpacingMinutes, in: 1...60)
-            Picker("Wake-up time is the", selection: $settings.wakeTimeIs) {
+            Picker("Set time is the", selection: $settings.wakeTimeIs) {
                 ForEach(WakeTimeAlarm.allCases) { Text($0.displayName).tag($0) }
             }
             Text(seriesExample)
@@ -132,7 +247,7 @@ private struct AlarmSettingsSection: View {
             }
             Stepper("Look ahead \(settings.lookAheadHours) h", value: $settings.lookAheadHours, in: 6...72)
         } header: {
-            Text("Alarms")
+            Text("Alarms (appointments, day off)")
         } footer: {
             switch settings.alarmStyle {
             case .app:

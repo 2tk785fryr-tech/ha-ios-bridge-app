@@ -8,8 +8,18 @@ instead of a long chain of calendar, maps and alarm actions.
 ## What it does
 
 1. **Next shift.** Finds the first event within the look-ahead window (24 h by default) whose
-   title contains one of your shift words (`Days`, `Swings`, …). The first alarm goes off a
-   set number of minutes before that shift starts. Each shift word has its own lead time.
+   title contains one of your shift words (`Days`, `Swings`, …). Each shift type has its own
+   settings (Settings → Shifts → tap one):
+   - **Timing:** *before the shift* (e.g. Days: up 80 min before 6:30) or a *fixed time* on the
+     shift's day (Swings: 8:00 AM, however late you got to bed after the last one).
+   - **Alarm series:** its own number of alarms, spacing, and whether the set time is the first
+     or last alarm. Or "use my usual series" (the general settings, which appointments and
+     day-off alarms always use).
+
+   Defaults: Swings = first alarm at 8:00 AM, then 8:10 and 8:20. Days is a placeholder
+   (60 min before, usual series); set it to your real timing. Fixed-time alarms don't move for
+   bad weather, since the drive is hours later. If the shift override switches the shift type,
+   the other shift's timing and series are used.
 2. **Appointments.** Finds events whose notes contain `wake up` and that have a location. It
    gets the driving time **for arriving 10 minutes before the start**, using the traffic
    expected at that hour (see [Drive time](#drive-time)).
@@ -144,9 +154,11 @@ bypasses the check. Route it through the app's actions instead.
   Appointments aren't checked in that case. If HA can't help either, the action fails visibly
   in the shortcut and tells HA the plan failed.
 - **No plan by bedtime.** `sensor.bedtime_bridge_last_plan` records every plan (its `error`
-  attribute shows a failure). The **Bedtime Bridge missing plan** blueprint checks at a time you
-  pick (default 11:30 PM). If a shift starts within 14 h and there's no fresh plan, or the last
-  one failed, it sends a time-sensitive notification with a **Plan now** button.
+  attribute shows a failure). The **Bedtime Bridge missing plan** blueprint checks once you've
+  been in bed for 20 minutes (bed sensor, 8 PM to 5 AM). That's when your routine should have
+  run, so swing nights (home at midnight, asleep at 2 AM) don't raise false alarms. If a shift
+  starts within 14 h and there's no fresh plan, or the last one failed, it sends a
+  time-sensitive notification with a **Plan now** button.
 - **Appointment mornings in Wake Deadline Backstop.** For the causes you choose (default:
   `calendar`), the integration publishes `sensor.bedtime_bridge_safety_net_early` /
   `_deadline` / `_late` (wake-up time −15 / 0 / +15 min). Only when you're home. Make a second

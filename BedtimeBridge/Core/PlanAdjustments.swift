@@ -34,12 +34,12 @@ enum PlanAdjustments {
             guard let rule = rules.first(where: { $0.keyword.caseInsensitiveCompare(override) == .orderedSame }) else {
                 return (shift, "Shift override \"\(override)\" doesn't match a shift type in Settings; ignored.")
             }
-            guard var shift else {
+            guard let shift else {
                 return (nil, "Shift override is \(override), but there's no shift on the calendar.")
             }
-            shift.cause = rule.keyword
-            shift.wakeMinutesBefore = rule.wakeMinutesBefore
-            return (shift, nil)
+            // Rebuild from the override's rule: its timing and alarm series, not just the name.
+            let (rebuilt, warning) = ShiftCandidate.make(title: shift.title, start: shift.start, rule: rule)
+            return (rebuilt, warning)
         }
     }
 

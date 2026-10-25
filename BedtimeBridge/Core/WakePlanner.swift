@@ -7,8 +7,35 @@ struct ShiftCandidate: Equatable {
     var wakeMinutesBefore: Int
     /// The matching rule's keyword ("Days", "Swings"), sent to Home Assistant as the cause.
     var cause: String
+    /// Set for fixed-time rules (e.g. Swings at 8:00 AM on the shift's day).
+    var fixedWake: Date? = nil
+    /// This shift's alarm series; nil parts use the general settings.
+    var wakeIs: WakeTimeAlarm? = nil
+    var alarmCount: Int? = nil
+    var alarmSpacingMinutes: Int? = nil
 
-    var wakeTime: Date { start.addingTimeInterval(-Double(wakeMinutesBefore) * 60) }
+    var wakeTime: Date { fixedWake ?? start.addingTimeInterval(-Double(wakeMinutesBefore) * 60) }
+
+    /// Builds the candidate from its rule. A fixed time that would land at or after the shift
+    /// start (a misconfigured rule) falls back to minutes-before, with a warning.
+    static func make(title: String, start: Date, rule: ShiftRule, calendar: Calendar = .current) -> (ShiftCandidate, String?) {
+        var candidate = ShiftCandidate(
+            title: title,
+            start: start,
+            wakeMinutesBefore: rule.wakeMinutesBefore,
+            cause: rule.keyword.trimmingCharacters(in: .whitespaces),
+            wakeIs: rule.wakeIs,
+            alarmCount: rule.alarmCount,
+            alarmSpacingMinutes: rule.alarmSpacingMinutes
+        )
+        guard rule.timing == .fixedTime else { return (candidate, nil) }
+        let fixed = calendar.date(bySettingHour: rule.fixedHour, minute: rule.fixedMinute, second: 0, of: start)
+        guard let fixed, fixed < start else {
+            return (candidate, "\(rule.keyword)'s fixed alarm time is after the shift starts; used \(rule.wakeMinutesBefore) min before instead.")
+        }
+        candidate.fixedWake = fixed
+        return (candidate, nil)
+    }
 }
 
 /// An appointment whose notes asked for a wake-up, with its drive time already resolved.
@@ -131,9 +158,11 @@ enum WakePlanner {
     ) -> WakePlan {
         var warnings: [String] = []
         let extra = Double(weather?.minutes ?? 0) * 60
+        // Bad weather moves a commute-based alarm earlier; a fixed-time alarm (Swings at
+        // 8:00 AM, hours before the drive) stays put.
         let shift = shift.map { shift -> ShiftCandidate in
             var shift = shift
-            shift.wakeMinutesBefore += weather?.minutes ?? 0
+            if shift.fixedWake == nil { shift.wakeMinutesBefore += weather?.minutes ?? 0 }
             return shift
         }
         let appointments = appointments.map { appointment -> AppointmentCandidate in
@@ -199,14 +228,21 @@ enum WakePlanner {
         }
 
         if let shift, let shiftWake {
+            let shiftWeather = shift.fixedWake == nil ? weather : nil
+            let times = alarmTimes(
+                wakeTime: shiftWake,
+                count: shift.alarmCount ?? settings.alarmCount,
+                spacingMinutes: shift.alarmSpacingMinutes ?? settings.alarmSpacingMinutes,
+                wakeIs: shift.wakeIs ?? settings.wakeTimeIs
+            )
             return WakePlan(
                 source: .shift,
                 wakeTime: shiftWake,
-                alarmTimes: makeTimes(shiftWake),
-                reason: "\(shift.cause) shift at \(format(shift.start))\(weatherNote)",
+                alarmTimes: times,
+                reason: "\(shift.cause) shift at \(format(shift.start))\(shiftWeather == nil ? "" : weatherNote)",
                 shift: shift,
                 appointment: earliestAppointment?.0,
-                weather: weather,
+                weather: shiftWeather,
                 warnings: warnings,
                 missingLocations: missing
             )

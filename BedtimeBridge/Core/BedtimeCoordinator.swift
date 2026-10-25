@@ -48,13 +48,13 @@ final class BedtimeCoordinator {
         let now = Date.now
         guard start < now.addingTimeInterval(Double(settings.lookAheadHours) * 3600) else { return nil }
         let type = context.nextShiftType ?? ""
-        let rule = settings.shiftRules.first { $0.keyword.caseInsensitiveCompare(type) == .orderedSame }
-        let shift = ShiftCandidate(
-            title: type.isEmpty ? "Shift" : type,
-            start: start,
-            wakeMinutesBefore: rule?.wakeMinutesBefore ?? settings.shiftRules.map(\.wakeMinutesBefore).max() ?? 60,
-            cause: rule?.keyword ?? (type.isEmpty ? "Days" : type)
+        let matched = settings.shiftRules.first { $0.keyword.caseInsensitiveCompare(type) == .orderedSame }
+        // Unknown type: the earliest-waking minutes-before rule, so it errs early.
+        let rule = matched ?? ShiftRule(
+            keyword: type.isEmpty ? "Days" : type,
+            wakeMinutesBefore: settings.shiftRules.map(\.wakeMinutesBefore).max() ?? 60
         )
+        let shift = ShiftCandidate.make(title: type.isEmpty ? "Shift" : type, start: start, rule: rule).0
         var plan = WakePlanner.plan(shift: shift, appointments: [], settings: settings, now: now)
         guard plan.hasAlarm else { return nil }
         plan.atHome = context.atHome
@@ -83,18 +83,15 @@ final class BedtimeCoordinator {
         let settings = phoneSettings.applying(context?.settings ?? HomeAssistantLinks.cachedSettings)
         let end = now.addingTimeInterval(Double(settings.lookAheadHours) * 3600)
 
-        var shift = calendar.events(from: now, to: end, calendarIDs: settings.shiftCalendarIDs)
+        let found = calendar.events(from: now, to: end, calendarIDs: settings.shiftCalendarIDs)
             .lazy
-            .compactMap { event -> ShiftCandidate? in
+            .compactMap { event -> (ShiftCandidate, String?)? in
                 guard let rule = WakePlanner.matchingRule(forTitle: event.title ?? "", rules: settings.shiftRules) else { return nil }
-                return ShiftCandidate(
-                    title: event.title ?? rule.keyword,
-                    start: event.startDate,
-                    wakeMinutesBefore: rule.wakeMinutesBefore,
-                    cause: rule.keyword.trimmingCharacters(in: .whitespaces)
-                )
+                return ShiftCandidate.make(title: event.title ?? rule.keyword, start: event.startDate, rule: rule)
             }
             .first
+        var shift = found?.0
+        extraWarnings += [found?.1].compactMap { $0 }
 
         if let context {
             let result = PlanAdjustments.applyShiftOverride(context.shiftOverride, to: shift, rules: settings.shiftRules)
@@ -445,6 +442,8 @@ final class BedtimeCoordinator {
     /// From the first alarm until you need to be there: the hours worth checking the weather for.
     private func travelWindow(for plan: WakePlan) -> ClosedRange<Date>? {
         guard let first = plan.firstAlarm else { return nil }
+        // A fixed-time shift alarm doesn't move for weather (see WakePlanner).
+        if plan.source == .shift, plan.shift?.fixedWake != nil { return nil }
         let arrival = plan.source == .appointment ? plan.appointment?.start : plan.shift?.start
         guard let arrival, arrival > first else { return nil }
         return first...arrival

@@ -1,20 +1,75 @@
 import Foundation
 import Observation
 
-/// How long before a shift starts you want the first alarm, keyed by a word in the event title.
+/// When to wake for one shift type, keyed by a word in the event title. Each shift can have
+/// its own timing and alarm series; appointments use the general settings.
 struct ShiftRule: Codable, Identifiable, Hashable {
+    enum Timing: String, Codable, CaseIterable, Identifiable {
+        /// A set number of minutes before the shift starts (e.g. Days).
+        case beforeShift
+        /// The same clock time on the shift's day (e.g. Swings: 8:00 AM, whatever time you
+        /// got to bed after the last one).
+        case fixedTime
+
+        var id: String { rawValue }
+    }
+
     var id = UUID()
     /// Case-insensitive match against the calendar event title, e.g. "Days" or "Swings".
     /// Also sent to Home Assistant as the alarm cause, so spell it the way HA expects.
     var keyword: String
-    /// First alarm goes off this many minutes before the shift starts.
-    var wakeMinutesBefore: Int
+    var timing: Timing = .beforeShift
+    /// `.beforeShift`: the set alarm time is this many minutes before the shift starts.
+    var wakeMinutesBefore: Int = 60
+    /// `.fixedTime`: the set alarm time, on the shift's day.
+    var fixedHour: Int = 8
+    var fixedMinute: Int = 0
+    /// Overrides for this shift's alarm series; nil uses the general setting.
+    var wakeIs: WakeTimeAlarm? = nil
+    var alarmCount: Int? = nil
+    var alarmSpacingMinutes: Int? = nil
+
+    init(
+        keyword: String,
+        timing: Timing = .beforeShift,
+        wakeMinutesBefore: Int = 60,
+        fixedHour: Int = 8,
+        fixedMinute: Int = 0,
+        wakeIs: WakeTimeAlarm? = nil,
+        alarmCount: Int? = nil,
+        alarmSpacingMinutes: Int? = nil
+    ) {
+        self.keyword = keyword
+        self.timing = timing
+        self.wakeMinutesBefore = wakeMinutesBefore
+        self.fixedHour = fixedHour
+        self.fixedMinute = fixedMinute
+        self.wakeIs = wakeIs
+        self.alarmCount = alarmCount
+        self.alarmSpacingMinutes = alarmSpacingMinutes
+    }
+
+    /// Reads rules saved by older versions, which only had keyword and minutes.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        keyword = try c.decode(String.self, forKey: .keyword)
+        timing = try c.decodeIfPresent(Timing.self, forKey: .timing) ?? .beforeShift
+        wakeMinutesBefore = try c.decodeIfPresent(Int.self, forKey: .wakeMinutesBefore) ?? 60
+        fixedHour = try c.decodeIfPresent(Int.self, forKey: .fixedHour) ?? 8
+        fixedMinute = try c.decodeIfPresent(Int.self, forKey: .fixedMinute) ?? 0
+        wakeIs = try c.decodeIfPresent(WakeTimeAlarm.self, forKey: .wakeIs)
+        alarmCount = try c.decodeIfPresent(Int.self, forKey: .alarmCount)
+        alarmSpacingMinutes = try c.decodeIfPresent(Int.self, forKey: .alarmSpacingMinutes)
+    }
 }
 
 struct BridgeSettings: Codable, Equatable {
     var shiftRules: [ShiftRule] = [
+        // Placeholder: set your real Days timing and series in Settings.
         ShiftRule(keyword: "Days", wakeMinutesBefore: 60),
-        ShiftRule(keyword: "Swings", wakeMinutesBefore: 60),
+        // First alarm at 8:00 AM on swing days, then the usual series after it.
+        ShiftRule(keyword: "Swings", timing: .fixedTime, fixedHour: 8, fixedMinute: 0, wakeIs: .first),
     ]
     /// Calendars searched for shifts. Empty means every calendar.
     var shiftCalendarIDs: Set<String> = []
