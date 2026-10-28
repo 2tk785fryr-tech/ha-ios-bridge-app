@@ -29,6 +29,7 @@ from .const import (
     CONF_REPLAN_ALERT,
     CONF_RERUN_MINUTES,
     CONF_CALENDAR,
+    CONF_COMPLETE_MINUTES,
     CONF_EARLY_HELPER,
     CONF_RESTART_AUTOMATIONS,
     CONF_LADDER_SHIFT_TYPES,
@@ -44,6 +45,7 @@ from .const import (
     DEFAULT_CURTAIN_OFFSET,
     DEFAULT_REARM_MINUTES,
     DEFAULT_RERUN_MINUTES,
+    DEFAULT_COMPLETE_MINUTES,
     DEFAULT_LADDER_SHIFT_TYPES,
     DEFAULT_RESTART_AUTOMATIONS,
     DEFAULT_SHIFT_TYPES,
@@ -75,6 +77,7 @@ OPTION_KEYS = [
     CONF_BED_SENSOR,
     CONF_EXIT_LATCH,
     CONF_PHONE_COMMANDS,
+    CONF_COMPLETE_MINUTES,
     CONF_REARM_MINUTES,
     CONF_SLEEP_IN,
     CONF_CURTAIN_OFFSET,
@@ -169,6 +172,9 @@ def _schema(hass: HomeAssistant, current: dict[str, Any]) -> vol.Schema:
             vol.Optional(CONF_EXIT_LATCH, description=suggested(CONF_EXIT_LATCH)): entity(["input_boolean", "binary_sensor"]),
             vol.Required(CONF_REPLAN_ALERT, default=True if replan_alert is None else replan_alert): selector.BooleanSelector(),
             vol.Required(CONF_PHONE_COMMANDS, default=bool(phone_commands)): selector.BooleanSelector(),
+            vol.Required(
+                CONF_COMPLETE_MINUTES, default=current.get(CONF_COMPLETE_MINUTES) or DEFAULT_COMPLETE_MINUTES
+            ): selector.NumberSelector(selector.NumberSelectorConfig(min=1, max=30, step=1, unit_of_measurement="min")),
             vol.Required(
                 CONF_REARM_MINUTES, default=current.get(CONF_REARM_MINUTES) or DEFAULT_REARM_MINUTES
             ): selector.NumberSelector(selector.NumberSelectorConfig(min=1, max=30, step=1, unit_of_measurement="min")),

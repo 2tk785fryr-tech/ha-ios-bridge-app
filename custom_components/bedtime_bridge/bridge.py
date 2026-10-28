@@ -29,6 +29,7 @@ from .const import (
     CMD_DISARM,
     CMD_MORNING,
     COMMAND_TAG,
+    COMMAND_NAMES,
     COMMANDS,
     LADDER_SETTINGS,
     CONF_AWAKE_HELPER,
@@ -45,6 +46,7 @@ from .const import (
     CONF_REPLAN_ALERT,
     CONF_RERUN_MINUTES,
     CONF_CALENDAR,
+    CONF_COMPLETE_MINUTES,
     CONF_EARLY_HELPER,
     CONF_RESTART_AUTOMATIONS,
     CONF_LADDER_SHIFT_TYPES,
@@ -59,6 +61,7 @@ from .const import (
     DEFAULT_CURTAIN_OFFSET,
     DEFAULT_REARM_MINUTES,
     DEFAULT_RERUN_MINUTES,
+    DEFAULT_COMPLETE_MINUTES,
     DEFAULT_LADDER_SHIFT_TYPES,
     DEFAULT_RESTART_AUTOMATIONS,
     RESTART_NOTIFICATION_TAGS,
@@ -66,6 +69,7 @@ from .const import (
     DOMAIN,
     EVENT,
     EVENT_PLAN_OUTDATED,
+    EVENT_COMMAND_INCOMPLETE,
     EVENT_REARMED,
     EVENT_RERUN,
     HOME_STATES,
@@ -191,6 +195,8 @@ class BedtimeBridge:
         self._pending_commands: set[str] = set()
         self._restore_unsub: Callable[[], None] | None = None
         self._ladder_unsub: Callable[[], None] | None = None
+        # Phone shortcuts that reported Started and are expected to report Completed.
+        self._command_unsubs: dict[str, Callable[[], None]] = {}
 
     @property
     def options(self) -> dict[str, Any]:
@@ -217,6 +223,8 @@ class BedtimeBridge:
         self._watch_bed("rearm")
         self._watch_bed("rerun")
         self._schedule_skip_restore()
+        for command in list(self.state.get("command_started") or {}):
+            self._watch_command(command)
         # The ladder: recompute once loaded (keeping a stored one inside its lock), then check the
         # forecast every 15 minutes before leave-by.
         self.hass.async_create_task(self._recompute_ladder())
@@ -930,6 +938,8 @@ class BedtimeBridge:
         if self._ladder_unsub:
             self._ladder_unsub()
             self._ladder_unsub = None
+        for command in list(self._command_unsubs):
+            self._unwatch_command(command)
 
     # MARK: Change this morning (item 3)
 
@@ -1190,11 +1200,71 @@ class BedtimeBridge:
         """The shortcut a command asked for has run (its Report Shortcut Ran step). Outcome
         "already_done": the phone got the push but had nothing to do (Good Morning already ran)."""
         command = data.get("command")
+        # "ran" is Started (the shortcut's first step); "completed" its last; "already_done".
         outcome = data.get("outcome") or "ran"
+        now = dt_util.utcnow().isoformat()
         if command in COMMANDS:
             await self._clear_command(command)
-        self.state["last_command"] = {"command": command, "outcome": outcome, "time": dt_util.utcnow().isoformat()}
+        started: dict[str, str] = self.state.setdefault("command_started", {})
+        completing: list[str] = self.state.setdefault("commands_completing", [])
+        last = self.state.get("last_command") or {}
+        if outcome == "ran":
+            # Only watched once that shortcut has reported Completed at least once, so one with
+            # just a Started step never raises a false alarm.
+            if command in completing:
+                started[command] = now
+                self._watch_command(command)
+            last = {"command": command, "outcome": outcome, "time": now, "started": now, "completed": None}
+        else:
+            started.pop(command, None)
+            self._unwatch_command(command)
+            if outcome == "completed" and command not in completing:
+                completing.append(command)
+            same = last.get("command") == command
+            last = {
+                "command": command, "outcome": outcome, "time": now,
+                "started": last.get("started") if same else None,
+                "completed": now if outcome == "completed" else None,
+            }
+        self.state["last_command"] = last
         self._event(MSG_COMMAND_RAN, command=command, outcome=outcome)
+
+    @callback
+    def _watch_command(self, command: str) -> None:
+        """Flags a shortcut that started but hasn't completed in time (it stopped partway)."""
+        self._unwatch_command(command)
+        started = _time((self.state.get("command_started") or {}).get(command))
+        if started is None:
+            return
+        minutes = int(self.options.get(CONF_COMPLETE_MINUTES) or DEFAULT_COMPLETE_MINUTES)
+        due = max(started + timedelta(minutes=minutes), dt_util.utcnow() + timedelta(seconds=1))
+        self._command_unsubs[command] = async_track_point_in_utc_time(
+            self.hass, callback(lambda _now: self.hass.async_create_task(self._command_stuck(command))), due
+        )
+
+    @callback
+    def _unwatch_command(self, command: str) -> None:
+        unsub = self._command_unsubs.pop(command, None)
+        if unsub:
+            unsub()
+
+    async def _command_stuck(self, command: str) -> None:
+        self._command_unsubs.pop(command, None)
+        started = (self.state.get("command_started") or {}).pop(command, None)
+        if started is None:
+            return
+        name = COMMAND_NAMES.get(command, command)
+        self.hass.bus.async_fire(EVENT, {"type": EVENT_COMMAND_INCOMPLETE, "command": command, "started": started})
+        await self._push(
+            {
+                "title": "Phone shortcut didn't finish",
+                "message": f"{name} started on your phone but didn't finish. Check what it should have done.",
+                "data": {"tag": f"{COMMAND_TAG}_incomplete", "push": {"interruption-level": "time-sensitive"}},
+            },
+            f"{command} incomplete",
+        )
+        _LOGGER.warning("Bedtime Bridge: %s started at %s but never reported Completed", command, started)
+        self._changed()
 
     async def _cancelled(self, data: dict[str, Any]) -> None:
         self.state.update(empty_state())

@@ -359,3 +359,52 @@ async def test_already_done_still_clears_the_push_and_says_so(hass, hass_client_
     await send(hass_client_no_auth, {"type": "command_ran", "data": {"command": "RUN_DISARM"}})
     await hass.async_block_till_done()
     assert events[-1].data["outcome"] == "ran"
+
+
+async def test_started_and_completed_are_both_recorded(hass, hass_client_no_auth):
+    notify = async_mock_service(hass, "notify", "mobile_app_test")
+    await setup(hass, **COMMANDS)
+    await send(hass_client_no_auth, PLAN)
+    await send(hass_client_no_auth, {"type": "stopped", "data": {"alarm_times": []}})
+    await send(hass_client_no_auth, {"type": "command_ran", "data": {"command": "RUN_GOOD_MORNING", "outcome": "ran"}})
+    await hass.async_block_till_done()
+    assert messages(notify) == ["RUN_GOOD_MORNING", "clear_notification"], "cleared on the first report"
+    await send(hass_client_no_auth, {"type": "command_ran", "data": {"command": "RUN_GOOD_MORNING", "outcome": "completed"}})
+    await hass.async_block_till_done()
+    last = hass.states.get("sensor.bedtime_bridge_last_event").attributes["last_command"]
+    assert last["outcome"] == "completed" and last["started"] and last["completed"]
+    assert messages(notify) == ["RUN_GOOD_MORNING", "clear_notification"], "nothing more to clear"
+
+
+async def test_a_shortcut_that_starts_but_never_completes_is_flagged(hass, hass_client_no_auth, freezer):
+    notify = async_mock_service(hass, "notify", "mobile_app_test")
+    await setup(hass, command_complete_minutes=5, **COMMANDS)
+    events = async_capture_events(hass, "bedtime_bridge")
+    # Learns that Disarm reports Completed...
+    for outcome in ("ran", "completed"):
+        await send(hass_client_no_auth, {"type": "command_ran", "data": {"command": "RUN_DISARM", "outcome": outcome}})
+    # ...so a run that only starts is flagged after 5 minutes.
+    await send(hass_client_no_auth, {"type": "command_ran", "data": {"command": "RUN_DISARM", "outcome": "ran"}})
+    await hass.async_block_till_done()
+    freezer.tick(timedelta(minutes=4))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert not [e for e in events if e.data["type"] == "command_incomplete"]
+    freezer.tick(timedelta(minutes=2))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    stuck = [e.data for e in events if e.data["type"] == "command_incomplete"]
+    assert len(stuck) == 1 and stuck[0]["command"] == "RUN_DISARM"
+    assert notify[-1].data["title"] == "Phone shortcut didn't finish"
+    assert "Disarm" in notify[-1].data["message"]
+
+
+async def test_a_shortcut_with_only_a_started_step_is_never_flagged(hass, hass_client_no_auth, freezer):
+    async_mock_service(hass, "notify", "mobile_app_test")
+    await setup(hass, **COMMANDS)
+    events = async_capture_events(hass, "bedtime_bridge")
+    await send(hass_client_no_auth, {"type": "command_ran", "data": {"command": "RUN_ARM_STAY", "outcome": "ran"}})
+    freezer.tick(timedelta(minutes=30))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert not [e for e in events if e.data["type"] == "command_incomplete"]

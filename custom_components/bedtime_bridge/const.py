@@ -83,6 +83,17 @@ COMMANDS = (CMD_DISARM, CMD_ARM, CMD_MORNING, CMD_BEDTIME, CMD_BACK_TO_BED)
 # are turned off (cancelling running actions) and straight back on, and these notification tags
 # cleared.
 CONF_RESTART_AUTOMATIONS = "restart_automations"
+# A phone shortcut that reports Started but not Completed within this long is flagged.
+CONF_COMPLETE_MINUTES = "command_complete_minutes"
+DEFAULT_COMPLETE_MINUTES = 5
+EVENT_COMMAND_INCOMPLETE = "command_incomplete"
+COMMAND_NAMES = {
+    "RUN_DISARM": "Disarm",
+    "RUN_ARM_STAY": "Arm Stay",
+    "RUN_GOOD_MORNING": "Good Morning",
+    "RUN_BEDTIME": "the bedtime shortcut",
+    "RUN_BACK_TO_BED": "Back To Bed",
+}
 DEFAULT_RESTART_AUTOMATIONS = ["automation.wake_confirm_still_in_bed_after_alarm", "automation.wake_deadline_backstop"]
 RESTART_NOTIFICATION_TAGS = ("wake_backstop", "wake_confirm")
 COMMAND_TAG = "bedtime_bridge_command"

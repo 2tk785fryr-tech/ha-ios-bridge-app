@@ -258,14 +258,18 @@ enum PhoneCommand: String, AppEnum {
     ]
 }
 
-/// Whether the shortcut did its job or found it already done (Good Morning runs once a night).
+/// Where the shortcut is: started (first step), completed (last step), or it found the job
+/// already done (Good Morning runs once a night). "ran" is Started, kept for steps added before
+/// Completed existed.
 enum ShortcutOutcome: String, AppEnum {
     case ran
+    case completed
     case alreadyDone = "already_done"
 
     static var typeDisplayRepresentation: TypeDisplayRepresentation = "Outcome"
     static var caseDisplayRepresentations: [ShortcutOutcome: DisplayRepresentation] = [
-        .ran: "Ran",
+        .ran: "Started",
+        .completed: "Completed",
         .alreadyDone: "Already done",
     ]
 }
@@ -275,13 +279,13 @@ enum ShortcutOutcome: String, AppEnum {
 struct ReportShortcutRanIntent: AppIntent {
     static var title: LocalizedStringResource = "Report Shortcut Ran"
     static var description = IntentDescription(
-        "Put this last in a shortcut that a Home Assistant phone command runs. Home Assistant then clears that command's notification. The bedtime shortcut doesn't need it: Start Bedtime Routine already tells Home Assistant."
+        "Put this first (Started) and last (Completed) in a shortcut that a Home Assistant phone command runs. Home Assistant clears that command's notification, and warns you if it starts but never completes."
     )
 
     @Parameter(title: "Command")
     var command: PhoneCommand
 
-    @Parameter(title: "Outcome", description: "Already done: the shortcut got the push but had nothing to do, e.g. Good Morning already ran tonight.", default: .ran)
+    @Parameter(title: "Outcome", description: "Started as the first step, Completed as the last. Already done: the shortcut got the push but had nothing to do, e.g. Good Morning already ran tonight.", default: .ran)
     var outcome: ShortcutOutcome
 
     static var parameterSummary: some ParameterSummary {
