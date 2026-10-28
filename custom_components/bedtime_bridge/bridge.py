@@ -44,6 +44,7 @@ from .const import (
     CONF_REPLAN_ALERT,
     CONF_RERUN_MINUTES,
     CONF_CALENDAR,
+    CONF_EARLY_HELPER,
     CONF_LADDER_SHIFT_TYPES,
     CONF_SHIFT_OVERRIDE,
     CONF_SHIFT_SENSOR,
@@ -130,6 +131,8 @@ def empty_state() -> dict[str, Any]:
         "alarm_style": None,
         "snoozed_until": None,
         "snooze_count": 0,
+        # The wake routine (stop helper, Good Morning) already ran for this series (item 9).
+        "routine_ran": False,
         "last_event": None,
         "last_event_time": None,
         "skipped_away": False,
@@ -744,7 +747,11 @@ class BedtimeBridge:
         self.state["snooze_count"] = int(self.state.get("snooze_count") or 0) + 1
         if data.get("rings_again"):
             self.state["alarm_time"] = data["rings_again"]
-        await self._wake(CONF_SNOOZE_HELPER)
+        if self.state.get("routine_ran") or self._state_of(CONF_SNOOZE_HELPER) == "on":
+            # Already up (the wake routine ran), or the fade is running: nothing to start.
+            self.state["skipped_away"] = self._away_blocks()
+        else:
+            await self._wake(CONF_SNOOZE_HELPER)
         self._event(MSG_SNOOZED)
 
     async def _stopped(self, data: dict[str, Any]) -> None:
@@ -762,9 +769,19 @@ class BedtimeBridge:
         if not remaining:
             self.state["alarm_cause"] = "noalarm"
             self._end_morning()
-        await self._wake(CONF_STOP_HELPER)
-        self._event(MSG_STOPPED, all=stop_all)
-        if not self.state.get("skipped_away"):
+        # early: ended from Tonight before any alarm rang (item 8), so the early helper runs.
+        early = bool(data.get("early"))
+        # The wake routine runs on the first stop of a wake-up only (item 9): Wake Sequence
+        # treats its helper as a button, so every turn-on would re-run it.
+        first = not self.state.get("routine_ran")
+        if first:
+            helper = CONF_EARLY_HELPER if early and self.options.get(CONF_EARLY_HELPER) else CONF_STOP_HELPER
+            await self._wake(helper)
+            self.state["routine_ran"] = True
+        else:
+            self.state["skipped_away"] = self._away_blocks()
+        self._event(MSG_STOPPED, all=stop_all, early=early, routine=first)
+        if first and not self.state.get("skipped_away"):
             # The phone's own morning shortcut (disarm, good morning, Focus off) used to run
             # from the Clock app; app alarms don't trigger that, so this push does instead.
             await self._command(CMD_MORNING)

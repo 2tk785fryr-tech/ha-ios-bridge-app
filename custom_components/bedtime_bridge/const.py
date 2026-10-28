@@ -19,6 +19,8 @@ CONF_REPLAN_ALERT = "replan_alert"
 # Leave-by backstop ladder (item 6): which shift types get one, and the calendar used to tell a
 # first day back when there's no plan.
 CONF_LADDER_SHIFT_TYPES = "ladder_shift_types"
+# Item 8: turned on instead of the stop helper when the alarms are ended before they ring.
+CONF_EARLY_HELPER = "early_wake_helper"
 CONF_CALENDAR = "calendar_entity"
 CONF_BED_SENSOR = "bed_sensor"
 CONF_EXIT_LATCH = "exit_latch"
