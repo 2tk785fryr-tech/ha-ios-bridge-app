@@ -411,7 +411,8 @@ final class BedtimeCoordinator {
                 alarmStyle: settings.alarmStyle.rawValue,
                 temporaryAlarms: temporaryAlarms.map(\.time),
                 wakeTime: plan.wakeTime,
-                reason: plan.reason
+                reason: plan.reason,
+                leaveByShownMinutes: settings.widgetLeaveByMinutes
             )
         }
 

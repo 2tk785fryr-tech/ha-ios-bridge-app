@@ -159,8 +159,9 @@ private struct LeaveReminderSection: View {
             if settings.leaveReminderEnabled {
                 Stepper("\(settings.leaveReminderLeadMinutes) min before leave-by", value: $settings.leaveReminderLeadMinutes, in: 0...60, step: 5)
             }
+            Stepper("Widget: leave-by until \(settings.widgetLeaveByMinutes) min after", value: $settings.widgetLeaveByMinutes, in: 0...120, step: 5)
         } footer: {
-            Text("For shifts and appointments with a location. Set at bedtime; when you stop a Bedtime Bridge alarm, traffic is rechecked and the reminder moves if it changed.")
+            Text("For shifts and appointments with a location. Set at bedtime; when you stop a Bedtime Bridge alarm, traffic is rechecked and the reminder moves if it changed. Once the alarms are done, the Lock Screen widget shows leave-by until this long after it.")
         }
     }
 }

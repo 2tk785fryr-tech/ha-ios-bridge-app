@@ -8,6 +8,8 @@ struct NextAlarmEntry: TimelineEntry {
     var nextAlarm: Date? { snapshot.nextAlarm(after: date) }
     var isSnoozing: Bool { snapshot.snoozedUntil.map { $0 > date } ?? false }
     var label: String { snapshot.label(after: date) }
+    /// Alarms done, leave-by still ahead (or just past): item 4.
+    var leaveByOnly: Date? { snapshot.leaveByAfterAlarms(at: date) }
 }
 
 struct NextAlarmProvider: TimelineProvider {
@@ -61,16 +63,22 @@ struct NextAlarmView: View {
         case .accessoryInline:
             if let alarm = entry.nextAlarm {
                 Label("\(time(alarm)) · \(entry.label)", systemImage: entry.isSnoozing ? "zzz" : "alarm")
+            } else if let leaveBy = entry.leaveByOnly {
+                Label("Leave by \(time(leaveBy)) · \(entry.label)", systemImage: "car")
             } else {
                 Label("No alarm", systemImage: "alarm")
             }
 
         case .accessoryCircular:
             VStack(spacing: 0) {
-                Image(systemName: entry.isSnoozing ? "zzz" : "alarm")
+                Image(systemName: entry.nextAlarm == nil && entry.leaveByOnly != nil ? "car" : entry.isSnoozing ? "zzz" : "alarm")
                     .font(.caption)
                 if let alarm = entry.nextAlarm {
                     Text(alarm, format: .dateTime.hour(.defaultDigits(amPM: .omitted)).minute())
+                        .font(.sora(fixed: 17, .semibold))
+                        .minimumScaleFactor(0.6)
+                } else if let leaveBy = entry.leaveByOnly {
+                    Text(leaveBy, format: .dateTime.hour(.defaultDigits(amPM: .omitted)).minute())
                         .font(.sora(fixed: 17, .semibold))
                         .minimumScaleFactor(0.6)
                 } else {
@@ -115,6 +123,19 @@ struct NextAlarmView: View {
                     } else if entry.snapshot.alarmStyle == "clock" {
                         Text("Clock app alarms").font(.caption2).foregroundStyle(.secondary)
                     }
+                } else if let leaveBy = entry.leaveByOnly {
+                    Label("Leave by \(time(leaveBy))", systemImage: "car")
+                        .font(.sora(fixed: 17, .semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .widgetAccentable()
+                    Text(entry.label)
+                        .font(.caption)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                    Text(leaveBy > entry.date ? "Alarms done" : "Time to go")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 } else {
                     Label("No alarm", systemImage: "alarm")
                         .font(.headline)
@@ -136,7 +157,8 @@ private struct NightfallSmallView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Label(entry.isSnoozing ? "Snoozing" : "Next alarm", systemImage: entry.isSnoozing ? "zzz" : "alarm")
+            Label(entry.isSnoozing ? "Snoozing" : entry.nextAlarm == nil && entry.leaveByOnly != nil ? "Alarms done" : "Next alarm",
+                  systemImage: entry.isSnoozing ? "zzz" : "alarm")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(Theme.textMuted)
             if let alarm = entry.nextAlarm {
@@ -161,6 +183,19 @@ private struct NightfallSmallView: View {
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(Theme.good)
                 }
+            } else if let leaveBy = entry.leaveByOnly {
+                Text("Leave by")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Theme.appointmentChip.text)
+                Text(leaveBy, format: .dateTime.hour(.defaultDigits(amPM: .omitted)).minute())
+                    .font(.sora(fixed: 40, .light))
+                    .foregroundStyle(Theme.accentText)
+                    .minimumScaleFactor(0.7)
+                Text(entry.label)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Theme.textSoft)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
             } else {
                 Text("No alarm")
                     .font(.sora(fixed: 26, .light))

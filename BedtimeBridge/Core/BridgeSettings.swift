@@ -173,6 +173,8 @@ struct BridgeSettings: Codable, Equatable {
     var askAboutMissingLocations = true
     /// Notification this many minutes before leave-by time.
     var leaveReminderLeadMinutes = 15
+    /// The Lock Screen widget keeps showing leave-by this long after it, once the alarms are done.
+    var widgetLeaveByMinutes = 30
 }
 
 enum WakeTimeAlarm: String, Codable, CaseIterable, Identifiable {
