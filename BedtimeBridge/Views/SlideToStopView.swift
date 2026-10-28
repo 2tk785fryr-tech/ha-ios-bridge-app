@@ -3,6 +3,8 @@ import SwiftUI
 /// Opened from Stop on the snooze countdown. Ending a snooze takes a full slide, so a
 /// sleepy tap can't do it by accident; anything less springs back and it keeps snoozing.
 struct SlideToStopView: View {
+    /// Which alarm this is and what's left (item 1).
+    let description: StopDescription
     let stop: () async -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var offset: CGFloat = 0
@@ -19,7 +21,17 @@ struct SlideToStopView: View {
             Text("Snoozing")
                 .font(.sora(34, .semibold, relativeTo: .largeTitle))
                 .foregroundStyle(Theme.text)
-            Text("Slide all the way to stop the alarm. Let go early and it keeps snoozing.")
+            VStack(spacing: 6) {
+                Text(description.title)
+                    .font(.sora(20, .semibold, relativeTo: .title3))
+                    .foregroundStyle(Theme.accentText)
+                Text(description.detail)
+                    .font(.system(size: 17, weight: .medium))
+                    .foregroundStyle(Theme.text)
+            }
+            .multilineTextAlignment(.center)
+            .accessibilityElement(children: .combine)
+            Text("Slide all the way to stop this alarm. Let go early and it keeps snoozing.")
                 .font(.subheadline)
                 .foregroundStyle(Theme.textSoft)
                 .multilineTextAlignment(.center)

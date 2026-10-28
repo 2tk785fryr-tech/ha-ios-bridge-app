@@ -18,6 +18,15 @@ final class BedtimeCoordinator {
     /// can show it when it comes back to the front. Cleared when the alarms are cleared.
     private(set) var lastAppliedPlan: WakePlan?
 
+    private static let seriesKey = "alarmSeries.v1"
+
+    /// Every alarm of the current wake-up as it was set, including ones already stopped, so
+    /// the Stop screen can say "alarm 2 of 3". Cleared with the alarms.
+    private(set) var alarmSeries: [Date] {
+        get { (UserDefaults.standard.array(forKey: Self.seriesKey) as? [Date]) ?? [] }
+        set { UserDefaults.standard.set(newValue, forKey: Self.seriesKey) }
+    }
+
     // MARK: Planning
 
     /// Works out tonight's wake-up without touching any alarms.
@@ -77,6 +86,7 @@ final class BedtimeCoordinator {
         try alarms.cancelAll(keeping: keptAlarms)
         leaveReminder.clear()
         lastAppliedPlan = nil
+        alarmSeries = []
         updateWidget { $0 = NextAlarmSnapshot(alarmStyle: settings.alarmStyle.rawValue, temporaryAlarms: temporaryAlarms.map(\.time)) }
         lastCause = AlarmCause.none
         guard case .wakeAt(let time, let wakeIs) = choice else { return nil }
@@ -126,6 +136,7 @@ final class BedtimeCoordinator {
         try alarms.cancelAll(keeping: keptAlarms)
         leaveReminder.clear()
         lastAppliedPlan = nil
+        alarmSeries = []
         updateWidget { $0 = NextAlarmSnapshot(alarmStyle: settings.alarmStyle.rawValue, temporaryAlarms: temporaryAlarms.map(\.time)) }
         lastCause = AlarmCause.none
         await report(.bedtimeUndone, data: [:], settings: settings)
@@ -355,6 +366,7 @@ final class BedtimeCoordinator {
         try alarms.cancelAll(keeping: keptAlarms)
         leaveReminder.clear()
         lastAppliedPlan = nil
+        alarmSeries = []
         updateWidget { $0 = NextAlarmSnapshot(alarmStyle: settings.alarmStyle.rawValue, temporaryAlarms: temporaryAlarms.map(\.time)) }
         lastCause = AlarmCause.none
         await report(.cancelled, data: [:], settings: settings)
@@ -363,6 +375,7 @@ final class BedtimeCoordinator {
     /// Sets (or clears) alarms, the leave-by reminder and the HA sensor for a plan.
     private func apply(_ plan: WakePlan, settings: BridgeSettings) async throws {
         lastAppliedPlan = plan
+        alarmSeries = plan.hasAlarm && settings.alarmStyle == .app ? plan.alarmTimes : []
         if plan.hasAlarm, settings.alarmStyle == .app {
             try await alarms.replaceAlarms(
                 with: plan.alarmTimes,
@@ -555,6 +568,16 @@ final class BedtimeCoordinator {
             "alarm_cause": lastCause,
             "alarm_times": scheduledAlarmTimes().map(Self.iso),
         ], settings: settings)
+    }
+
+    /// What the Stop screen says about this alarm (item 1).
+    func stopDescription(for id: UUID) -> StopDescription {
+        let alarm = alarms.scheduledAlarms().first { $0.id == id }
+        let kind: StopDescription.Kind = id == testAlarmID ? .test
+            : temporaryAlarms.contains { $0.id == id } ? .temporary : .series
+        let time = alarm?.date ?? temporaryAlarms.first { $0.id == id }?.time
+        let remaining = alarms.scheduledAlarms().filter { $0.id != id && !keptAlarms.contains($0.id) }.map(\.date)
+        return StopDescription.make(kind: kind, alarmTime: time, series: alarmSeries, remaining: remaining)
     }
 
     func alarmStopped(id: UUID, settings phoneSettings: BridgeSettings) async {
