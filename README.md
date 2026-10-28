@@ -152,7 +152,7 @@ Settings → Alarms chooses one of two styles:
 | | **Bedtime Bridge alarms** (default) | **Clock app (via shortcut)** |
 |---|---|---|
 | Who makes the alarms | The app (AlarmKit). Rings through Silent and Focus. | Your shortcut, with *Create Alarm* for each item in `Wake Plan › Alarm Dates`. |
-| Snooze | Snooze button. **Length is adjustable** (default 9 min). The countdown shows on the Lock Screen and in the Dynamic Island. While snoozing, stopping takes a **slide**, like the Clock app, so a stray tap can't end it. | Apple's fixed 9 minutes. |
+| Snooze | Snooze button. **Length is adjustable** (default 9 min). The countdown shows on the Lock Screen and in the Dynamic Island. While snoozing, stopping takes a **slide**, like the Clock app, so a stray tap can't end it. The Stop screen says which alarm it is ("4:25 AM · alarm 2 of 3") and what's next. **Hold at the end of the slide for 5 seconds** (a ring fills, the phone ticks) to end every alarm left in this wake-up; letting go early stops just this one. | Apple's fixed 9 minutes. |
 | Morning routines | **Snooze** turns on `input_boolean.wake_fade` (Wake Snooze Fade). **Stop** turns on `input_boolean.wake_mike` (Wake Sequence). The app tells HA directly and retries if HA doesn't answer. | Your existing "Alarm is snoozed / stopped" Shortcuts automations, unchanged. |
 | Sound | **iPhone alarm** (default), or one of six sounds that ship with the app: Sunrise (builds slowly), Chimes, Marimba, Harp, Classic beeps, Pulse. Settings → Alarms, with a play button to hear each. | Whatever you pick in the Clock app. |
 | After Stop | **Keeps the later alarms until you're up** (default; see below), rechecks traffic for the leave-by reminder. | Whatever your shortcut does. |
@@ -275,11 +275,13 @@ private. Deleting the integration also deletes its Nabu Casa cloudhook.
 | `sensor.bedtime_bridge_alarm_cause` | `Days` / `Swings` / `calendar` / `automade` / `noalarm` |
 | `sensor.bedtime_bridge_reason` | "Dentist at 7:00 AM. Leave by 6:26 AM (…)". Attribute: warnings |
 | `sensor.bedtime_bridge_leave_by`, `_drive_time`, `_bad_weather_extra_time` | Appointment and weather details |
-| `sensor.bedtime_bridge_snooze_count`, `_last_event` | This morning's snoozes. Last event: after a plan, `alarms_set` (the app's alarms are scheduled), `planned_for_clock` (your shortcut makes Clock alarms) or `no_alarm`; otherwise the latest event (snoozed, stopped, cancelled, leave_by, …). *Preview plan* sends nothing. |
+| `sensor.bedtime_bridge_snoozes_last_morning` | The last finished morning's snooze total (kept for statistics). |
+| `sensor.bedtime_bridge_snooze_count`, `_last_event` | This morning's snoozes (back to 0 once the wake-up is over). Last event: after a plan, `alarms_set` (the app's alarms are scheduled), `planned_for_clock` (your shortcut makes Clock alarms) or `no_alarm`; otherwise the latest event (snoozed, stopped, cancelled, leave_by, …). *Preview plan* sends nothing. |
 | `binary_sensor.bedtime_bridge_snoozing` | On from a snooze until the alarm rings again |
 | `binary_sensor.bedtime_bridge_plan_out_of_date` | The shift override or next shift changed after you planned. Attribute: reason |
 | `sensor.bedtime_bridge_last_plan` | When the phone last planned. Attribute: error, if the last attempt failed |
-| `sensor.bedtime_bridge_safety_net_early` / `_deadline` / `_late` | Last alarm / +15 / +30 min for the chosen causes, for Wake Deadline Backstop |
+| Ladder early / deadline / late (`sensor.bedtime_bridge_ladder_*`; older installs keep `_safety_net_*` ids) | The leave-by backstop ladder: 50 / 35 / 20 min before leave-by (15 min earlier on a first day back). `unavailable` when not armed. See [Safety nets](#safety-nets) |
+| `sensor.bedtime_bridge_ladder_status` | `armed`, `done`, `idle_override_off`, `idle_leave`, `idle_uncovered`, `idle_no_shift` or `fault`. Attributes: reason, morning, next rung |
 | `number.bedtime_bridge_get_ready_time`, `_arrive_early`, `_snooze_length`, `_bad_weather_extra_time_setting`, `_leave_by_reminder_lead`, `_days_lead_time`, `_swings_lead_time` | **Settings you can change in HA.** They start out matching the app after its first plan. After that, HA's value wins each time the app runs. |
 
 **Events:** `bedtime_bridge` with `type` (`planned`, `snoozed`, `stopped`, `cancelled`,
@@ -388,17 +390,18 @@ bypasses the check. Route it through the app's actions instead.
   run, so swing nights (home at midnight, asleep at 2 AM) don't raise false alarms. If a shift
   starts within 14 h and there's no fresh plan, or the last one failed, it sends a
   time-sensitive notification with a **Plan now** button.
-- **Appointment mornings in Wake Deadline Backstop.** For the causes you choose (default:
-  `calendar`), the integration publishes `sensor.bedtime_bridge_safety_net_early` /
-  `_deadline` / `_late`. Only when you're home. Like your Days ladder (alarms end 4:30, early
-  4:55, deadline 5:10), the checks start after the alarms. Early is at the last alarm (still in
-  bed: nightstand ramp + push). Deadline is 15 min later (still in bed: lights, critical push,
-  HomePod; bed empty but door shut: a push). Late is 30 min later (bedroom door never opened:
-  critical push, lights, HomePod). Make a second
-  Backstop instance with those three as its rung sensors. Set its **Shift sensor** to
-  `sensor.bedtime_bridge_safety_net_deadline` and keep *Applies to shifts* = Days: that sensor
-  reports `effective_shift: Days` whenever a deadline is set, which satisfies the blueprint's
-  shift check without editing it. Your shift instance stays as it is.
+- **Leave-by backstop ladder.** For Days shifts and appointments with a location, the integration
+  publishes three times before leave-by for Wake Deadline Backstop: **early** 50 min before
+  (alarms were set and snoozing is over), **deadline** 35 min before (forgot the alarm; still
+  time to get ready), **late** 20 min before (last moment). On a first day back (no shift the day
+  before) all three are 15 min earlier. Leave-by is the app's (traffic- and weather-aware), or
+  the calendar's (shift start − 35 min fallback drive − 10 min early) when there's no plan for
+  that morning; the app's may be at most 30 min later than the calendar's. The alarms never move
+  it. From the early rung until an hour after the late rung it's locked: only a deliberate
+  morning change, or worse weather or traffic (earlier only), moves it. It's off only with the
+  shift override `Off`, a leave day, a shift type without a ladder, or no shift on the calendar,
+  and `sensor.bedtime_bridge_ladder_status` says which. The settings are number entities in
+  Home Assistant. What fires at each rung stays in the Backstop blueprint.
 - **Plan out of date.** If the shift override or HA's next shift changes after you planned (and
   before you wake), `binary_sensor.bedtime_bridge_plan_out_of_date` turns on and a
   `plan_outdated` event fires. If you set a notify action in the integration, you get a
@@ -429,7 +432,8 @@ and Sleep In.
 
 Add **Next Alarm** from the Lock Screen widget gallery (Bedtime Bridge). It shows the next
 alarm time, why it's set ("Days shift", "Dentist", "Day off"), and leave-by on appointment
-mornings. While snoozing it shows the snooze time instead. Sizes: rectangular (time, reason,
+mornings. While snoozing it shows the snooze time instead. After the last alarm it keeps showing
+"Leave by" and the event until 30 minutes past it (Settings → Drive time). Sizes: rectangular (time, reason,
 leave-by), circular (time) and the inline line above the clock. There's also a small
 Home Screen widget.
 
