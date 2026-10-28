@@ -143,6 +143,9 @@
       "snooze_count": {
         "name": "Snooze count"
       },
+      "snoozes_last_morning": {
+        "name": "Snoozes last morning"
+      },
       "last_event": {
         "name": "Last event"
       },

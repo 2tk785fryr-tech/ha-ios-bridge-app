@@ -92,6 +92,13 @@ SENSORS = (
         value=lambda s: s.get("snooze_count") or 0,
     ),
     BridgeSensorDescription(
+        key="snoozes_last_morning",
+        translation_key="snoozes_last_morning",
+        icon="mdi:sleep",
+        state_class=SensorStateClass.MEASUREMENT,
+        value=lambda s: s.get("snoozes_last_morning"),
+    ),
+    BridgeSensorDescription(
         key="last_plan",
         translation_key="last_plan",
         device_class=SensorDeviceClass.TIMESTAMP,

@@ -139,8 +139,9 @@ def empty_state() -> dict[str, Any]:
 
 
 def plan_record() -> dict[str, Any]:
-    """Kept across new plans and cancels: when the phone last planned, and why it failed."""
-    return {"last_plan": None, "plan_error": None, "undone_at": None}
+    """Kept across new plans and cancels: when the phone last planned, why it failed, and the
+    last finished morning's snooze total."""
+    return {"last_plan": None, "plan_error": None, "undone_at": None, "snoozes_last_morning": None}
 
 
 def pending_record() -> dict[str, Any]:
@@ -465,18 +466,28 @@ class BedtimeBridge:
             await self._wake(CONF_STOP_HELPER)
             self._event(MSG_STOPPED, test=True)
             return
-        remaining = data.get("alarm_times") or []
+        # all: the slide-and-hold that ends every alarm left in this wake-up (item 2).
+        stop_all = bool(data.get("all"))
+        remaining = [] if stop_all else data.get("alarm_times") or []
         self.state["snoozed_until"] = None
         self.state["alarm_times"] = remaining
         self.state["alarm_time"] = remaining[0] if remaining else None
         if not remaining:
             self.state["alarm_cause"] = "noalarm"
+            self._end_morning()
         await self._wake(CONF_STOP_HELPER)
-        self._event(MSG_STOPPED)
+        self._event(MSG_STOPPED, all=stop_all)
         if not self.state.get("skipped_away"):
             # The phone's own morning shortcut (disarm, good morning, Focus off) used to run
             # from the Clock app; app alarms don't trigger that, so this push does instead.
             await self._command(CMD_MORNING)
+
+    @callback
+    def _end_morning(self) -> None:
+        """The wake-up is over (every alarm stopped, ended all, or changed): this morning's
+        snoozes become Snoozes last morning and the count starts again at 0."""
+        self.state["snoozes_last_morning"] = int(self.state.get("snooze_count") or 0)
+        self.state["snooze_count"] = 0
 
     # MARK: Temporary alarms
 

@@ -56,17 +56,18 @@ It never calls Bedtime Bridge's **Start Bedtime Routine**: the Bedtime Readout c
 
 ## Good Morning - App
 
-0. Bedtime Bridge **Report Shortcut Ran** (`RUN_GOOD_MORNING`). First, so the push is cleared even
-   when step 1 stops early (added 27 Oct 2026).
 1. Read `MorningState`. If it's `complete` or `running`, **stop here** (it runs once per night).
 2. Save `MorningState` = `running`.
-3. **At home:**
+3. Bedtime Bridge **Report Shortcut Ran** (`RUN_GOOD_MORNING`), so Home Assistant clears the push
+   (added on the phone, 27 Oct 2026). When step 1 stops early, nothing is reported and that push
+   stays until the next one replaces it.
+4. **At home:**
    1. Run **Set Disarm** (house alarm off).
    2. Weekend (the day's short name starts with "S"): nothing more.
    3. Weekday, between 8:00 AM and 3:30 PM: speak "Good morning handsome!" on the phone, and if
       still at home, announce it with Intercom to the Master Bedroom.
-4. Turn **Sleep Focus off**.
-5. Save `MorningState` = `complete`.
+5. Turn **Sleep Focus off**.
+6. Save `MorningState` = `complete`.
 
 The old version (*Alarm Off Good Morning*) also ran a HomeKit scene (Home Assistant's wake helper)
 and a *Toggle Alarm* shortcut for Clock alarms. Bedtime Bridge does both jobs now, so the App
