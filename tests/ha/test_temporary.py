@@ -329,3 +329,13 @@ async def test_bedtime_clears_the_rerun_push(hass, hass_client_no_auth, freezer)
     await hass.async_block_till_done()
     assert messages(notify) == ["RUN_DISARM", "RUN_BEDTIME", "clear_notification"]
     assert notify[-1].data["data"]["tag"] == "bedtime_bridge_command_run_bedtime"
+
+
+async def test_skip_with_sleep_in_turns_it_on(hass, hass_client_no_auth):
+    """Item 7: the integration owns Sleep In for plans, skips, undo bedtime and morning changes."""
+    assert await async_setup_component(hass, "input_boolean", {"input_boolean": {"sleep_in": {}}})
+    await setup(hass, sleep_in_helper="input_boolean.sleep_in")
+    morning = (dt_util.utcnow() + timedelta(hours=8)).isoformat()
+    await send(hass_client_no_auth, {"type": "skipped", "data": {"morning": morning, "sleep_in": True}})
+    await hass.async_block_till_done()
+    assert hass.states.get("input_boolean.sleep_in").state == "on"
