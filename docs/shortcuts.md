@@ -23,8 +23,8 @@ automation, filtering on the message text, set to run immediately.
 
 ## I'm Ready For Bed - App (the bedtime shortcut)
 
-0. Bedtime Bridge **Report Shortcut Ran** (`RUN_BEDTIME`), so Home Assistant clears the push that
-   ran it (added 27 Oct 2026; harmless when run by hand).
+0. Bedtime Bridge **Report Shortcut Ran** (`RUN_BEDTIME`, Outcome **Started**), so Home Assistant
+   clears the push that ran it (added 27 Oct 2026; harmless when run by hand).
 1. Dismiss Siri.
 2. Save `MorningState` = `sleeping` (a global stored value that Good Morning reads).
 3. Get the current location and its distance from Home.
@@ -49,6 +49,7 @@ automation, filtering on the message text, set to run immediately.
    3. Bedtime Bridge **Away Bedtime Summary** (sign-off "Good night handsome!") with that state.
    4. Speak it (doesn't wait).
 6. Turn **Sleep Focus on**.
+7. Bedtime Bridge **Report Shortcut Ran** (`RUN_BEDTIME`, Outcome **Completed**).
 
 No house steps run while away: no arming, no Bedtime Readout routine.
 
@@ -62,8 +63,8 @@ It never calls Bedtime Bridge's **Start Bedtime Routine**: the Bedtime Readout c
    **Already done**) just before each of the two *Stop This Shortcut* steps, so Home Assistant
    clears the push and records that the phone got it but Good Morning had already run.
 2. Save `MorningState` = `running`.
-3. Bedtime Bridge **Report Shortcut Ran** (`RUN_GOOD_MORNING`, Outcome **Ran**), so Home Assistant
-   clears the push (added on the phone, 27 Oct 2026).
+3. Bedtime Bridge **Report Shortcut Ran** (`RUN_GOOD_MORNING`, Outcome **Started**; it showed as
+   *Ran* before), so Home Assistant clears the push (added on the phone, 27 Oct 2026).
 4. **At home:**
    1. Run **Set Disarm** (house alarm off).
    2. Weekend (the day's short name starts with "S"): nothing more.
@@ -71,6 +72,8 @@ It never calls Bedtime Bridge's **Start Bedtime Routine**: the Bedtime Readout c
       still at home, announce it with Intercom to the Master Bedroom.
 5. Turn **Sleep Focus off**.
 6. Save `MorningState` = `complete`.
+7. To do: Bedtime Bridge **Report Shortcut Ran** (`RUN_GOOD_MORNING`, Outcome **Completed**) as the
+   last step, so Home Assistant knows it finished (and warns you on a later run that doesn't).
 
 The old version (*Alarm Off Good Morning*) also ran a HomeKit scene (Home Assistant's wake helper)
 and a *Toggle Alarm* shortcut for Clock alarms. Bedtime Bridge does both jobs now, so the App
@@ -85,6 +88,7 @@ New in v0.4, for item 3's *Back to bed*. Puts back on the phone what Good Mornin
    its first step.
 2. At home: run **Set Arm Stay**.
 3. Turn **Sleep Focus on**.
+4. Report Shortcut Ran (`RUN_BACK_TO_BED`, Outcome **Completed**).
 
 Phone setup: a "When I receive a notification from Home Assistant" automation, message
 `RUN_BACK_TO_BED`, running this shortcut immediately.
@@ -104,8 +108,11 @@ Phone setup: a "When I receive a notification from Home Assistant" automation, m
 Your own shortcuts, run by the shortcuts above and by the `RUN_DISARM` / `RUN_ARM_STAY` pushes. They
 haven't been exported, so their steps aren't read here; what's known is that they set the ecobee
 home monitoring state (Set Disarm: off; Set Arm Stay: armed, stay) and nothing else.
-They don't report back yet: add Bedtime Bridge **Report Shortcut Ran** to each (`RUN_DISARM`,
-`RUN_ARM_STAY`) so Home Assistant clears their pushes.
+They don't report back yet: add Bedtime Bridge **Report Shortcut Ran** as the first step (Outcome
+**Started**) and the last step (Outcome **Completed**) of each, with `RUN_DISARM` or
+`RUN_ARM_STAY`. Home Assistant clears the push on the first and, once it has seen a Completed,
+notifies you if a later run starts but doesn't finish within 5 minutes (for example, the house
+didn't disarm).
 
 ## Retired
 
