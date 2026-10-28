@@ -1,5 +1,6 @@
 """v0.4 item 3: change this morning (sleep longer or no alarms), Home Assistant's side."""
 
+from homeassistant.core import callback
 from homeassistant.setup import async_setup_component
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import async_capture_events, async_mock_service
@@ -53,8 +54,15 @@ async def test_back_to_bed_after_a_stop(hass, ladder, hass_client_no_auth):
     hass.services.async_register("automation", "turn_off", automation_call)
     hass.services.async_register("automation", "turn_on", automation_call)
     hass.services.async_register("notify", "mobile_app_test", push)
-    hass.bus.async_listen("state_changed", lambda e: order.append(f"state:{e.data['entity_id']}={e.data['new_state'].state}")
-                          if e.data["entity_id"].startswith("input_boolean.") else None)
+
+    @callback
+    def state_changed(event):
+        # A callback runs in the event loop, in order; a plain function would run in a worker
+        # thread and record its state changes late.
+        if event.data["entity_id"].startswith("input_boolean."):
+            order.append(f"state:{event.data['entity_id']}={event.data['new_state'].state}")
+
+    hass.bus.async_listen("state_changed", state_changed)
     hass.states.async_set("sun.sun", "above_horizon", {"next_rising": local("07:20", day=29).isoformat()})
     await ladder(sleep_in_helper="input_boolean.sleep_in", bedtime_helper="input_boolean.bedtime_routine",
                  curtain_offset_minutes=15, **COMMANDS)
