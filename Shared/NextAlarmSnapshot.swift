@@ -27,6 +27,8 @@ struct NextAlarmSnapshot: Codable, Equatable {
     /// the bedtime shortcut set. Optional for the same reason.
     var wakeTime: Date? = nil
     var reason: String? = nil
+    /// After the last alarm, leave-by stays on the widget until this many minutes past it.
+    var leaveByShownMinutes: Int? = nil
 
     /// "3 alarms set", counting the series still to ring.
     func setSummary(after date: Date) -> String? {
@@ -52,9 +54,21 @@ struct NextAlarmSnapshot: Codable, Equatable {
         return "Temporary wake-up"
     }
 
-    /// Times at which the widget's text changes (each alarm passing), for its timeline.
+    /// Leave-by to show once no alarm is left: shift and appointment mornings, until
+    /// `leaveByShownMinutes` (30) past it.
+    func leaveByAfterAlarms(at date: Date) -> Date? {
+        guard nextAlarm(after: date) == nil, let leaveBy, date < leaveByHiddenAt(leaveBy) else { return nil }
+        return leaveBy
+    }
+
+    private func leaveByHiddenAt(_ leaveBy: Date) -> Date {
+        leaveBy.addingTimeInterval(TimeInterval((leaveByShownMinutes ?? 30) * 60))
+    }
+
+    /// Times at which the widget's text changes (each alarm passing, leave-by going away),
+    /// for its timeline.
     func changeDates(after date: Date) -> [Date] {
-        ([snoozedUntil].compactMap { $0 } + alarmTimes + (temporaryAlarms ?? [])).filter { $0 > date }.sorted()
+        ([snoozedUntil, leaveBy.map(leaveByHiddenAt)].compactMap { $0 } + alarmTimes + (temporaryAlarms ?? [])).filter { $0 > date }.sorted()
     }
 
     static func load() -> NextAlarmSnapshot {

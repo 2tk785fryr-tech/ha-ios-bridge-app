@@ -15,6 +15,8 @@ struct ContentView: View {
     @State private var stoppingAlarm: SnoozedAlarm?
     @State private var skipReplacement: SkipReplacement?
     @State private var temporaryAlarms: [TemporaryAlarm] = []
+    @State private var morningEnd: MorningEnd?
+    @State private var backToBed = false
     @State private var sheet: Sheet?
 
     private enum Sheet: String, Identifiable {
@@ -92,6 +94,26 @@ struct ContentView: View {
                             }
                         }
                         .padding(.horizontal, 4)
+                    }
+
+                    if backToBed {
+                        ChangeMorningEntry(
+                            title: "Back to bed?",
+                            detail: "Plans changed? Move this morning's alarms later or turn them off. The house goes back to bedtime.",
+                            phase: .up,
+                            settings: store.settings,
+                            done: refreshScheduled
+                        )
+                        .nightfallCard()
+                    }
+
+                    if let morningEnd {
+                        EndMorningCard(status: morningEnd) {
+                            Task {
+                                await coordinator.endMorning(settings: store.settings)
+                                refreshScheduled()
+                            }
+                        }
                     }
 
                     if skippedMorning == nil, let morning = scheduled.first ?? plan?.firstAlarm {
@@ -178,8 +200,10 @@ struct ContentView: View {
                 }
             }
             .fullScreenCover(item: $stoppingAlarm) { alarm in
-                SlideToStopView {
-                    await coordinator.alarmStopped(id: alarm.id, settings: store.settings)
+                let description = coordinator.stopDescription(for: alarm.id)
+                SlideToStopView(description: description, canEndAll: description.canEndAll,
+                                settings: description.kind == .series ? store.settings : nil) { all in
+                    await coordinator.alarmStopped(id: alarm.id, all: all, settings: store.settings)
                     refreshScheduled()
                 }
             }
@@ -301,6 +325,8 @@ struct ContentView: View {
         skippedMorning = coordinator.skippedMorning
         skipReplacement = coordinator.skipReplacement
         temporaryAlarms = coordinator.temporaryAlarms
+        morningEnd = coordinator.morningEnd(settings: store.settings)
+        backToBed = coordinator.backToBedAvailable(settings: store.settings)
         refreshUpcoming()
     }
 
@@ -897,6 +923,37 @@ private struct GetReadyCard: View {
 }
 
 /// The alarm whose snooze the slide-to-stop screen ends.
+/// Item 8: end the rest of this morning's alarms without waiting for one to ring.
+private struct EndMorningCard: View {
+    let status: MorningEnd
+    let end: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(status.title)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(Theme.text)
+            Text(status.detail)
+                .font(.footnote)
+                .foregroundStyle(Theme.textMuted)
+            HoldSlider(
+                label: "Slide and hold to end them",
+                holdLabel: { "Ending this morning's alarms in \($0)…" },
+                knobSymbol: "alarm.waves.left.and.right",
+                onHold: end,
+                accessibilityHint: "Ends every alarm left this morning. Temporary alarms stay."
+            )
+            Text(status.early
+                 ? "Ends this morning's alarms before they ring. Home Assistant starts your early wake-up and Good Morning; the backstops stay on."
+                 : "Ends the snoozing alarms and the ones still to ring. Temporary alarms stay; the backstops stay on.")
+                .font(.footnote)
+                .foregroundStyle(Theme.textFaint)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .nightfallCard()
+    }
+}
+
 private struct SnoozedAlarm: Identifiable {
     let id: UUID
 }

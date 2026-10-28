@@ -67,7 +67,12 @@ async def test_plan_updates_entities_and_seeds_settings(hass, hass_client_no_aut
     assert hass.states.get("number.bedtime_bridge_get_ready_time").state == "60"
     assert hass.states.get("number.bedtime_bridge_days_lead_time").state == "75"
     assert hass.states.get("number.bedtime_bridge_swings_lead_time").state == "unknown"
-    assert reply["settings"] == {"get_ready_minutes": 60, "snooze_minutes": 9, "shift_lead_minutes": {"Days": 75}}
+    assert reply["settings"] == {
+        "get_ready_minutes": 60, "snooze_minutes": 9, "shift_lead_minutes": {"Days": 75},
+        # Ladder settings always have a value (their defaults until changed in HA).
+        "rung_early_minutes": 50, "rung_deadline_minutes": 35, "rung_late_minutes": 20,
+        "first_day_back_minutes": 15, "fallback_drive_minutes": 35,
+    }
     assert events[-1].data["type"] == "planned"
     assert events[-1].data["alarm_cause"] == "calendar"
 
@@ -171,12 +176,14 @@ async def test_unknown_message_and_bad_body(hass, hass_client_no_auth):
     assert response.status == 400
 
 
-async def test_state_survives_restart(hass, hass_client_no_auth):
+async def test_state_survives_restart(hass, hass_client_no_auth, freezer):
     entry = await setup(hass)
     await send(hass_client_no_auth, PLAN)
     await hass.async_block_till_done()
-    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=5))  # flush delayed save
-    await hass.async_block_till_done()
+    for _ in range(2):  # flush delayed saves (setup's ladder check saves too)
+        freezer.tick(timedelta(seconds=5))
+        async_fire_time_changed(hass)
+        await hass.async_block_till_done()
 
     assert await hass.config_entries.async_reload(entry.entry_id)
     await hass.async_block_till_done()

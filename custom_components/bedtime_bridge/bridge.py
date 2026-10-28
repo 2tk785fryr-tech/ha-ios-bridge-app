@@ -15,18 +15,23 @@ from homeassistant.helpers.event import (
     async_call_later,
     async_track_point_in_utc_time,
     async_track_state_change_event,
+    async_track_time_interval,
 )
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
+from . import ladder as ldr
 from .const import (
     BED_EMPTY_SECONDS,
     CMD_ARM,
+    CMD_BACK_TO_BED,
     CMD_BEDTIME,
     CMD_DISARM,
     CMD_MORNING,
     COMMAND_TAG,
+    COMMAND_NAMES,
     COMMANDS,
+    LADDER_SETTINGS,
     CONF_AWAKE_HELPER,
     CONF_BED_SENSOR,
     CONF_BEDTIME_HELPER,
@@ -40,8 +45,11 @@ from .const import (
     CONF_REARM_MINUTES,
     CONF_REPLAN_ALERT,
     CONF_RERUN_MINUTES,
-    CONF_SAFETY_CAUSES,
-    CONF_SAFETY_MINUTES,
+    CONF_CALENDAR,
+    CONF_COMPLETE_MINUTES,
+    CONF_EARLY_HELPER,
+    CONF_RESTART_AUTOMATIONS,
+    CONF_LADDER_SHIFT_TYPES,
     CONF_SHIFT_OVERRIDE,
     CONF_SHIFT_SENSOR,
     CONF_SHIFT_TYPES,
@@ -53,17 +61,22 @@ from .const import (
     DEFAULT_CURTAIN_OFFSET,
     DEFAULT_REARM_MINUTES,
     DEFAULT_RERUN_MINUTES,
-    DEFAULT_SAFETY_CAUSES,
-    DEFAULT_SAFETY_MINUTES,
+    DEFAULT_COMPLETE_MINUTES,
+    DEFAULT_LADDER_SHIFT_TYPES,
+    DEFAULT_RESTART_AUTOMATIONS,
+    RESTART_NOTIFICATION_TAGS,
+    DEFAULT_WORK_BUFFER,
     DOMAIN,
     EVENT,
     EVENT_PLAN_OUTDATED,
+    EVENT_COMMAND_INCOMPLETE,
     EVENT_REARMED,
     EVENT_RERUN,
     HOME_STATES,
     MSG_BEDTIME,
     MSG_BEDTIME_UNDONE,
     MSG_COMMAND_RAN,
+    MSG_MORNING_CHANGED,
     MSG_CANCELLED,
     MSG_CONTEXT,
     MSG_FORECAST,
@@ -126,21 +139,20 @@ def empty_state() -> dict[str, Any]:
         "alarm_style": None,
         "snoozed_until": None,
         "snooze_count": 0,
+        # The wake routine (stop helper, Good Morning) already ran for this series (item 9).
+        "routine_ran": False,
         "last_event": None,
         "last_event_time": None,
         "skipped_away": False,
-        # Safety-net times for Wake Deadline Backstop (only for the chosen causes).
-        "rung_early": None,
-        "rung_deadline": None,
-        "rung_late": None,
         "plan_outdated": False,
         "outdated_reason": None,
     }
 
 
 def plan_record() -> dict[str, Any]:
-    """Kept across new plans and cancels: when the phone last planned, and why it failed."""
-    return {"last_plan": None, "plan_error": None, "undone_at": None}
+    """Kept across new plans and cancels: when the phone last planned, why it failed, and the
+    last finished morning's snooze total."""
+    return {"last_plan": None, "plan_error": None, "undone_at": None, "snoozes_last_morning": None}
 
 
 def pending_record() -> dict[str, Any]:
@@ -182,6 +194,9 @@ class BedtimeBridge:
         # Command pushes still showing on the phone, cleared once the shortcut has run.
         self._pending_commands: set[str] = set()
         self._restore_unsub: Callable[[], None] | None = None
+        self._ladder_unsub: Callable[[], None] | None = None
+        # Phone shortcuts that reported Started and are expected to report Completed.
+        self._command_unsubs: dict[str, Callable[[], None]] = {}
 
     @property
     def options(self) -> dict[str, Any]:
@@ -190,7 +205,7 @@ class BedtimeBridge:
     def setting_keys(self) -> list[str]:
         """Built-in settings plus one lead time per configured shift type."""
         shifts = shift_types(self.options.get(CONF_SHIFT_TYPES))
-        return list(SETTINGS) + [f"{SHIFT_LEAD_PREFIX}{name}" for name in shifts]
+        return list(SETTINGS) + list(LADDER_SETTINGS) + [f"{SHIFT_LEAD_PREFIX}{name}" for name in shifts]
 
     async def async_load(self) -> None:
         stored = await self._store.async_load() or {}
@@ -208,6 +223,12 @@ class BedtimeBridge:
         self._watch_bed("rearm")
         self._watch_bed("rerun")
         self._schedule_skip_restore()
+        for command in list(self.state.get("command_started") or {}):
+            self._watch_command(command)
+        # The ladder: recompute once loaded (keeping a stored one inside its lock), then check the
+        # forecast every 15 minutes before leave-by.
+        self.hass.async_create_task(self._recompute_ladder())
+        self.entry.async_on_unload(async_track_time_interval(self.hass, self._weather_tick, timedelta(minutes=15)))
     def _save(self) -> None:
         self._store.async_delay_save(lambda: {"state": self.state, "settings": self.settings}, 1)
 
@@ -218,6 +239,15 @@ class BedtimeBridge:
     def set_setting(self, key: str, value: int) -> None:
         self.settings[key] = value
         self._changed()
+        if key in LADDER_SETTINGS:
+            self.hass.async_create_task(self._recompute_ladder())
+
+    def setting_value(self, key: str) -> int | None:
+        """A setting's value, or the ladder setting's default."""
+        value = self.settings.get(key)
+        if value is None and key in LADDER_SETTINGS:
+            return LADDER_SETTINGS[key][4]
+        return value
 
     def settings_for_app(self) -> dict[str, Any]:
         """Settings with a value, shift leads grouped as {"Days": 60}."""
@@ -230,6 +260,8 @@ class BedtimeBridge:
                 leads[key.removeprefix(SHIFT_LEAD_PREFIX)] = int(value)
             elif key in SETTINGS:
                 flat[key] = int(value)
+        for key in LADDER_SETTINGS:
+            flat[key] = int(self.setting_value(key))
         if leads:
             flat["shift_lead_minutes"] = leads
         return flat
@@ -268,10 +300,13 @@ class BedtimeBridge:
             MSG_HOME_CHECK: self._home_check,
             MSG_BEDTIME_UNDONE: self._bedtime_undone,
             MSG_COMMAND_RAN: self._command_ran,
+            MSG_MORNING_CHANGED: self._morning_changed,
         }.get(kind)
         if handler is None:
             return {"error": f"unknown message type: {kind}"}
         result = await handler(data) or {}
+        if kind in (MSG_PLANNED, MSG_CANCELLED, MSG_SKIPPED, MSG_UNSKIPPED, MSG_BEDTIME_UNDONE):
+            await self._recompute_ladder()
         return {"settings": self.settings_for_app(), **result}
 
     async def _context(self, data: dict[str, Any]) -> dict[str, Any]:
@@ -283,7 +318,25 @@ class BedtimeBridge:
             "next_shift_start": sensor.attributes.get("next_shift_start") if sensor else None,
             "next_shift_type": sensor.attributes.get("next_shift_type") if sensor else None,
             "at_home": self.is_home(),
+            # For item 3's confirm screen: the backstops now, and when the curtains open on the
+            # morning of the first new alarm (Sleep In's rule).
+            "ladder": self._ladder_summary(),
+            "curtains_open_at": self._curtains_open(_time(data.get("first_alarm")) or dt_util.utcnow()),
         }
+
+    def _ladder_summary(self) -> dict[str, Any]:
+        ladder = self.state.get("ladder") or {}
+        return {key: ladder.get(key) for key in ("status", "kind", "times", "shift_start", "appointment", "delay_minutes")}
+
+    def _curtains_open(self, on: datetime) -> str | None:
+        """Sunrise + the curtain offset on the local day of `on`."""
+        sun = self.hass.states.get("sun.sun")
+        rising = _time(sun.attributes.get("next_rising")) if sun else None
+        if rising is None:
+            return None
+        rising += timedelta(days=(dt_util.as_local(on).date() - dt_util.as_local(rising).date()).days)
+        offset = timedelta(minutes=int(self.options.get(CONF_CURTAIN_OFFSET) or DEFAULT_CURTAIN_OFFSET))
+        return (rising + offset).isoformat()
 
     async def _forecast(self, data: dict[str, Any]) -> dict[str, Any]:
         weather = self.options.get(CONF_WEATHER)
@@ -316,13 +369,15 @@ class BedtimeBridge:
         self.state.update({key: data.get(key) for key in PLAN_FIELDS if key in data})
         self.state["last_plan"] = dt_util.utcnow().isoformat()
         self.state["plan_error"] = None
+        self.state["ladder_plan"] = data.get("ladder") or {}
+        if (data.get("ladder") or {}).get("work_buffer_minutes") is not None:
+            self.state["work_buffer_minutes"] = int(data["ladder"]["work_buffer_minutes"])
         # Bedtime ran again (by hand, or the nudge): no need to wait for you to get into bed.
         self._end_bed("rerun")
         self.state["planned_override"] = self._state_of(CONF_SHIFT_OVERRIDE)
         self.state["planned_shift_start"] = self._next_shift_start()
         times = sorted(t for t in (_time(v) for v in self.state.get("alarm_times") or []) if t)
         self.state["series_start"] = times[0].isoformat() if times else None
-        self._set_rungs()
         await self._sync_sleep_in()
         # The phone reports a plan only once its alarms are scheduled, so with app alarms this
         # means they're really set; in Clock app mode the shortcut still has to make them.
@@ -365,22 +420,287 @@ class BedtimeBridge:
         self.state["plan_error"] = data.get("error") or "unknown error"
         self._event(MSG_PLAN_FAILED, error=self.state["plan_error"])
 
-    def _set_rungs(self) -> None:
-        """Safety-net times after the last alarm, for the chosen causes, when home.
+    # MARK: Leave-by backstop ladder (item 6)
 
-        Mirrors the Days ladder in current_shift.yaml (alarms end 4:30, deadline 5:10): the
-        checks start once the alarms are over, so they never fire while alarms still ring.
-        Early = last alarm, deadline = +margin (out of bed by), late = +2×margin (left the room).
-        """
-        times = [t for t in (dt_util.parse_datetime(v) for v in self.state.get("alarm_times") or []) if t]
-        last = max(times) if times else dt_util.parse_datetime(self.state.get("wake_time") or "")
-        causes = self.options.get(CONF_SAFETY_CAUSES, DEFAULT_SAFETY_CAUSES)
-        if last is None or self.state.get("alarm_cause") not in causes or not self.is_home():
+    def _ladder_offsets(self) -> ldr.Offsets:
+        """The settings, or the last valid ladder when they cross (early > deadline > late)."""
+        offsets = ldr.Offsets(
+            early=int(self.setting_value("rung_early_minutes")),
+            deadline=int(self.setting_value("rung_deadline_minutes")),
+            late=int(self.setting_value("rung_late_minutes")),
+            first_day_back=int(self.setting_value("first_day_back_minutes")),
+        )
+        if offsets.valid:
+            self.state["ladder_offsets"] = offsets.as_dict()
+            return offsets
+        _LOGGER.warning(
+            "Bedtime Bridge ladder settings cross (early %s, deadline %s, late %s); keeping the last valid ladder",
+            offsets.early, offsets.deadline, offsets.late,
+        )
+        return ldr.Offsets.from_dict(self.state.get("ladder_offsets"))
+
+    @staticmethod
+    def _ladder_locked(ladder: dict[str, Any], now: datetime) -> bool:
+        """From the early rung until 60 minutes after the late rung, nothing recomputes it."""
+        if ladder.get("status") != ldr.STATUS_ARMED:
+            return False
+        early = _time((ladder.get("times") or {}).get("early"))
+        late = _time((ladder.get("times") or {}).get("late"))
+        return early is not None and late is not None and early <= now < late + ldr.LADDER_TAIL
+
+    async def _recompute_ladder(self) -> None:
+        """Works out the ladder for the next morning with a leave-by. Inside the morning lock it
+        stays as it is; item 3 and worse weather or traffic move it through their own paths."""
+        now = dt_util.utcnow()
+        ladder = self.state.get("ladder") or {}
+        if self._ladder_locked(ladder, now):
+            self._schedule_ladder_rollover()
             return
-        margin = timedelta(minutes=int(self.options.get(CONF_SAFETY_MINUTES, DEFAULT_SAFETY_MINUTES)))
-        self.state["rung_early"] = last.isoformat()
-        self.state["rung_deadline"] = (last + margin).isoformat()
-        self.state["rung_late"] = (last + 2 * margin).isoformat()
+        offsets = self._ladder_offsets()
+        morning, status, reason = await self._ladder_morning(now, offsets)
+        if morning is None:
+            if status == "keep":
+                if ladder:
+                    self._schedule_ladder_rollover()
+                    return
+                status, reason = ldr.STATUS_FAULT, reason
+            self._set_ladder({"status": status, "reason": reason, "morning": None, "times": {}}, None)
+            return
+        delay = self._ladder_delay_for(morning.key)
+        earlier = ladder.get("earlier_minutes", 0) if ladder.get("morning") == morning.key else 0
+        base = ldr.rung_times(morning.leave_by, offsets, morning.first_day_back, delay.get("minutes", 0) - earlier)
+        times = ldr.not_in_past(base, now)
+        self._set_ladder({
+            "status": ldr.STATUS_ARMED,
+            "reason": None,
+            "morning": morning.key,
+            "kind": morning.kind,
+            "times": {rung: when.isoformat() for rung, when in times.items()},
+            "leave_by": morning.leave_by.isoformat(),
+            "leave_by_source": morning.leave_by_source,
+            "first_day_back": morning.first_day_back,
+            "shift_start": morning.shift_start.isoformat() if morning.shift_start else None,
+            "appointment": morning.appointment,
+            "appointment_start": morning.appointment_start.isoformat() if morning.appointment_start else None,
+            "delay_minutes": delay.get("minutes", 0),
+            "changed_by": delay.get("changed_by"),
+            "change_reason": delay.get("reason"),
+            "weather_extra_minutes": morning.weather_extra_minutes + (ladder.get("weather_minutes", 0) if earlier else 0),
+            "condition": (ladder.get("condition") if earlier else None) or morning.condition,
+            "earlier_minutes": earlier,
+            "weather_minutes": ladder.get("weather_minutes", 0) if earlier else 0,
+            "traffic_minutes": ladder.get("traffic_minutes", 0) if earlier else 0,
+        }, morning.key)
+
+    def _set_ladder(self, ladder: dict[str, Any], morning: str | None) -> None:
+        """Stores the ladder; saves and updates the entities only when it changed."""
+        changed = ladder != self.state.get("ladder")
+        self.state["ladder"] = ladder
+        self._ladder_cleanup(morning)
+        self._schedule_ladder_rollover()
+        if changed:
+            self._changed()
+
+    async def _ladder_morning(self, now: datetime, offsets: ldr.Offsets) -> tuple[ldr.Morning | None, str | None, str | None]:
+        """The morning the ladder is for, or why there isn't one ("keep": hold the stored ladder)."""
+        plan = self.state.get("ladder_plan") or {}
+        shift_morning: ldr.Morning | None = None
+        status, reason = ldr.STATUS_NO_SHIFT, "No shift on the calendar"
+        sensor = self.hass.states.get(self.options.get(CONF_SHIFT_SENSOR) or "")
+        if sensor is None or sensor.state in UNKNOWN_STATES:
+            status, reason = "keep", "Shift sensor unavailable"
+        else:
+            next_start = _time(sensor.attributes.get("next_shift_start"))
+            shift_type = sensor.attributes.get("effective_shift") or sensor.attributes.get("next_shift_type")
+            covered = [t.lower() for t in (self.options.get(CONF_LADDER_SHIFT_TYPES) or DEFAULT_LADDER_SHIFT_TYPES)]
+            if self._state_of(CONF_SHIFT_OVERRIDE) == "Off":
+                status, reason = ldr.STATUS_OVERRIDE_OFF, "Shift override is Off"
+            elif sensor.attributes.get("deadline_source") == "leave":
+                status, reason = ldr.STATUS_LEAVE, "Leave day"
+            elif next_start is None:
+                status, reason = ldr.STATUS_NO_SHIFT, "No shift on the calendar"
+            elif str(shift_type or "").lower() not in covered:
+                status, reason = ldr.STATUS_UNCOVERED, f"{shift_type or 'This shift'} mornings have no ladder"
+            else:
+                buffer = int(self.state.get("work_buffer_minutes") or DEFAULT_WORK_BUFFER)
+                calendar = ldr.calendar_leave_by(next_start, int(self.setting_value("fallback_drive_minutes")), buffer)
+                planned = plan.get("type") == "shift" and ldr.same_morning(_time(plan.get("shift_start")), next_start)
+                leave_by, source, warning = ldr.pick_leave_by(_time(plan.get("leave_by")) if planned else None, calendar)
+                if warning:
+                    _LOGGER.warning("Bedtime Bridge ladder: %s", warning)
+                if planned and plan.get("first_day_back") is not None:
+                    first_day_back = bool(plan["first_day_back"])
+                else:
+                    first_day_back = await self._first_day_back(next_start)
+                shift_morning = ldr.Morning(
+                    "shift", leave_by, source, first_day_back, shift_start=next_start,
+                    weather_extra_minutes=int(plan.get("weather_extra_minutes") or 0) if planned else 0,
+                    condition=plan.get("condition") if planned else None,
+                )
+        appointment: ldr.Morning | None = None
+        if plan.get("type") == "appointment" and _time(plan.get("leave_by")):
+            appointment = ldr.Morning(
+                "appointment", _time(plan["leave_by"]), "plan", False,
+                appointment=plan.get("appointment"), appointment_start=_time(plan.get("appointment_start")),
+                weather_extra_minutes=int(plan.get("weather_extra_minutes") or 0), condition=plan.get("condition"),
+            )
+
+        def finished(morning: ldr.Morning) -> bool:
+            delay = self._ladder_delay_for(morning.key).get("minutes", 0)
+            late = ldr.rung_times(morning.leave_by, offsets, morning.first_day_back, delay)["late"]
+            return late + ldr.LADDER_TAIL <= now
+
+        open_mornings = [m for m in (shift_morning, appointment) if m and not finished(m)]
+        if open_mornings:
+            return min(open_mornings, key=lambda m: m.leave_by), None, None
+        if shift_morning or appointment:
+            return None, ldr.STATUS_DONE, "This morning's ladder is over"
+        return None, status, reason
+
+    async def _first_day_back(self, shift_start: datetime) -> bool:
+        """No shift the day before (a day off, or leave). Read from the work calendar when the app
+        didn't say; if that fails, assume a first day back (fail early, not late)."""
+        day = dt_util.as_local(shift_start).date()
+        cache: dict[str, bool] = self.state.setdefault("ladder_first_day_back", {})
+        if day.isoformat() in cache:
+            return cache[day.isoformat()]
+        calendar = self.options.get(CONF_CALENDAR)
+        if not calendar or self.hass.states.get(calendar) is None:
+            return True
+        start = dt_util.start_of_local_day(day) - timedelta(days=1)
+        try:
+            response = await self.hass.services.async_call(
+                "calendar",
+                "get_events",
+                {"entity_id": calendar, "start_date_time": start.isoformat(), "end_date_time": (start + timedelta(days=1)).isoformat()},
+                blocking=True,
+                return_response=True,
+            )
+        except Exception as err:  # noqa: BLE001 - any failure means "assume first day back"
+            _LOGGER.warning("Bedtime Bridge couldn't read %s for first day back: %s", calendar, err)
+            return True
+        events = ((response or {}).get(calendar) or {}).get("events") or []
+        names = [n.lower() for n in shift_types(self.options.get(CONF_SHIFT_TYPES))]
+        worked = any(any(n in str(e.get("summary") or "").lower() for n in names) for e in events)
+        cache.clear()
+        cache[day.isoformat()] = not worked
+        return not worked
+
+    def _ladder_delay_for(self, morning: str) -> dict[str, Any]:
+        delay = self.state.get("ladder_delay") or {}
+        return delay if delay.get("morning") == morning else {}
+
+    def _ladder_cleanup(self, morning: str | None) -> None:
+        """A delay belongs to its morning; once another morning's ladder is up, it goes."""
+        if (self.state.get("ladder_delay") or {}).get("morning") not in (None, morning):
+            self.state["ladder_delay"] = None
+
+    @callback
+    def _schedule_ladder_rollover(self) -> None:
+        """Once the late rung is 60 minutes past, this morning is over: roll to the next one."""
+        if self._ladder_unsub:
+            self._ladder_unsub()
+            self._ladder_unsub = None
+        late = _time(((self.state.get("ladder") or {}).get("times") or {}).get("late"))
+        if late is None:
+            return
+        due = late + ldr.LADDER_TAIL
+        if due <= dt_util.utcnow():
+            return
+        self._ladder_unsub = async_track_point_in_utc_time(self.hass, self._ladder_rollover, due)
+
+    @callback
+    def _ladder_rollover(self, _now: datetime) -> None:
+        self._ladder_unsub = None
+        self.state["ladder_delay"] = None
+        if self.state.get("ladder"):
+            self.state["ladder"]["status"] = ldr.STATUS_DONE
+        self.hass.async_create_task(self._recompute_ladder())
+
+    def _move_ladder(self, minutes: int, *, rungs_ahead_only: bool) -> None:
+        """Shifts the stored rungs (negative = earlier). Earlier moves touch only rungs still
+        ahead; anything landing in the past is published as now + 60 s."""
+        ladder = self.state.get("ladder") or {}
+        if ladder.get("status") != ldr.STATUS_ARMED or not minutes:
+            return
+        now = dt_util.utcnow()
+        times = {}
+        for rung, value in (ladder.get("times") or {}).items():
+            when = _time(value)
+            if when is None or (rungs_ahead_only and when <= now):
+                times[rung] = value
+                continue
+            times[rung] = max(when + timedelta(minutes=minutes), now + ldr.PAST_RUNG_LEAD).isoformat()
+        ladder["times"] = times
+        self._schedule_ladder_rollover()
+
+    def change_morning_ladder(self, delay_minutes: int, changed_by: str | None, reason: str | None) -> None:
+        """Item 3: the backstops move by the same amount as the wake-up, later or earlier. The
+        delay persists through recomputes that morning and is cleared when its ladder ends."""
+        ladder = self.state.get("ladder") or {}
+        if ladder.get("status") != ldr.STATUS_ARMED or not delay_minutes:
+            return
+        current = self._ladder_delay_for(ladder["morning"])
+        total = int(current.get("minutes", 0)) + int(delay_minutes)
+        self.state["ladder_delay"] = {"morning": ladder["morning"], "minutes": total, "changed_by": changed_by, "reason": reason}
+        self._move_ladder(int(delay_minutes), rungs_ahead_only=False)
+        ladder.update(delay_minutes=total, changed_by=changed_by, change_reason=reason)
+        self._changed()
+
+    def _ladder_earlier(self, minutes: int, kind: str, condition: str | None = None) -> None:
+        """Worse weather or traffic: the rungs still ahead move earlier, never later."""
+        ladder = self.state.get("ladder") or {}
+        if minutes <= 0 or ladder.get("status") != ldr.STATUS_ARMED:
+            return
+        self._move_ladder(-minutes, rungs_ahead_only=True)
+        ladder["earlier_minutes"] = ladder.get("earlier_minutes", 0) + minutes
+        ladder[f"{kind}_minutes"] = ladder.get(f"{kind}_minutes", 0) + minutes
+        if kind == "weather":
+            ladder["weather_extra_minutes"] = ladder.get("weather_extra_minutes", 0) + minutes
+            ladder["condition"] = condition
+        _LOGGER.info("Bedtime Bridge ladder moved %s min earlier for %s", minutes, condition or kind)
+        self._changed()
+
+    def _traffic_moved(self, new_leave_by: datetime | None) -> None:
+        """The phone rechecked the drive when an alarm was stopped. A longer drive (an earlier
+        leave-by) moves the rungs earlier by the difference not already applied."""
+        ladder = self.state.get("ladder") or {}
+        planned = _time(ladder.get("leave_by"))
+        if new_leave_by is None or planned is None or ladder.get("leave_by_source") != "plan":
+            return
+        needed = int((planned - new_leave_by).total_seconds() // 60)
+        self._ladder_earlier(needed - ladder.get("traffic_minutes", 0), "traffic")
+
+    async def _weather_tick(self, _now: datetime) -> None:
+        """Every 15 minutes from 2 hours before the early rung until leave-by: if the drive's
+        forecast is worse than the plan allowed for, move the rungs still ahead earlier."""
+        ladder = self.state.get("ladder") or {}
+        if ladder.get("status") != ldr.STATUS_ARMED:
+            return
+        now = dt_util.utcnow()
+        early, leave_by = _time(ladder["times"].get("early")), _time(ladder.get("leave_by"))
+        if early is None or leave_by is None or not (early - timedelta(hours=2) <= now < leave_by):
+            return
+        weather = self.options.get(CONF_WEATHER)
+        if not weather or self.hass.states.get(weather) is None:
+            return
+        try:
+            response = await self.hass.services.async_call(
+                "weather", "get_forecasts", {"entity_id": weather, "type": "hourly"}, blocking=True, return_response=True
+            )
+        except Exception as err:  # noqa: BLE001 - a missed check is retried in 15 minutes
+            _LOGGER.debug("Bedtime Bridge ladder forecast check failed: %s", err)
+            return
+        forecast = ((response or {}).get(weather) or {}).get("forecast") or []
+        plan = self.state.get("ladder_plan") or {}
+        minutes = plan.get("weather_minutes")
+        if not minutes:
+            extra = int(self.setting_value("weather_extra_minutes") or 15)
+            minutes = {condition: extra for condition in ldr.DEFAULT_WEATHER_CONDITIONS}
+        arrive = _time(ladder.get("shift_start")) or _time(ladder.get("appointment_start")) or leave_by + timedelta(hours=1)
+        worst, condition = ldr.worst_weather(forecast, leave_by, arrive, minutes, plan.get("freezing_at"))
+        planned_extra = int(plan.get("weather_extra_minutes") or 0) if ladder.get("leave_by_source") == "plan" else 0
+        self._ladder_earlier(worst - planned_extra - ladder.get("weather_minutes", 0), "weather", condition)
 
     # MARK: Changes after bedtime
 
@@ -395,7 +715,9 @@ class BedtimeBridge:
 
     @callback
     def _shift_changed(self, event: Event[EventStateChangedData]) -> None:
-        """Flags the plan as outdated when the override or HA's next shift changes after it."""
+        """Recomputes the ladder, and flags the plan as outdated when the override or HA's next
+        shift changes after it."""
+        self.hass.async_create_task(self._recompute_ladder())
         if self.state.get("plan_outdated") or not self._plan_still_ahead():
             return
         override = self._state_of(CONF_SHIFT_OVERRIDE)
@@ -456,7 +778,11 @@ class BedtimeBridge:
         self.state["snooze_count"] = int(self.state.get("snooze_count") or 0) + 1
         if data.get("rings_again"):
             self.state["alarm_time"] = data["rings_again"]
-        await self._wake(CONF_SNOOZE_HELPER)
+        if self.state.get("routine_ran") or self._state_of(CONF_SNOOZE_HELPER) == "on":
+            # Already up (the wake routine ran), or the fade is running: nothing to start.
+            self.state["skipped_away"] = self._away_blocks()
+        else:
+            await self._wake(CONF_SNOOZE_HELPER)
         self._event(MSG_SNOOZED)
 
     async def _stopped(self, data: dict[str, Any]) -> None:
@@ -465,18 +791,38 @@ class BedtimeBridge:
             await self._wake(CONF_STOP_HELPER)
             self._event(MSG_STOPPED, test=True)
             return
-        remaining = data.get("alarm_times") or []
+        # all: the slide-and-hold that ends every alarm left in this wake-up (item 2).
+        stop_all = bool(data.get("all"))
+        remaining = [] if stop_all else data.get("alarm_times") or []
         self.state["snoozed_until"] = None
         self.state["alarm_times"] = remaining
         self.state["alarm_time"] = remaining[0] if remaining else None
         if not remaining:
             self.state["alarm_cause"] = "noalarm"
-        await self._wake(CONF_STOP_HELPER)
-        self._event(MSG_STOPPED)
-        if not self.state.get("skipped_away"):
+            self._end_morning()
+        # early: ended from Tonight before any alarm rang (item 8), so the early helper runs.
+        early = bool(data.get("early"))
+        # The wake routine runs on the first stop of a wake-up only (item 9): Wake Sequence
+        # treats its helper as a button, so every turn-on would re-run it.
+        first = not self.state.get("routine_ran")
+        if first:
+            helper = CONF_EARLY_HELPER if early and self.options.get(CONF_EARLY_HELPER) else CONF_STOP_HELPER
+            await self._wake(helper)
+            self.state["routine_ran"] = True
+        else:
+            self.state["skipped_away"] = self._away_blocks()
+        self._event(MSG_STOPPED, all=stop_all, early=early, routine=first)
+        if first and not self.state.get("skipped_away"):
             # The phone's own morning shortcut (disarm, good morning, Focus off) used to run
             # from the Clock app; app alarms don't trigger that, so this push does instead.
             await self._command(CMD_MORNING)
+
+    @callback
+    def _end_morning(self) -> None:
+        """The wake-up is over (every alarm stopped, ended all, or changed): this morning's
+        snoozes become Snoozes last morning and the count starts again at 0."""
+        self.state["snoozes_last_morning"] = int(self.state.get("snooze_count") or 0)
+        self.state["snooze_count"] = 0
 
     # MARK: Temporary alarms
 
@@ -589,6 +935,96 @@ class BedtimeBridge:
         if self._restore_unsub:
             self._restore_unsub()
             self._restore_unsub = None
+        if self._ladder_unsub:
+            self._ladder_unsub()
+            self._ladder_unsub = None
+        for command in list(self._command_unsubs):
+            self._unwatch_command(command)
+
+    # MARK: Change this morning (item 3)
+
+    async def _morning_changed(self, data: dict[str, Any]) -> None:
+        """The morning's alarms were moved later or earlier, or cancelled, while snoozing or
+        after you were up. The backstops move with the wake-up (or stay with no alarms), Sleep
+        In follows, and the house goes back to bedtime."""
+        times = sorted(t for t in (_time(v) for v in data.get("alarm_times") or []) if t)
+        delay = int(data.get("delay_minutes") or 0)
+        phase = data.get("phase") or "up"
+        reason, note = data.get("reason"), data.get("note")
+        self._end_morning()
+        self.state["snoozed_until"] = None
+        self.state["alarm_times"] = [t.isoformat() for t in times]
+        self.state["alarm_time"] = times[0].isoformat() if times else None
+        self.state["series_start"] = times[0].isoformat() if times else None
+        self.state["routine_ran"] = False
+        if not times:
+            self.state["alarm_cause"] = "noalarm"
+        self.state["last_morning_change"] = {
+            "delay_minutes": delay if times else None,
+            "alarm_times": self.state["alarm_times"],
+            "reason": reason,
+            "note": note,
+            "phase": phase,
+            "time": dt_util.utcnow().isoformat(),
+        }
+        # The one thing allowed to move the backstops later. No alarms: they stay (the calendar
+        # still shows the shift; deleting it is what turns them off).
+        if times and delay:
+            self.change_morning_ladder(delay, data.get("changed_by") or "app", reason)
+        await self._restart_wake_automations()
+        # Blocking: Sleep In must be set before the bedtime routine can move the curtains.
+        if times:
+            await self._sync_sleep_in(blocking=True)
+        else:
+            await self._set_sleep_in(bool(data.get("sleep_in", True)), blocking=True)
+        at_home = self.is_home()
+        if phase == "snoozing":
+            # Only the snooze ramp has started: fade the nightstands back down.
+            helper = self.options.get(CONF_SNOOZE_HELPER)
+            if helper:
+                await self._turn_off(helper)
+        elif at_home:
+            # After a stop: Sleep In first (above), then the bedtime routine, then the phone.
+            bedtime = self.options.get(CONF_BEDTIME_HELPER)
+            if bedtime:
+                await self._turn_on(bedtime, blocking=True)
+            await self._command(CMD_BACK_TO_BED)
+        self._event(
+            MSG_MORNING_CHANGED, delay_minutes=delay if times else None, reason=reason, note=note,
+            phase=phase, sleep_in=self._state_of(CONF_SLEEP_IN),
+        )
+
+    async def _restart_wake_automations(self) -> None:
+        """Until v0.5 fires the ladder: stop Wake Confirm's nudges and a Backstop loop already
+        running (turning an automation off cancels its runs) and clear their notifications."""
+        configured = self.options.get(CONF_RESTART_AUTOMATIONS)
+        for entity_id in DEFAULT_RESTART_AUTOMATIONS if configured is None else configured:
+            state = self.hass.states.get(entity_id)
+            if state is None or state.state != "on":
+                continue
+            try:
+                await self.hass.services.async_call(
+                    "automation", "turn_off", {"entity_id": entity_id, "stop_actions": True}, blocking=True
+                )
+                await self.hass.services.async_call("automation", "turn_on", {"entity_id": entity_id}, blocking=True)
+            except HomeAssistantError as err:
+                _LOGGER.warning("Bedtime Bridge couldn't restart %s: %s", entity_id, err)
+        notify = (self.options.get(CONF_NOTIFY) or "").strip()
+        if notify:
+            domain, _, service = notify.partition(".")
+            for tag in RESTART_NOTIFICATION_TAGS:
+                try:
+                    await self.hass.services.async_call(
+                        domain, service, {"message": "clear_notification", "data": {"tag": tag}}, blocking=False
+                    )
+                except HomeAssistantError as err:
+                    _LOGGER.warning("Bedtime Bridge couldn't clear %s: %s", tag, err)
+
+    async def _turn_off(self, entity_id: str) -> None:
+        try:
+            await self.hass.services.async_call("homeassistant", "turn_off", {"entity_id": entity_id}, blocking=False)
+        except HomeAssistantError as err:
+            _LOGGER.warning("Bedtime Bridge couldn't turn off %s: %s", entity_id, err)
 
     # MARK: Undo bedtime
 
@@ -688,26 +1124,25 @@ class BedtimeBridge:
 
     # MARK: Sleep In
 
-    async def _sync_sleep_in(self) -> None:
+    async def _sync_sleep_in(self, blocking: bool = False) -> None:
         """Sleep In follows the plan: on when the first alarm is after the curtains would open
         (sunrise + offset), off when it's before. No alarm leaves it as it is (the bedtime
         shortcut asks). Only while you're home."""
         first = _time(self.state.get("series_start"))
-        sun = self.hass.states.get("sun.sun")
-        sunrise = _time(sun.attributes.get("next_rising")) if sun else None
-        if first is None or sunrise is None:
+        # The sunrise on the first alarm's own day: in the morning (item 3) next_rising is tomorrow's.
+        curtains = _time(self._curtains_open(first)) if first else None
+        if first is None or curtains is None:
             return
-        offset = timedelta(minutes=int(self.options.get(CONF_CURTAIN_OFFSET) or DEFAULT_CURTAIN_OFFSET))
-        await self._set_sleep_in(first > sunrise + offset)
+        await self._set_sleep_in(first > curtains, blocking)
 
-    async def _set_sleep_in(self, on: bool) -> None:
+    async def _set_sleep_in(self, on: bool, blocking: bool = False) -> None:
         helper = self.options.get(CONF_SLEEP_IN)
         state = self.hass.states.get(helper or "")
         if not helper or not self.is_home() or (state is not None and state.state == ("on" if on else "off")):
             return
         try:
             await self.hass.services.async_call(
-                "homeassistant", "turn_on" if on else "turn_off", {"entity_id": helper}, blocking=False
+                "homeassistant", "turn_on" if on else "turn_off", {"entity_id": helper}, blocking=blocking
             )
         except HomeAssistantError as err:
             _LOGGER.warning("Bedtime Bridge couldn't set %s: %s", helper, err)
@@ -762,11 +1197,74 @@ class BedtimeBridge:
         return True
 
     async def _command_ran(self, data: dict[str, Any]) -> None:
-        """The shortcut a command asked for has run (its Report Shortcut Ran step)."""
+        """The shortcut a command asked for has run (its Report Shortcut Ran step). Outcome
+        "already_done": the phone got the push but had nothing to do (Good Morning already ran)."""
         command = data.get("command")
+        # "ran" is Started (the shortcut's first step); "completed" its last; "already_done".
+        outcome = data.get("outcome") or "ran"
+        now = dt_util.utcnow().isoformat()
         if command in COMMANDS:
             await self._clear_command(command)
-        self._event(MSG_COMMAND_RAN, command=command)
+        started: dict[str, str] = self.state.setdefault("command_started", {})
+        completing: list[str] = self.state.setdefault("commands_completing", [])
+        last = self.state.get("last_command") or {}
+        if outcome == "ran":
+            # Only watched once that shortcut has reported Completed at least once, so one with
+            # just a Started step never raises a false alarm.
+            if command in completing:
+                started[command] = now
+                self._watch_command(command)
+            last = {"command": command, "outcome": outcome, "time": now, "started": now, "completed": None}
+        else:
+            started.pop(command, None)
+            self._unwatch_command(command)
+            if outcome == "completed" and command not in completing:
+                completing.append(command)
+            same = last.get("command") == command
+            last = {
+                "command": command, "outcome": outcome, "time": now,
+                "started": last.get("started") if same else None,
+                "completed": now if outcome == "completed" else None,
+            }
+        self.state["last_command"] = last
+        self._event(MSG_COMMAND_RAN, command=command, outcome=outcome)
+
+    @callback
+    def _watch_command(self, command: str) -> None:
+        """Flags a shortcut that started but hasn't completed in time (it stopped partway)."""
+        self._unwatch_command(command)
+        started = _time((self.state.get("command_started") or {}).get(command))
+        if started is None:
+            return
+        minutes = int(self.options.get(CONF_COMPLETE_MINUTES) or DEFAULT_COMPLETE_MINUTES)
+        due = max(started + timedelta(minutes=minutes), dt_util.utcnow() + timedelta(seconds=1))
+        self._command_unsubs[command] = async_track_point_in_utc_time(
+            self.hass, callback(lambda _now: self.hass.async_create_task(self._command_stuck(command))), due
+        )
+
+    @callback
+    def _unwatch_command(self, command: str) -> None:
+        unsub = self._command_unsubs.pop(command, None)
+        if unsub:
+            unsub()
+
+    async def _command_stuck(self, command: str) -> None:
+        self._command_unsubs.pop(command, None)
+        started = (self.state.get("command_started") or {}).pop(command, None)
+        if started is None:
+            return
+        name = COMMAND_NAMES.get(command, command)
+        self.hass.bus.async_fire(EVENT, {"type": EVENT_COMMAND_INCOMPLETE, "command": command, "started": started})
+        await self._push(
+            {
+                "title": "Phone shortcut didn't finish",
+                "message": f"{name} started on your phone but didn't finish. Check what it should have done.",
+                "data": {"tag": f"{COMMAND_TAG}_incomplete", "push": {"interruption-level": "time-sensitive"}},
+            },
+            f"{command} incomplete",
+        )
+        _LOGGER.warning("Bedtime Bridge: %s started at %s but never reported Completed", command, started)
+        self._changed()
 
     async def _cancelled(self, data: dict[str, Any]) -> None:
         self.state.update(empty_state())
@@ -786,6 +1284,7 @@ class BedtimeBridge:
         return {"started": started, "at_home": at_home}
 
     async def _leave_by(self, data: dict[str, Any]) -> None:
+        self._traffic_moved(_time(data.get("leave_by")))
         self.state["leave_by"] = data.get("leave_by")
         if data.get("drive_minutes") is not None:
             self.state["drive_minutes"] = data["drive_minutes"]
@@ -818,9 +1317,9 @@ class BedtimeBridge:
         if entity_id:
             await self._turn_on(entity_id)
 
-    async def _turn_on(self, entity_id: str) -> bool:
+    async def _turn_on(self, entity_id: str, blocking: bool = False) -> bool:
         try:
-            await self.hass.services.async_call("homeassistant", "turn_on", {"entity_id": entity_id}, blocking=False)
+            await self.hass.services.async_call("homeassistant", "turn_on", {"entity_id": entity_id}, blocking=blocking)
         except HomeAssistantError as err:
             # A renamed or deleted helper must not stop the event and state update.
             _LOGGER.warning("Bedtime Bridge couldn't turn on %s: %s", entity_id, err)

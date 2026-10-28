@@ -159,8 +159,9 @@ private struct LeaveReminderSection: View {
             if settings.leaveReminderEnabled {
                 Stepper("\(settings.leaveReminderLeadMinutes) min before leave-by", value: $settings.leaveReminderLeadMinutes, in: 0...60, step: 5)
             }
+            Stepper("Widget: leave-by until \(settings.widgetLeaveByMinutes) min after", value: $settings.widgetLeaveByMinutes, in: 0...120, step: 5)
         } footer: {
-            Text("For shifts and appointments with a location. Set at bedtime; when you stop a Bedtime Bridge alarm, traffic is rechecked and the reminder moves if it changed.")
+            Text("For shifts and appointments with a location. Set at bedtime; when you stop a Bedtime Bridge alarm, traffic is rechecked and the reminder moves if it changed. Once the alarms are done, the Lock Screen widget shows leave-by until this long after it.")
         }
     }
 }
@@ -390,10 +391,14 @@ private struct AlarmSettingsSection: View {
             if settings.alarmStyle == .app {
                 Stepper("Snooze: \(settings.snoozeMinutes) min", value: $settings.snoozeMinutes, in: 1...30)
                 AlarmSoundPicker(sound: $settings.alarmSound)
+                Stepper("End early from \(settings.endAlarmsEarlyHours) h before", value: $settings.endAlarmsEarlyHours, in: 1...6)
                 Picker("When I stop an alarm", selection: $settings.stopBehavior) {
                     ForEach(StopBehavior.allCases) { Text($0.displayName).tag($0) }
                 }
                 TestAlarmButton(settings: settings)
+                NavigationLink("Reasons for changing a morning") {
+                    MorningReasonsEditor(reasons: $settings.morningChangeReasons)
+                }
             }
             Stepper("Look ahead \(settings.lookAheadHours) h", value: $settings.lookAheadHours, in: 6...72)
         } header: {
@@ -406,6 +411,39 @@ private struct AlarmSettingsSection: View {
                 Text("The app works out the times and your shortcut creates Clock alarms from Wake Plan › Alarm Dates. Your snooze/stop automations keep working, but Apple fixes Clock snooze at 9 minutes.")
             }
         }
+    }
+}
+
+/// Item 3's reason list: picked when moving or cancelling a morning's alarms, logged in Home
+/// Assistant.
+private struct MorningReasonsEditor: View {
+    @Binding var reasons: [String]
+    @State private var newReason = ""
+
+    var body: some View {
+        SettingsPage(title: "Reasons") {
+            Section {
+                ForEach(reasons, id: \.self) { Text($0) }
+                    .onDelete { reasons.remove(atOffsets: $0) }
+                    .onMove { reasons.move(fromOffsets: $0, toOffset: $1) }
+                HStack {
+                    TextField("Add a reason", text: $newReason)
+                        .onSubmit(add)
+                    Button("Add", action: add)
+                        .disabled(newReason.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            } footer: {
+                Text("Picked when you change a morning's alarms, and logged in Home Assistant with the change.")
+            }
+        }
+        .toolbar { EditButton() }
+    }
+
+    private func add() {
+        let reason = newReason.trimmingCharacters(in: .whitespaces)
+        guard !reason.isEmpty, !reasons.contains(reason) else { return }
+        reasons.append(reason)
+        newReason = ""
     }
 }
 

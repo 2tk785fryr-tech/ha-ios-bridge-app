@@ -39,4 +39,23 @@ final class NextAlarmSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.setSummary(after: now.addingTimeInterval(900)), "1 alarm set")
         XCTAssertNil(snapshot.setSummary(after: now.addingTimeInterval(1800)))
     }
+
+    func testLeaveByStaysAfterTheLastAlarmUntilThirtyMinutesPast() {
+        let leaveBy = now.addingTimeInterval(3600)
+        var snapshot = NextAlarmSnapshot(alarmTimes: [now.addingTimeInterval(600)], label: "Days shift", leaveBy: leaveBy)
+        XCTAssertNil(snapshot.leaveByAfterAlarms(at: now), "an alarm is still to ring")
+        XCTAssertEqual(snapshot.leaveByAfterAlarms(at: now.addingTimeInterval(900)), leaveBy)
+        XCTAssertEqual(snapshot.leaveByAfterAlarms(at: leaveBy.addingTimeInterval(29 * 60)), leaveBy)
+        XCTAssertNil(snapshot.leaveByAfterAlarms(at: leaveBy.addingTimeInterval(30 * 60)))
+        // The widget redraws when it goes away.
+        XCTAssertTrue(snapshot.changeDates(after: now).contains(leaveBy.addingTimeInterval(30 * 60)))
+
+        snapshot.leaveByShownMinutes = 10
+        XCTAssertNil(snapshot.leaveByAfterAlarms(at: leaveBy.addingTimeInterval(10 * 60)))
+    }
+
+    func testNoLeaveByMeansTheNormalDisplay() {
+        let snapshot = NextAlarmSnapshot(alarmTimes: [now.addingTimeInterval(-600)], label: "Day off")
+        XCTAssertNil(snapshot.leaveByAfterAlarms(at: now))
+    }
 }
