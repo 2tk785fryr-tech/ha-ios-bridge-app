@@ -75,7 +75,16 @@ CMD_ARM = "RUN_ARM_STAY"
 CMD_MORNING = "RUN_GOOD_MORNING"
 # Same marker the bedtime nudge sends, so the existing phone automation runs bedtime.
 CMD_BEDTIME = "RUN_BEDTIME"
-COMMANDS = (CMD_DISARM, CMD_ARM, CMD_MORNING, CMD_BEDTIME)
+# Item 3 back to bed: the phone puts back what Good Morning changed (MorningState, house alarm,
+# Sleep Focus). Runs Back To Bed - App.
+CMD_BACK_TO_BED = "RUN_BACK_TO_BED"
+COMMANDS = (CMD_DISARM, CMD_ARM, CMD_MORNING, CMD_BEDTIME, CMD_BACK_TO_BED)
+# Item 3 stops what's already running (until v0.5 fires the ladder itself): these automations
+# are turned off (cancelling running actions) and straight back on, and these notification tags
+# cleared.
+CONF_RESTART_AUTOMATIONS = "restart_automations"
+DEFAULT_RESTART_AUTOMATIONS = ["automation.wake_confirm_still_in_bed_after_alarm", "automation.wake_deadline_backstop"]
+RESTART_NOTIFICATION_TAGS = ("wake_backstop", "wake_confirm")
 COMMAND_TAG = "bedtime_bridge_command"
 # Without getting back into bed by then (or before the regular alarms), it doesn't re-arm.
 REARM_GIVE_UP_HOURS = 6

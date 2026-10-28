@@ -177,6 +177,8 @@ SENSORS = (
             "skipped_away": s.get("skipped_away", False),
             # The phone's last Report Shortcut Ran: which command, and "ran" or "already_done".
             "last_command": s.get("last_command"),
+            # Item 3: the last morning change, with its reason, for tracking.
+            "last_morning_change": s.get("last_morning_change"),
         },
     ),
 )

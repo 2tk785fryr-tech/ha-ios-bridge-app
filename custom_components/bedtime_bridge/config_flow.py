@@ -30,6 +30,7 @@ from .const import (
     CONF_RERUN_MINUTES,
     CONF_CALENDAR,
     CONF_EARLY_HELPER,
+    CONF_RESTART_AUTOMATIONS,
     CONF_LADDER_SHIFT_TYPES,
     CONF_SHIFT_OVERRIDE,
     CONF_SHIFT_SENSOR,
@@ -44,6 +45,7 @@ from .const import (
     DEFAULT_REARM_MINUTES,
     DEFAULT_RERUN_MINUTES,
     DEFAULT_LADDER_SHIFT_TYPES,
+    DEFAULT_RESTART_AUTOMATIONS,
     DEFAULT_SHIFT_TYPES,
     DOMAIN,
     SUGGESTED,
@@ -67,6 +69,7 @@ OPTION_KEYS = [
     CONF_SHIFT_TYPES,
     CONF_LADDER_SHIFT_TYPES,
     CONF_CALENDAR,
+    CONF_RESTART_AUTOMATIONS,
     CONF_NOTIFY,
     CONF_REPLAN_ALERT,
     CONF_BED_SENSOR,
@@ -126,6 +129,12 @@ def _schema(hass: HomeAssistant, current: dict[str, Any]) -> vol.Schema:
         return {"suggested_value": found} if found else {}
     shift_names = parse_shift_types(current.get(CONF_SHIFT_TYPES) or DEFAULT_SHIFT_TYPES)
 
+    def restart_suggestion() -> dict[str, Any]:
+        if CONF_RESTART_AUTOMATIONS in current:
+            return {"suggested_value": current[CONF_RESTART_AUTOMATIONS]}
+        found = [e for e in DEFAULT_RESTART_AUTOMATIONS if hass.states.get(e)]
+        return {"suggested_value": found} if found else {}
+
     def notify_suggestion() -> dict[str, Any]:
         if CONF_NOTIFY in current:
             return {"suggested_value": current[CONF_NOTIFY]} if current[CONF_NOTIFY] else {}
@@ -152,6 +161,9 @@ def _schema(hass: HomeAssistant, current: dict[str, Any]) -> vol.Schema:
                 CONF_LADDER_SHIFT_TYPES, default=current.get(CONF_LADDER_SHIFT_TYPES) or DEFAULT_LADDER_SHIFT_TYPES
             ): selector.SelectSelector(selector.SelectSelectorConfig(options=shift_names, multiple=True, custom_value=True)),
             vol.Optional(CONF_CALENDAR, description=suggested(CONF_CALENDAR)): entity(["calendar"]),
+            vol.Optional(CONF_RESTART_AUTOMATIONS, description=restart_suggestion()): selector.EntitySelector(
+                selector.EntitySelectorConfig(domain=["automation"], multiple=True)
+            ),
             vol.Optional(CONF_NOTIFY, description=notify_suggestion()): selector.TextSelector(),
             vol.Optional(CONF_BED_SENSOR, description=suggested(CONF_BED_SENSOR)): entity(["binary_sensor"]),
             vol.Optional(CONF_EXIT_LATCH, description=suggested(CONF_EXIT_LATCH)): entity(["input_boolean", "binary_sensor"]),

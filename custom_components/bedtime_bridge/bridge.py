@@ -24,6 +24,7 @@ from . import ladder as ldr
 from .const import (
     BED_EMPTY_SECONDS,
     CMD_ARM,
+    CMD_BACK_TO_BED,
     CMD_BEDTIME,
     CMD_DISARM,
     CMD_MORNING,
@@ -45,6 +46,7 @@ from .const import (
     CONF_RERUN_MINUTES,
     CONF_CALENDAR,
     CONF_EARLY_HELPER,
+    CONF_RESTART_AUTOMATIONS,
     CONF_LADDER_SHIFT_TYPES,
     CONF_SHIFT_OVERRIDE,
     CONF_SHIFT_SENSOR,
@@ -58,6 +60,8 @@ from .const import (
     DEFAULT_REARM_MINUTES,
     DEFAULT_RERUN_MINUTES,
     DEFAULT_LADDER_SHIFT_TYPES,
+    DEFAULT_RESTART_AUTOMATIONS,
+    RESTART_NOTIFICATION_TAGS,
     DEFAULT_WORK_BUFFER,
     DOMAIN,
     EVENT,
@@ -288,6 +292,7 @@ class BedtimeBridge:
             MSG_HOME_CHECK: self._home_check,
             MSG_BEDTIME_UNDONE: self._bedtime_undone,
             MSG_COMMAND_RAN: self._command_ran,
+            MSG_MORNING_CHANGED: self._morning_changed,
         }.get(kind)
         if handler is None:
             return {"error": f"unknown message type: {kind}"}
@@ -305,7 +310,25 @@ class BedtimeBridge:
             "next_shift_start": sensor.attributes.get("next_shift_start") if sensor else None,
             "next_shift_type": sensor.attributes.get("next_shift_type") if sensor else None,
             "at_home": self.is_home(),
+            # For item 3's confirm screen: the backstops now, and when the curtains open on the
+            # morning of the first new alarm (Sleep In's rule).
+            "ladder": self._ladder_summary(),
+            "curtains_open_at": self._curtains_open(_time(data.get("first_alarm")) or dt_util.utcnow()),
         }
+
+    def _ladder_summary(self) -> dict[str, Any]:
+        ladder = self.state.get("ladder") or {}
+        return {key: ladder.get(key) for key in ("status", "kind", "times", "shift_start", "appointment", "delay_minutes")}
+
+    def _curtains_open(self, on: datetime) -> str | None:
+        """Sunrise + the curtain offset on the local day of `on`."""
+        sun = self.hass.states.get("sun.sun")
+        rising = _time(sun.attributes.get("next_rising")) if sun else None
+        if rising is None:
+            return None
+        rising += timedelta(days=(dt_util.as_local(on).date() - dt_util.as_local(rising).date()).days)
+        offset = timedelta(minutes=int(self.options.get(CONF_CURTAIN_OFFSET) or DEFAULT_CURTAIN_OFFSET))
+        return (rising + offset).isoformat()
 
     async def _forecast(self, data: dict[str, Any]) -> dict[str, Any]:
         weather = self.options.get(CONF_WEATHER)
@@ -908,6 +931,91 @@ class BedtimeBridge:
             self._ladder_unsub()
             self._ladder_unsub = None
 
+    # MARK: Change this morning (item 3)
+
+    async def _morning_changed(self, data: dict[str, Any]) -> None:
+        """The morning's alarms were moved later or earlier, or cancelled, while snoozing or
+        after you were up. The backstops move with the wake-up (or stay with no alarms), Sleep
+        In follows, and the house goes back to bedtime."""
+        times = sorted(t for t in (_time(v) for v in data.get("alarm_times") or []) if t)
+        delay = int(data.get("delay_minutes") or 0)
+        phase = data.get("phase") or "up"
+        reason, note = data.get("reason"), data.get("note")
+        self._end_morning()
+        self.state["snoozed_until"] = None
+        self.state["alarm_times"] = [t.isoformat() for t in times]
+        self.state["alarm_time"] = times[0].isoformat() if times else None
+        self.state["series_start"] = times[0].isoformat() if times else None
+        self.state["routine_ran"] = False
+        if not times:
+            self.state["alarm_cause"] = "noalarm"
+        self.state["last_morning_change"] = {
+            "delay_minutes": delay if times else None,
+            "alarm_times": self.state["alarm_times"],
+            "reason": reason,
+            "note": note,
+            "phase": phase,
+            "time": dt_util.utcnow().isoformat(),
+        }
+        # The one thing allowed to move the backstops later. No alarms: they stay (the calendar
+        # still shows the shift; deleting it is what turns them off).
+        if times and delay:
+            self.change_morning_ladder(delay, data.get("changed_by") or "app", reason)
+        await self._restart_wake_automations()
+        # Blocking: Sleep In must be set before the bedtime routine can move the curtains.
+        if times:
+            await self._sync_sleep_in(blocking=True)
+        else:
+            await self._set_sleep_in(bool(data.get("sleep_in", True)), blocking=True)
+        at_home = self.is_home()
+        if phase == "snoozing":
+            # Only the snooze ramp has started: fade the nightstands back down.
+            helper = self.options.get(CONF_SNOOZE_HELPER)
+            if helper:
+                await self._turn_off(helper)
+        elif at_home:
+            # After a stop: Sleep In first (above), then the bedtime routine, then the phone.
+            bedtime = self.options.get(CONF_BEDTIME_HELPER)
+            if bedtime:
+                await self._turn_on(bedtime, blocking=True)
+            await self._command(CMD_BACK_TO_BED)
+        self._event(
+            MSG_MORNING_CHANGED, delay_minutes=delay if times else None, reason=reason, note=note,
+            phase=phase, sleep_in=self._state_of(CONF_SLEEP_IN),
+        )
+
+    async def _restart_wake_automations(self) -> None:
+        """Until v0.5 fires the ladder: stop Wake Confirm's nudges and a Backstop loop already
+        running (turning an automation off cancels its runs) and clear their notifications."""
+        configured = self.options.get(CONF_RESTART_AUTOMATIONS)
+        for entity_id in DEFAULT_RESTART_AUTOMATIONS if configured is None else configured:
+            state = self.hass.states.get(entity_id)
+            if state is None or state.state != "on":
+                continue
+            try:
+                await self.hass.services.async_call(
+                    "automation", "turn_off", {"entity_id": entity_id, "stop_actions": True}, blocking=True
+                )
+                await self.hass.services.async_call("automation", "turn_on", {"entity_id": entity_id}, blocking=True)
+            except HomeAssistantError as err:
+                _LOGGER.warning("Bedtime Bridge couldn't restart %s: %s", entity_id, err)
+        notify = (self.options.get(CONF_NOTIFY) or "").strip()
+        if notify:
+            domain, _, service = notify.partition(".")
+            for tag in RESTART_NOTIFICATION_TAGS:
+                try:
+                    await self.hass.services.async_call(
+                        domain, service, {"message": "clear_notification", "data": {"tag": tag}}, blocking=False
+                    )
+                except HomeAssistantError as err:
+                    _LOGGER.warning("Bedtime Bridge couldn't clear %s: %s", tag, err)
+
+    async def _turn_off(self, entity_id: str) -> None:
+        try:
+            await self.hass.services.async_call("homeassistant", "turn_off", {"entity_id": entity_id}, blocking=False)
+        except HomeAssistantError as err:
+            _LOGGER.warning("Bedtime Bridge couldn't turn off %s: %s", entity_id, err)
+
     # MARK: Undo bedtime
 
     async def _bedtime_undone(self, data: dict[str, Any]) -> None:
@@ -1006,26 +1114,25 @@ class BedtimeBridge:
 
     # MARK: Sleep In
 
-    async def _sync_sleep_in(self) -> None:
+    async def _sync_sleep_in(self, blocking: bool = False) -> None:
         """Sleep In follows the plan: on when the first alarm is after the curtains would open
         (sunrise + offset), off when it's before. No alarm leaves it as it is (the bedtime
         shortcut asks). Only while you're home."""
         first = _time(self.state.get("series_start"))
-        sun = self.hass.states.get("sun.sun")
-        sunrise = _time(sun.attributes.get("next_rising")) if sun else None
-        if first is None or sunrise is None:
+        # The sunrise on the first alarm's own day: in the morning (item 3) next_rising is tomorrow's.
+        curtains = _time(self._curtains_open(first)) if first else None
+        if first is None or curtains is None:
             return
-        offset = timedelta(minutes=int(self.options.get(CONF_CURTAIN_OFFSET) or DEFAULT_CURTAIN_OFFSET))
-        await self._set_sleep_in(first > sunrise + offset)
+        await self._set_sleep_in(first > curtains, blocking)
 
-    async def _set_sleep_in(self, on: bool) -> None:
+    async def _set_sleep_in(self, on: bool, blocking: bool = False) -> None:
         helper = self.options.get(CONF_SLEEP_IN)
         state = self.hass.states.get(helper or "")
         if not helper or not self.is_home() or (state is not None and state.state == ("on" if on else "off")):
             return
         try:
             await self.hass.services.async_call(
-                "homeassistant", "turn_on" if on else "turn_off", {"entity_id": helper}, blocking=False
+                "homeassistant", "turn_on" if on else "turn_off", {"entity_id": helper}, blocking=blocking
             )
         except HomeAssistantError as err:
             _LOGGER.warning("Bedtime Bridge couldn't set %s: %s", helper, err)
@@ -1140,9 +1247,9 @@ class BedtimeBridge:
         if entity_id:
             await self._turn_on(entity_id)
 
-    async def _turn_on(self, entity_id: str) -> bool:
+    async def _turn_on(self, entity_id: str, blocking: bool = False) -> bool:
         try:
-            await self.hass.services.async_call("homeassistant", "turn_on", {"entity_id": entity_id}, blocking=False)
+            await self.hass.services.async_call("homeassistant", "turn_on", {"entity_id": entity_id}, blocking=blocking)
         except HomeAssistantError as err:
             # A renamed or deleted helper must not stop the event and state update.
             _LOGGER.warning("Bedtime Bridge couldn't turn on %s: %s", entity_id, err)
