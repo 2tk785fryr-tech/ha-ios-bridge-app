@@ -11,6 +11,8 @@ struct StopDescription: Equatable {
 
     var title: String
     var detail: String
+    /// Later alarms in this wake-up that the slide-and-hold would end too (item 2).
+    var canEndAll = false
 
     /// - Parameters:
     ///   - alarmTime: when the alarm being stopped was set to ring (its first ring, not the snooze).
@@ -30,7 +32,8 @@ struct StopDescription: Equatable {
             let next = remaining.filter { alarm in alarmTime.map { alarm > $0.addingTimeInterval(30) } ?? true }.min()
             return StopDescription(
                 title: [time, position].compactMap { $0 }.joined(separator: " · "),
-                detail: next.map { "Next: \(WakePlanner.format($0))" } ?? "Last alarm"
+                detail: next.map { "Next: \(WakePlanner.format($0))" } ?? "Last alarm",
+                canEndAll: next != nil
             )
         }
     }

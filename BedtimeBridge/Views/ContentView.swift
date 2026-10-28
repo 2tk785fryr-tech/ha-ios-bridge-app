@@ -178,8 +178,9 @@ struct ContentView: View {
                 }
             }
             .fullScreenCover(item: $stoppingAlarm) { alarm in
-                SlideToStopView(description: coordinator.stopDescription(for: alarm.id)) {
-                    await coordinator.alarmStopped(id: alarm.id, settings: store.settings)
+                let description = coordinator.stopDescription(for: alarm.id)
+                SlideToStopView(description: description, canEndAll: description.canEndAll) { all in
+                    await coordinator.alarmStopped(id: alarm.id, all: all, settings: store.settings)
                     refreshScheduled()
                 }
             }

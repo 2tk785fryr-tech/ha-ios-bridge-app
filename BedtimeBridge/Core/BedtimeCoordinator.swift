@@ -581,7 +581,10 @@ final class BedtimeCoordinator {
         return StopDescription.make(kind: kind, alarmTime: time, series: alarmSeries, remaining: remaining)
     }
 
-    func alarmStopped(id: UUID, settings phoneSettings: BridgeSettings) async {
+    /// - Parameter all: the slide-and-hold on the Stop screen (item 2): ends every alarm left in
+    ///   this wake-up's series, without asking Home Assistant whether you're up. Temporary
+    ///   alarms and other mornings stay.
+    func alarmStopped(id: UUID, all: Bool = false, settings phoneSettings: BridgeSettings) async {
         let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
         alarms.stop(id)
         if id == testAlarmID {
@@ -603,7 +606,7 @@ final class BedtimeCoordinator {
             ], settings: settings)
             return
         }
-        switch settings.stopBehavior {
+        switch all ? .cancelRest : settings.stopBehavior {
         case .cancelRest:
             alarms.cancelAll(except: id, keeping: keptAlarms)
         case .keepAll:
@@ -623,6 +626,7 @@ final class BedtimeCoordinator {
         if remaining.isEmpty { lastCause = AlarmCause.none }
         var stopped: [String: Any] = ["alarm_times": remaining.map(Self.iso), "alarm_cause": lastCause]
         stopped["alarm_time"] = remaining.first.map(Self.iso)
+        if all { stopped["all"] = true }
         await report(.stopped, data: stopped, settings: settings)
 
         if settings.leaveReminderEnabled, leaveReminder.pendingTrip != nil,
