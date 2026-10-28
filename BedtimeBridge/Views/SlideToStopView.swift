@@ -56,11 +56,17 @@ struct SlideToStopView: View {
                 )
                 .padding(.horizontal, 24)
             }
-            Button("Keep snoozing") { dismiss() }
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(Theme.accentText)
-                .frame(minHeight: 44)
-                .padding(.bottom, 24)
+            // The easy, safe choice: big and obvious, unlike the deliberate slides above.
+            Button { dismiss() } label: {
+                Label("Keep snoozing", systemImage: "zzz")
+                    .font(.system(size: 19, weight: .semibold))
+                    .foregroundStyle(Theme.ground)
+                    .frame(maxWidth: .infinity, minHeight: 64)
+                    .background(Theme.accentText, in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 24)
+            .padding(.bottom, 24)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.ground.ignoresSafeArea())

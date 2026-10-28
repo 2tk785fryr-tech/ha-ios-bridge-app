@@ -15,6 +15,7 @@ or home IDs.
 | Home Assistant push `RUN_GOOD_MORNING` (integration, when a regular alarm is stopped at home) | Good Morning - App |
 | Home Assistant push `RUN_DISARM` (temporary alarm in disarm mode stopped; *Not going to sleep yet*) | Set Disarm |
 | Home Assistant push `RUN_ARM_STAY` (back in bed after a temporary alarm) | Set Arm Stay |
+| Home Assistant push `RUN_BACK_TO_BED` (v0.4: *Back to bed* after you're up) | Back To Bed - App |
 | By hand | Temporary Wake-Up - App |
 
 Each push trigger is an iOS 27 "When I receive a notification from Home Assistant" personal
@@ -75,6 +76,19 @@ The old version (*Alarm Off Good Morning*) also ran a HomeKit scene (Home Assist
 and a *Toggle Alarm* shortcut for Clock alarms. Bedtime Bridge does both jobs now, so the App
 version leaves them out.
 
+## Back To Bed - App
+
+New in v0.4, for item 3's *Back to bed*. Puts back on the phone what Good Morning changed.
+
+0. Bedtime Bridge **Report Shortcut Ran** (`RUN_BACK_TO_BED`), so Home Assistant clears the push.
+1. Save `MorningState` = `sleeping`, so the next alarm's Good Morning runs instead of stopping at
+   its first step.
+2. At home: run **Set Arm Stay**.
+3. Turn **Sleep Focus on**.
+
+Phone setup: a "When I receive a notification from Home Assistant" automation, message
+`RUN_BACK_TO_BED`, running this shortcut immediately.
+
 ## Temporary Wake-Up - App
 
 1. Ask for the date and time.
@@ -117,8 +131,8 @@ While snoozing, Good Morning hasn't run yet, so nothing on the phone needs undoi
 `RUN_ARM_STAY` alone (the spec as written) only covers the first row. `MorningState` and Sleep Focus
 can only be changed on the phone.
 
-**Proposal:** a new phone command, `RUN_BACK_TO_BED`, sent instead of `RUN_ARM_STAY` in item 3's
-"after a stop" step 3. It runs a new shortcut, **Back To Bed - App** (built and signed like the
+**Agreed (27 Oct 2026), built:** a new phone command, `RUN_BACK_TO_BED`, sent instead of
+`RUN_ARM_STAY` in item 3's "after a stop" step 3. It runs a new shortcut, **Back To Bed - App** (built and signed like the
 others):
 
 0. Report Shortcut Ran (`RUN_BACK_TO_BED`).

@@ -152,7 +152,7 @@ Settings → Alarms chooses one of two styles:
 | | **Bedtime Bridge alarms** (default) | **Clock app (via shortcut)** |
 |---|---|---|
 | Who makes the alarms | The app (AlarmKit). Rings through Silent and Focus. | Your shortcut, with *Create Alarm* for each item in `Wake Plan › Alarm Dates`. |
-| Snooze | Snooze button. **Length is adjustable** (default 9 min). The countdown shows on the Lock Screen and in the Dynamic Island. While snoozing, stopping takes a **slide**, like the Clock app, so a stray tap can't end it. The Stop screen says which alarm it is ("4:25 AM · alarm 2 of 3") and what's next. **Hold at the end of the slide for 5 seconds** (a ring fills, the phone ticks) to end every alarm left in this wake-up; letting go early stops just this one. | Apple's fixed 9 minutes. |
+| Snooze | Snooze button. **Length is adjustable** (default 9 min). The countdown shows on the Lock Screen and in the Dynamic Island. While snoozing, stopping takes a **slide**, like the Clock app, so a stray tap can't end it. The Stop screen says which alarm it is ("4:25 AM · alarm 2 of 3") and what's next. **Hold at the end of the slide for 5 seconds** (a ring fills, the phone ticks) to end every alarm left in this wake-up; letting go early stops just this one. From 2 hours before the first alarm (a setting), Tonight can end the rest of this morning's alarms the same way, even before they ring. **Plans changed?** on the snooze screen, or **Back to bed** on Tonight after you're up, moves this morning's alarms later or turns them off (a slide-and-hold, a reason, a confirm screen, a second hold and Face ID); the backstops move with it and the house goes back to bedtime. | Apple's fixed 9 minutes. |
 | Morning routines | **Snooze** turns on `input_boolean.wake_fade` (Wake Snooze Fade). **Stop** turns on `input_boolean.wake_mike` (Wake Sequence). The app tells HA directly and retries if HA doesn't answer. | Your existing "Alarm is snoozed / stopped" Shortcuts automations, unchanged. |
 | Sound | **iPhone alarm** (default), or one of six sounds that ship with the app: Sunrise (builds slowly), Chimes, Marimba, Harp, Classic beeps, Pulse. Settings → Alarms, with a play button to hear each. | Whatever you pick in the Clock app. |
 | After Stop | **Keeps the later alarms until you're up** (default; see below), rechecks traffic for the leave-by reminder. | Whatever your shortcut does. |
@@ -328,7 +328,8 @@ automation (iOS 27) runs the matching shortcut:
 |---|---|---|
 | `RUN_DISARM` | A temporary alarm (disarm mode) is stopped, or *Not going to sleep yet* | Your disarm shortcut |
 | `RUN_ARM_STAY` | You've been back in bed long enough after a temporary alarm | Your arm-stay shortcut |
-| `RUN_GOOD_MORNING` | A regular alarm is stopped while you're home | Good Morning (curtains, house alarm, briefing) |
+| `RUN_BACK_TO_BED` | *Back to bed* after you're up (moving or cancelling this morning's alarms) | Back To Bed - App: MorningState back to sleeping, arm stay, Sleep Focus on |
+| `RUN_GOOD_MORNING` | The first stop of a wake-up while you're home (Wake Mike too runs once per wake-up) | Good Morning (curtains, house alarm, briefing) |
 | `RUN_BEDTIME` | Back in bed after *Not going to sleep yet* (and the existing bedtime nudge) | The bedtime shortcut |
 
 Set each automation to *Run Immediately* and match on the message containing the marker.

@@ -86,3 +86,33 @@ set it back to 50.
 - Cutover: point the Backstop (`rung_early_sensor`, `rung_deadline_sensor`, `rung_late_sensor`),
   the Watchdog (`rung_sensors`) and the Readout at the bridge's rung sensors, all at once.
 - Rollback: point those inputs back at `sensor.wake_rung_*` and restore the previous Readout file.
+
+## Items 3, 8 and 9: changing a morning, ending early, routines once
+
+### Integration options (Configure)
+
+- **Restart when a morning changes:** `automation.wake_confirm_still_in_bed_after_alarm` and
+  `automation.wake_deadline_backstop` (suggested when they exist). Item 3 turns them off, which
+  cancels anything they're running, and straight back on, and clears the `wake_backstop` and
+  `wake_confirm` notifications. Retired in v0.5.
+- **Turn on when I end the alarms before they ring:** leave empty to use `input_boolean.wake_mike`,
+  or point it at a gentler wake (below).
+
+### A gentler early wake (optional)
+
+For ending the alarms from the app before they ring (item 8): a second **Wake Sequence** instance
+with its own trigger helper, for example a new `input_boolean.wake_mike_early`, the same lights
+and Day Mode helper as the existing instance, and a longer **Wake Transition** (60–120 s instead
+of 1). Then set the option above to `input_boolean.wake_mike_early`. Wake Sequence resets its
+helper itself, so nothing else is needed. If you'd rather keep it simple, leave the option empty.
+
+### Nothing else to change
+
+- Item 9 (Wake Mike and Good Morning once per wake-up) is all in the integration. Snooze Fade
+  already ignores a repeat; Wake Sequence no longer gets one.
+- Item 3's house steps after a stop are, in order: Sleep In from the new alarms, then
+  `input_boolean.bedtime_routine` on (Bedtime Routine: Awake For Day off, Night Mode re-armed,
+  lights swept, bedroom curtain closed), then the `RUN_BACK_TO_BED` push. While snoozing it only
+  turns `input_boolean.wake_fade` off (Snooze Fade's cancel branch fades the nightstands down).
+- The change's reason and note show in the `morning_changed` event and in Last event's
+  `last_morning_change` attribute.
