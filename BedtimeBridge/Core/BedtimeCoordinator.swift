@@ -584,6 +584,34 @@ final class BedtimeCoordinator {
         ], settings: settings)
     }
 
+    /// Item 8: what Tonight says about ending this morning's alarms, if it offers that now.
+    func morningEnd(settings: BridgeSettings, now: Date = .now) -> MorningEnd? {
+        guard settings.alarmStyle == .app else { return nil }
+        let remaining = alarms.scheduledAlarms().filter { !keptAlarms.contains($0.id) }.map(\.date)
+        return MorningEnd.make(now: now, series: alarmSeries, remaining: remaining,
+                               snoozedUntil: NextAlarmSnapshot.load().snoozedUntil, windowHours: settings.endAlarmsEarlyHours)
+    }
+
+    /// Item 8: ends every alarm left in this wake-up from Tonight, snoozing or still to ring,
+    /// like the Stop screen's slide-and-hold. Before any has rung it's an early end, and Home
+    /// Assistant runs its early-wake helper. Temporary alarms and the backstops stay.
+    func endMorning(settings phoneSettings: BridgeSettings) async {
+        let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
+        let remaining = alarms.scheduledAlarms().filter { !keptAlarms.contains($0.id) }
+        let early = (alarmSeries.min() ?? remaining.map(\.date).min() ?? .now) > .now
+        for alarm in remaining {
+            alarms.stop(alarm.id)
+            alarms.cancel(alarm.id)
+        }
+        updateWidget { snapshot in
+            snapshot.snoozedUntil = nil
+            snapshot.alarmTimes = []
+        }
+        let cause = lastCause
+        lastCause = AlarmCause.none
+        await report(.stopped, data: ["all": true, "early": early, "alarm_times": [String](), "alarm_cause": cause], settings: settings)
+    }
+
     /// What the Stop screen says about this alarm (item 1).
     func stopDescription(for id: UUID) -> StopDescription {
         let alarm = alarms.scheduledAlarms().first { $0.id == id }

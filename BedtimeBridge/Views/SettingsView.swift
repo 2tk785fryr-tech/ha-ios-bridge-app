@@ -391,6 +391,7 @@ private struct AlarmSettingsSection: View {
             if settings.alarmStyle == .app {
                 Stepper("Snooze: \(settings.snoozeMinutes) min", value: $settings.snoozeMinutes, in: 1...30)
                 AlarmSoundPicker(sound: $settings.alarmSound)
+                Stepper("End early from \(settings.endAlarmsEarlyHours) h before", value: $settings.endAlarmsEarlyHours, in: 1...6)
                 Picker("When I stop an alarm", selection: $settings.stopBehavior) {
                     ForEach(StopBehavior.allCases) { Text($0.displayName).tag($0) }
                 }
