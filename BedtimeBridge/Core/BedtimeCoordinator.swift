@@ -667,8 +667,8 @@ final class BedtimeCoordinator {
 
     /// The shortcut a Home Assistant phone command asked for has run, so HA can take its
     /// notification off the phone.
-    func commandRan(_ command: String, settings: BridgeSettings) async {
-        await report(.commandRan, data: ["command": command], settings: settings)
+    func commandRan(_ command: String, outcome: String = "ran", settings: BridgeSettings) async {
+        await report(.commandRan, data: ["command": command, "outcome": outcome], settings: settings)
     }
 
     /// Clock app mode: the Shortcuts "Alarm is snoozed/stopped" automations call this instead

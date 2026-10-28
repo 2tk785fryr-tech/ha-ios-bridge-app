@@ -339,3 +339,23 @@ async def test_skip_with_sleep_in_turns_it_on(hass, hass_client_no_auth):
     await send(hass_client_no_auth, {"type": "skipped", "data": {"morning": morning, "sleep_in": True}})
     await hass.async_block_till_done()
     assert hass.states.get("input_boolean.sleep_in").state == "on"
+
+
+async def test_already_done_still_clears_the_push_and_says_so(hass, hass_client_no_auth):
+    notify = async_mock_service(hass, "notify", "mobile_app_test")
+    await setup(hass, **COMMANDS)
+    events = async_capture_events(hass, "bedtime_bridge")
+    await send(hass_client_no_auth, PLAN)
+    await send(hass_client_no_auth, {"type": "stopped", "data": {"alarm_times": []}})
+    await send(hass_client_no_auth, {"type": "command_ran", "data": {"command": "RUN_GOOD_MORNING", "outcome": "already_done"}})
+    await hass.async_block_till_done()
+    assert messages(notify) == ["RUN_GOOD_MORNING", "clear_notification"]
+    assert events[-1].data["type"] == "command_ran"
+    assert events[-1].data["outcome"] == "already_done"
+    last = hass.states.get("sensor.bedtime_bridge_last_event").attributes["last_command"]
+    assert last["command"] == "RUN_GOOD_MORNING" and last["outcome"] == "already_done"
+
+    # Without an outcome (older shortcuts), it's "ran".
+    await send(hass_client_no_auth, {"type": "command_ran", "data": {"command": "RUN_DISARM"}})
+    await hass.async_block_till_done()
+    assert events[-1].data["outcome"] == "ran"

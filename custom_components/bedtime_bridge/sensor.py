@@ -172,7 +172,12 @@ SENSORS = (
         icon="mdi:history",
         entity_category=EntityCategory.DIAGNOSTIC,
         value=lambda s: s.get("last_event"),
-        attributes=lambda s: {"time": s.get("last_event_time"), "skipped_away": s.get("skipped_away", False)},
+        attributes=lambda s: {
+            "time": s.get("last_event_time"),
+            "skipped_away": s.get("skipped_away", False),
+            # The phone's last Report Shortcut Ran: which command, and "ran" or "already_done".
+            "last_command": s.get("last_command"),
+        },
     ),
 )
 

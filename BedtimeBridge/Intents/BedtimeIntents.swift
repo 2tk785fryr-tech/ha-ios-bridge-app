@@ -256,6 +256,18 @@ enum PhoneCommand: String, AppEnum {
     ]
 }
 
+/// Whether the shortcut did its job or found it already done (Good Morning runs once a night).
+enum ShortcutOutcome: String, AppEnum {
+    case ran
+    case alreadyDone = "already_done"
+
+    static var typeDisplayRepresentation: TypeDisplayRepresentation = "Outcome"
+    static var caseDisplayRepresentations: [ShortcutOutcome: DisplayRepresentation] = [
+        .ran: "Ran",
+        .alreadyDone: "Already done",
+    ]
+}
+
 /// The last step of a shortcut a phone command runs: tells Home Assistant it ran, so the
 /// command's notification is taken off the phone.
 struct ReportShortcutRanIntent: AppIntent {
@@ -267,13 +279,16 @@ struct ReportShortcutRanIntent: AppIntent {
     @Parameter(title: "Command")
     var command: PhoneCommand
 
+    @Parameter(title: "Outcome", description: "Already done: the shortcut got the push but had nothing to do, e.g. Good Morning already ran tonight.", default: .ran)
+    var outcome: ShortcutOutcome
+
     static var parameterSummary: some ParameterSummary {
-        Summary("Report \(\.$command) ran")
+        Summary("Report \(\.$command): \(\.$outcome)")
     }
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        await BedtimeCoordinator.shared.commandRan(command.rawValue, settings: SettingsStore.shared.settings)
+        await BedtimeCoordinator.shared.commandRan(command.rawValue, outcome: outcome.rawValue, settings: SettingsStore.shared.settings)
         return .result()
     }
 }

@@ -336,7 +336,10 @@ Set each automation to *Run Immediately* and match on the message containing the
 Each command has its own notification, and Home Assistant takes it off the phone once it
 knows the shortcut ran. For bedtime that's automatic (the shortcut's **Start Bedtime Routine**
 step tells it). For the others, add **Report Shortcut Ran** as the last step of each shortcut
-(Disarm, Arm Stay, Good Morning), with the matching command.
+(Disarm, Arm Stay, Good Morning), with the matching command. Its **Outcome** is *Ran* by default;
+use *Already done* where a shortcut stops early because there's nothing to do (Good Morning
+when it already ran that night). The `command_ran` event and Last event's `last_command`
+attribute show which.
 The integration also keeps **Sleep In** in sync with the plan (while you're home): on when the
 first alarm is after the curtains would open (sunrise + **Curtains open after sunrise**,
 default 15 min), off when it's before. Skipping a morning with *Sleep in* turns it on.

@@ -1063,11 +1063,14 @@ class BedtimeBridge:
         return True
 
     async def _command_ran(self, data: dict[str, Any]) -> None:
-        """The shortcut a command asked for has run (its Report Shortcut Ran step)."""
+        """The shortcut a command asked for has run (its Report Shortcut Ran step). Outcome
+        "already_done": the phone got the push but had nothing to do (Good Morning already ran)."""
         command = data.get("command")
+        outcome = data.get("outcome") or "ran"
         if command in COMMANDS:
             await self._clear_command(command)
-        self._event(MSG_COMMAND_RAN, command=command)
+        self.state["last_command"] = {"command": command, "outcome": outcome, "time": dt_util.utcnow().isoformat()}
+        self._event(MSG_COMMAND_RAN, command=command, outcome=outcome)
 
     async def _cancelled(self, data: dict[str, Any]) -> None:
         self.state.update(empty_state())
