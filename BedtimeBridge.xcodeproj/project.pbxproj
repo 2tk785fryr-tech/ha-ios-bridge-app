@@ -388,6 +388,7 @@
 				INFOPLIST_FILE = BedtimeBridge/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Bedtime Bridge";
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Bedtime Bridge reads your shift and appointment events to work out when you need to wake up.";
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "Face ID confirms changes to this morning's alarms, so they can't be moved or cancelled by accident.";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Bedtime Bridge talks to Home Assistant on your home network to run your wake-up routines.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Your location fills in your home address when you ask, and is the starting point for drive times if no home address is set.";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
@@ -416,6 +417,7 @@
 				INFOPLIST_FILE = BedtimeBridge/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Bedtime Bridge";
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Bedtime Bridge reads your shift and appointment events to work out when you need to wake up.";
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "Face ID confirms changes to this morning's alarms, so they can't be moved or cancelled by accident.";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Bedtime Bridge talks to Home Assistant on your home network to run your wake-up routines.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Your location fills in your home address when you ask, and is the starting point for drive times if no home address is set.";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;

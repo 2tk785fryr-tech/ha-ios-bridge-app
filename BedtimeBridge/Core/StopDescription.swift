@@ -11,6 +11,7 @@ struct StopDescription: Equatable {
 
     var title: String
     var detail: String
+    var kind: Kind = .series
     /// Later alarms in this wake-up that the slide-and-hold would end too (item 2).
     var canEndAll = false
 
@@ -22,9 +23,9 @@ struct StopDescription: Equatable {
         let time = alarmTime.map(WakePlanner.format)
         switch kind {
         case .test:
-            return StopDescription(title: [time, "Test alarm"].compactMap { $0 }.joined(separator: " · "), detail: "Your real alarms aren't affected.")
+            return StopDescription(title: [time, "Test alarm"].compactMap { $0 }.joined(separator: " · "), detail: "Your real alarms aren't affected.", kind: .test)
         case .temporary:
-            return StopDescription(title: [time, "Temporary alarm"].compactMap { $0 }.joined(separator: " · "), detail: "Your regular alarms are unchanged.")
+            return StopDescription(title: [time, "Temporary alarm"].compactMap { $0 }.joined(separator: " · "), detail: "Your regular alarms are unchanged.", kind: .temporary)
         case .series:
             let sorted = series.sorted()
             let place = alarmTime.flatMap { time in sorted.firstIndex { abs($0.timeIntervalSince(time)) < 60 } }

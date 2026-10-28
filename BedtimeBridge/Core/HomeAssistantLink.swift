@@ -21,6 +21,18 @@ enum BridgeEvent: String {
     case temporaryStopped = "temporary_stopped"
     case bedtimeUndone = "bedtime_undone"
     case commandRan = "command_ran"
+    case morningChanged = "morning_changed"
+}
+
+/// For item 3's confirm screen: the backstops now, and when the curtains open that morning.
+struct MorningContext {
+    var ladderArmed: Bool
+    /// "shift" or "appointment"
+    var ladderKind: String?
+    var backstops: [String: Date]
+    var shiftStart: Date?
+    var appointment: String?
+    var curtainsOpenAt: Date?
 }
 
 /// The two ways the app can talk to Home Assistant: the Bedtime Bridge integration
@@ -37,6 +49,8 @@ protocol HomeAssistantLink {
     /// Anything at home needing a look (door open, lock unlocked), for bedtime away from
     /// home. nil when it can't be checked.
     func homeIssues(settings: BridgeSettings) async -> [String]?
+    /// The backstop ladder and the curtain time for the morning of `firstAlarm` (nil: unknown).
+    func morningContext(firstAlarm: Date?, settings: BridgeSettings) async -> MorningContext?
 }
 
 /// Presence states that count as home; unknown/unavailable also count, so a glitching
@@ -120,6 +134,22 @@ struct IntegrationLink: HomeAssistantLink {
         )
     }
 
+    func morningContext(firstAlarm: Date?, settings: BridgeSettings) async -> MorningContext? {
+        var data: [String: Any] = [:]
+        if let firstAlarm { data["first_alarm"] = ISO8601DateFormatter().string(from: firstAlarm) }
+        guard let reply = try? await send("context", data: data) else { return nil }
+        let ladder = reply["ladder"] as? [String: Any] ?? [:]
+        let times = (ladder["times"] as? [String: String] ?? [:]).compactMapValues(Self.parseDate)
+        return MorningContext(
+            ladderArmed: ladder["status"] as? String == "armed",
+            ladderKind: ladder["kind"] as? String,
+            backstops: times,
+            shiftStart: (ladder["shift_start"] as? String).flatMap(Self.parseDate),
+            appointment: ladder["appointment"] as? String,
+            curtainsOpenAt: (reply["curtains_open_at"] as? String).flatMap(Self.parseDate)
+        )
+    }
+
     func isUp(settings: BridgeSettings) async -> Bool? {
         guard let reply = try? await send("up_check") else { return nil }
         return reply["up"] as? Bool
@@ -148,7 +178,7 @@ struct IntegrationLink: HomeAssistantLink {
     /// The integration turns on helpers and/or fires events for snooze and stop, as chosen
     /// in its options. Snooze/stop retry: a missed one means the morning routine doesn't run.
     func report(_ event: BridgeEvent, data: [String: Any], settings: BridgeSettings) async throws {
-        let attempts: Int = [.snoozed, .stopped, .temporaryStopped, .skipped, .bedtimeUndone].contains(event) ? 3 : 1
+        let attempts: Int = [.snoozed, .stopped, .temporaryStopped, .skipped, .bedtimeUndone, .morningChanged].contains(event) ? 3 : 1
         var lastError: Error?
         for attempt in 0..<attempts {
             do {
@@ -244,6 +274,9 @@ struct TokenLink: HomeAssistantLink {
 
     /// Token mode has no list of things to check.
     func homeIssues(settings: BridgeSettings) async -> [String]? { nil }
+
+    /// Token mode has no ladder.
+    func morningContext(firstAlarm: Date?, settings: BridgeSettings) async -> MorningContext? { nil }
 
     private func isHome(_ settings: BridgeSettings) async -> Bool {
         guard !settings.presenceEntity.isEmpty else { return true }

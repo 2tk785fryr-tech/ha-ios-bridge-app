@@ -612,6 +612,76 @@ final class BedtimeCoordinator {
         await report(.stopped, data: ["all": true, "early": early, "alarm_times": [String](), "alarm_cause": cause], settings: settings)
     }
 
+    // MARK: Change this morning (item 3)
+
+    /// The wake-up this morning's series is built around.
+    func currentWake(settings: BridgeSettings) -> Date? {
+        MorningChange.currentWake(series: alarmSeries, wakeIs: settings.wakeTimeIs) ?? NextAlarmSnapshot.load().wakeTime
+    }
+
+    /// Back to bed on Tonight: this morning's series is over (stopped, or ended early) and it's
+    /// still that morning.
+    func backToBedAvailable(settings: BridgeSettings, now: Date = .now) -> Bool {
+        guard settings.alarmStyle == .app, let first = alarmSeries.min(), let last = alarmSeries.max() else { return false }
+        let remaining = alarms.scheduledAlarms().filter { !keptAlarms.contains($0.id) }
+        return remaining.isEmpty
+            && now >= first.addingTimeInterval(-Double(settings.endAlarmsEarlyHours) * 3600)
+            && now <= last.addingTimeInterval(12 * 3600)
+    }
+
+    func morningContext(firstAlarm: Date?, settings: BridgeSettings) async -> MorningContext? {
+        await HomeAssistantLinks.current(settings)?.morningContext(firstAlarm: firstAlarm, settings: settings)
+    }
+
+    /// Moves this morning's alarms (the usual series around the new wake-up) or cancels them,
+    /// then tells Home Assistant, which moves the backstops, sets Sleep In and puts the house
+    /// back to bedtime. Temporary alarms stay.
+    func changeMorning(_ change: MorningChange, phase: MorningChangePhase, sleepIn: Bool, reason: String?, note: String?,
+                       settings phoneSettings: BridgeSettings) async throws {
+        let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
+        for alarm in alarms.scheduledAlarms() where !keptAlarms.contains(alarm.id) {
+            alarms.stop(alarm.id)
+        }
+        if change.alarmTimes.isEmpty {
+            try alarms.cancelAll(keeping: keptAlarms)
+        } else {
+            try await alarms.replaceAlarms(
+                with: change.alarmTimes,
+                title: lastAppliedPlan.map(alarmTitle(for:)) ?? "Wake up",
+                cause: lastCause == AlarmCause.none ? AlarmCause.manual : lastCause,
+                snoozeMinutes: settings.snoozeMinutes,
+                sound: settings.alarmSound,
+                keeping: keptAlarms
+            )
+        }
+        alarmSeries = change.alarmTimes
+        let shift = TimeInterval(change.delayMinutes * 60)
+        if change.alarmTimes.isEmpty {
+            lastCause = AlarmCause.none
+        } else if shift != 0, var trip = leaveReminder.pendingTrip {
+            // A delayed start (a snow delay) moves the leave-by reminder with it.
+            trip.start += shift
+            trip.arriveBy += shift
+            await leaveReminder.schedule(trip, leadMinutes: settings.leaveReminderLeadMinutes)
+        }
+        updateWidget { snapshot in
+            snapshot.snoozedUntil = nil
+            snapshot.alarmTimes = change.alarmTimes
+            if let wake = change.newWake { snapshot.wakeTime = wake }
+            if !change.alarmTimes.isEmpty, let leaveBy = snapshot.leaveBy { snapshot.leaveBy = leaveBy + shift }
+        }
+        var data: [String: Any] = [
+            "alarm_times": change.alarmTimes.map(Self.iso),
+            "delay_minutes": change.delayMinutes,
+            "phase": phase.rawValue,
+            "changed_by": "app",
+        ]
+        if change.alarmTimes.isEmpty { data["sleep_in"] = sleepIn }
+        if let reason { data["reason"] = reason }
+        if let note, !note.isEmpty { data["note"] = note }
+        await report(.morningChanged, data: data, settings: settings)
+    }
+
     /// What the Stop screen says about this alarm (item 1).
     func stopDescription(for id: UUID) -> StopDescription {
         let alarm = alarms.scheduledAlarms().first { $0.id == id }

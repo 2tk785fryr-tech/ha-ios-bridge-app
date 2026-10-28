@@ -16,6 +16,7 @@ struct ContentView: View {
     @State private var skipReplacement: SkipReplacement?
     @State private var temporaryAlarms: [TemporaryAlarm] = []
     @State private var morningEnd: MorningEnd?
+    @State private var backToBed = false
     @State private var sheet: Sheet?
 
     private enum Sheet: String, Identifiable {
@@ -93,6 +94,17 @@ struct ContentView: View {
                             }
                         }
                         .padding(.horizontal, 4)
+                    }
+
+                    if backToBed {
+                        ChangeMorningEntry(
+                            title: "Back to bed?",
+                            detail: "Plans changed? Move this morning's alarms later or turn them off. The house goes back to bedtime.",
+                            phase: .up,
+                            settings: store.settings,
+                            done: refreshScheduled
+                        )
+                        .nightfallCard()
                     }
 
                     if let morningEnd {
@@ -189,7 +201,8 @@ struct ContentView: View {
             }
             .fullScreenCover(item: $stoppingAlarm) { alarm in
                 let description = coordinator.stopDescription(for: alarm.id)
-                SlideToStopView(description: description, canEndAll: description.canEndAll) { all in
+                SlideToStopView(description: description, canEndAll: description.canEndAll,
+                                settings: description.kind == .series ? store.settings : nil) { all in
                     await coordinator.alarmStopped(id: alarm.id, all: all, settings: store.settings)
                     refreshScheduled()
                 }
@@ -313,6 +326,7 @@ struct ContentView: View {
         skipReplacement = coordinator.skipReplacement
         temporaryAlarms = coordinator.temporaryAlarms
         morningEnd = coordinator.morningEnd(settings: store.settings)
+        backToBed = coordinator.backToBedAvailable(settings: store.settings)
         refreshUpcoming()
     }
 

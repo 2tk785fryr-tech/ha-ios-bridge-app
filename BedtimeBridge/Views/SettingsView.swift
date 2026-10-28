@@ -396,6 +396,9 @@ private struct AlarmSettingsSection: View {
                     ForEach(StopBehavior.allCases) { Text($0.displayName).tag($0) }
                 }
                 TestAlarmButton(settings: settings)
+                NavigationLink("Reasons for changing a morning") {
+                    MorningReasonsEditor(reasons: $settings.morningChangeReasons)
+                }
             }
             Stepper("Look ahead \(settings.lookAheadHours) h", value: $settings.lookAheadHours, in: 6...72)
         } header: {
@@ -408,6 +411,39 @@ private struct AlarmSettingsSection: View {
                 Text("The app works out the times and your shortcut creates Clock alarms from Wake Plan › Alarm Dates. Your snooze/stop automations keep working, but Apple fixes Clock snooze at 9 minutes.")
             }
         }
+    }
+}
+
+/// Item 3's reason list: picked when moving or cancelling a morning's alarms, logged in Home
+/// Assistant.
+private struct MorningReasonsEditor: View {
+    @Binding var reasons: [String]
+    @State private var newReason = ""
+
+    var body: some View {
+        SettingsPage(title: "Reasons") {
+            Section {
+                ForEach(reasons, id: \.self) { Text($0) }
+                    .onDelete { reasons.remove(atOffsets: $0) }
+                    .onMove { reasons.move(fromOffsets: $0, toOffset: $1) }
+                HStack {
+                    TextField("Add a reason", text: $newReason)
+                        .onSubmit(add)
+                    Button("Add", action: add)
+                        .disabled(newReason.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            } footer: {
+                Text("Picked when you change a morning's alarms, and logged in Home Assistant with the change.")
+            }
+        }
+        .toolbar { EditButton() }
+    }
+
+    private func add() {
+        let reason = newReason.trimmingCharacters(in: .whitespaces)
+        guard !reason.isEmpty, !reasons.contains(reason) else { return }
+        reasons.append(reason)
+        newReason = ""
     }
 }
 

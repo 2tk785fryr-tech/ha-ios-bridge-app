@@ -113,6 +113,8 @@ struct BridgeSettings: Codable, Equatable {
     var alarmSound: AlarmSound = .standard
     /// Tonight offers "Up before the alarms?" from this many hours before the first one.
     var endAlarmsEarlyHours = 2
+    /// Item 3: why a morning changed, picked when moving or cancelling its alarms.
+    var morningChangeReasons = ["Snow delay", "Canceled", "Postponed", "Not feeling well", "Tired", "Other"]
     /// App alarms only: what Stop does to the rest of the series. Default keeps them until
     /// Home Assistant confirms you're up: stopping the first alarm and falling back asleep is
     /// exactly how Wake Deadline Backstop came to exist.

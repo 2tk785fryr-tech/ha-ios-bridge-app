@@ -8,6 +8,8 @@ struct SlideToStopView: View {
     let description: StopDescription
     /// Whether there are later alarms in the series for the hold to end (item 2).
     let canEndAll: Bool
+    /// Settings for "Plans changed?" (item 3); nil hides it (temporary and test alarms).
+    var settings: BridgeSettings? = nil
     /// `true` ends every alarm left in this wake-up; `false` only this one.
     let stop: (_ all: Bool) async -> Void
     @Environment(\.dismiss) private var dismiss
@@ -44,6 +46,16 @@ struct SlideToStopView: View {
             Spacer()
             slider
                 .padding(.horizontal, 24)
+            if let settings {
+                ChangeMorningEntry(
+                    title: "Plans changed?",
+                    detail: "Move this morning's alarms later, or turn them off.",
+                    phase: .snoozing,
+                    settings: settings,
+                    done: { dismiss() }
+                )
+                .padding(.horizontal, 24)
+            }
             Button("Keep snoozing") { dismiss() }
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(Theme.accentText)
