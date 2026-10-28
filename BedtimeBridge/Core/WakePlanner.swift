@@ -128,6 +128,11 @@ struct WakePlan: Equatable {
     var missingLocations: [AppointmentCandidate] = []
     /// The drive to the shift, when its calendar event has a location.
     var commute: Commute? = nil
+    /// Shift mornings: no shift the day before (a day off or leave), so the backstops come 15
+    /// minutes earlier (item 6). nil when the calendar couldn't say.
+    var firstDayBack: Bool? = nil
+    /// The temperature that counts as freezing in the forecast's unit, when that rule is on.
+    var freezingAt: Double? = nil
 
     /// A shift whose alarm leaves less than the get-ready time before you have to leave:
     /// how many minutes there are, and when to wake to have the full time.

@@ -287,6 +287,46 @@ extension WakePlan {
         }
     }
 
+    /// What the integration needs for the leave-by backstop ladder (item 6): which kind of
+    /// morning, its leave-by, a first day back, and the weather minutes, so Home Assistant
+    /// doesn't guess from alarm_cause.
+    func ladderBlock(settings: BridgeSettings) -> [String: Any] {
+        let iso = ISO8601DateFormatter()
+        iso.timeZone = .current
+        var minutes: [String: Int] = [:]
+        for condition in settings.badWeatherConditions where settings.weatherMinutes(for: condition) > 0 {
+            minutes[condition] = settings.weatherMinutes(for: condition)
+        }
+        if settings.addTimeWhenFreezing, settings.weatherMinutes(for: PlanAdjustments.freezing) > 0 {
+            minutes[PlanAdjustments.freezing] = settings.weatherMinutes(for: PlanAdjustments.freezing)
+        }
+        var block: [String: Any] = [
+            "type": "none",
+            "weather_minutes": minutes,
+            "weather_extra_minutes": weather?.minutes ?? 0,
+            "work_buffer_minutes": settings.workArrivalBufferMinutes,
+        ]
+        if let freezingAt { block["freezing_at"] = freezingAt }
+        if let weather { block["condition"] = weather.reason }
+        switch source {
+        case .shift:
+            guard let shift else { break }
+            block["type"] = "shift"
+            block["shift_start"] = iso.string(from: shift.start)
+            if let leaveBy = leaveBy(settings: settings) { block["leave_by"] = iso.string(from: leaveBy) }
+            if let firstDayBack { block["first_day_back"] = firstDayBack }
+        case .appointment:
+            guard let appointment, let leaveBy = leaveBy(settings: settings) else { break }
+            block["type"] = "appointment"
+            block["leave_by"] = iso.string(from: leaveBy)
+            block["appointment"] = appointment.title
+            block["appointment_start"] = iso.string(from: appointment.start)
+        case .manual, .none:
+            break
+        }
+        return block
+    }
+
     /// Sent to Home Assistant: flat keys the integration stores, plus nested details.
     func homeAssistantPayload(settings: BridgeSettings) -> [String: Any] {
         let iso = ISO8601DateFormatter()
@@ -321,6 +361,7 @@ extension WakePlan {
         if let weather {
             body["weather_extra"] = ["minutes": weather.minutes, "reason": weather.reason]
         }
+        body["ladder"] = ladderBlock(settings: settings)
         if let shift {
             var shiftBody: [String: Any] = ["title": shift.title, "start": iso.string(from: shift.start)]
             if source == .shift, let commute, let leaveBy = leaveBy(settings: settings) {

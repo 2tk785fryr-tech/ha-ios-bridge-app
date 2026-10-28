@@ -300,6 +300,7 @@ final class BedtimeCoordinator {
             do {
                 let (forecast, unit) = try await source()
                 let freezing: Double? = settings.addTimeWhenFreezing ? ((unit ?? "°F").contains("C") ? 0 : 32) : nil
+                plan.freezingAt = freezing
                 if let adjustment = PlanAdjustments.weather(
                     forecast: forecast,
                     window: window,
@@ -309,6 +310,7 @@ final class BedtimeCoordinator {
                     minutes: settings.weatherConditionMinutes
                 ) {
                     plan = WakePlanner.plan(shift: shift, appointments: appointments, settings: settings, now: now, weather: adjustment)
+                    plan.freezingAt = freezing
                 }
             } catch {
                 extraWarnings.append("Couldn't check the weather: \(error.localizedDescription)")
@@ -326,6 +328,9 @@ final class BedtimeCoordinator {
             }
         }
 
+        if plan.source == .shift, let shift = plan.shift {
+            plan.firstDayBack = firstDayBack(before: shift.start, settings: settings)
+        }
         plan.atHome = context?.atHome
         if context?.atHome == false {
             extraWarnings.append("You're not home, so Home Assistant won't run your wake-up or bedtime routines.")
@@ -420,6 +425,14 @@ final class BedtimeCoordinator {
         var payload = plan.homeAssistantPayload(settings: settings)
         payload["app_settings"] = settings.homeAssistantSettings
         await report(.planned, data: payload, settings: settings)
+    }
+
+    /// No shift on the calendar the day before this one: a first day back (item 6).
+    private func firstDayBack(before start: Date, settings: BridgeSettings) -> Bool {
+        let day = Calendar.current.startOfDay(for: start)
+        guard let dayBefore = Calendar.current.date(byAdding: .day, value: -1, to: day) else { return false }
+        return !calendar.events(from: dayBefore, to: day, calendarIDs: settings.shiftCalendarIDs)
+            .contains { WakePlanner.matchingRule(forTitle: $0.title ?? "", rules: settings.shiftRules) != nil }
     }
 
     /// The morning's drive, for the leave-by reminder: an appointment with a place, or a

@@ -28,8 +28,8 @@ from .const import (
     CONF_REARM_MINUTES,
     CONF_REPLAN_ALERT,
     CONF_RERUN_MINUTES,
-    CONF_SAFETY_CAUSES,
-    CONF_SAFETY_MINUTES,
+    CONF_CALENDAR,
+    CONF_LADDER_SHIFT_TYPES,
     CONF_SHIFT_OVERRIDE,
     CONF_SHIFT_SENSOR,
     CONF_SHIFT_TYPES,
@@ -42,8 +42,7 @@ from .const import (
     DEFAULT_CURTAIN_OFFSET,
     DEFAULT_REARM_MINUTES,
     DEFAULT_RERUN_MINUTES,
-    DEFAULT_SAFETY_CAUSES,
-    DEFAULT_SAFETY_MINUTES,
+    DEFAULT_LADDER_SHIFT_TYPES,
     DEFAULT_SHIFT_TYPES,
     DOMAIN,
     SUGGESTED,
@@ -64,8 +63,8 @@ OPTION_KEYS = [
     CONF_SHIFT_SENSOR,
     CONF_WEATHER,
     CONF_SHIFT_TYPES,
-    CONF_SAFETY_CAUSES,
-    CONF_SAFETY_MINUTES,
+    CONF_LADDER_SHIFT_TYPES,
+    CONF_CALENDAR,
     CONF_NOTIFY,
     CONF_REPLAN_ALERT,
     CONF_BED_SENSOR,
@@ -124,7 +123,6 @@ def _schema(hass: HomeAssistant, current: dict[str, Any]) -> vol.Schema:
         found = [e for e in SUGGESTED_HOME_CHECKS if hass.states.get(e)]
         return {"suggested_value": found} if found else {}
     shift_names = parse_shift_types(current.get(CONF_SHIFT_TYPES) or DEFAULT_SHIFT_TYPES)
-    cause_options = ["calendar", "automade", *shift_names]
 
     def notify_suggestion() -> dict[str, Any]:
         if CONF_NOTIFY in current:
@@ -148,11 +146,9 @@ def _schema(hass: HomeAssistant, current: dict[str, Any]) -> vol.Schema:
             vol.Optional(CONF_WEATHER, description=suggested(CONF_WEATHER)): entity(["weather"]),
             vol.Required(CONF_SHIFT_TYPES, default=current.get(CONF_SHIFT_TYPES) or DEFAULT_SHIFT_TYPES): selector.TextSelector(),
             vol.Optional(
-                CONF_SAFETY_CAUSES, default=current.get(CONF_SAFETY_CAUSES) or DEFAULT_SAFETY_CAUSES
-            ): selector.SelectSelector(selector.SelectSelectorConfig(options=cause_options, multiple=True, custom_value=True)),
-            vol.Required(
-                CONF_SAFETY_MINUTES, default=current.get(CONF_SAFETY_MINUTES) or DEFAULT_SAFETY_MINUTES
-            ): selector.NumberSelector(selector.NumberSelectorConfig(min=5, max=60, step=5, unit_of_measurement="min")),
+                CONF_LADDER_SHIFT_TYPES, default=current.get(CONF_LADDER_SHIFT_TYPES) or DEFAULT_LADDER_SHIFT_TYPES
+            ): selector.SelectSelector(selector.SelectSelectorConfig(options=shift_names, multiple=True, custom_value=True)),
+            vol.Optional(CONF_CALENDAR, description=suggested(CONF_CALENDAR)): entity(["calendar"]),
             vol.Optional(CONF_NOTIFY, description=notify_suggestion()): selector.TextSelector(),
             vol.Optional(CONF_BED_SENSOR, description=suggested(CONF_BED_SENSOR)): entity(["binary_sensor"]),
             vol.Optional(CONF_EXIT_LATCH, description=suggested(CONF_EXIT_LATCH)): entity(["input_boolean", "binary_sensor"]),

@@ -20,3 +20,69 @@ sleep yet*, and (item 3) when the morning changes. The Bedtime Readout stops set
 Still writing Sleep In after this, outside Home Assistant: the bedtime shortcut's "No alarms →
 enable Sleep In? → Yes" HomeKit scene (see `docs/shortcuts.md`). That's a phone-side decision for
 Mike, not a hand-off.
+
+## Item 6: leave-by backstop ladder
+
+The integration now publishes the ladder; it doesn't fire anything (the Backstop blueprint still
+does until v0.5). Nothing below should be applied until 0.4.0 is installed and the soak (step 6)
+has passed. `current_shift.yaml` and `sensor.wake_rung_*` stay as they are throughout, so rollback
+needs no code.
+
+### 1. Integration options (Settings → Devices & services → Bedtime Bridge → Configure)
+
+- **Backstop ladder for these shift types:** `Days`.
+- **Work calendar:** `calendar.calendar` (used to tell a first day back when the phone hasn't
+  planned; if it can't be read, the 15-minute extra is applied).
+- The old *Safety-net times for* and *Safety-net margin* options are gone.
+
+### 2. Read back the entity ids (never assume them)
+
+Use `ha_search` for `bedtime_bridge` and record:
+- The three rung sensors. On an install that existed before 0.4.0 they keep their old ids
+  (`sensor.bedtime_bridge_safety_net_early` / `_deadline` / `_late`) under the new names *Ladder
+  early / deadline / late*. A fresh install gets `sensor.bedtime_bridge_ladder_early` etc.
+- `sensor.bedtime_bridge_ladder_status` (new).
+- The five ladder settings (number entities, minutes): *Ladder early* (50), *Ladder deadline*
+  (35), *Ladder late* (20), *First day back extra* (15), *Fallback drive time* (35).
+
+What "not armed" looks like: the rung sensors read `unavailable`, and ladder status is one of
+`idle_override_off`, `idle_leave`, `idle_uncovered`, `idle_no_shift` (attribute `reason` says
+which), or `done` after the morning, or `fault`. Rung attributes: `leave_by`, `leave_by_source`
+(`plan` | `calendar`), `first_day_back`, `shift_start`, `appointment`, `appointment_start`,
+`delay_minutes`, `changed_by`, `reason`, `weather_extra_minutes`, `condition` (and
+`effective_shift: Days`, kept for the Backstop's shift gate until step 4).
+
+### 3. Watchdog v1-30 and Readout v1-30
+
+- `automation.shift_calendar_watchdog` (input `rung_sensors`) and `script.bedtime_readout`
+  (hardcoded in `/config/scripts/`) stay quiet on any `idle_*` ladder status, with the same
+  two-positive-values pattern they use for leave: rungs `unavailable` **and** ladder status
+  `idle_*`. Only that pair counts as a deliberate "off"; anything else unexpected is still a fault.
+- They read the rung attributes above instead of re-deriving leave-by or first day back.
+- Check the Readout with `dry_run: true` on a night with override `Off`: no "DISARMED" push, no
+  spoken warning.
+
+### 4. Backstop instance gates (interim, until v0.5)
+
+On `automation.wake_deadline_backstop`:
+- Gate on **ladder status `armed`** instead of `current_shift`'s `effective_shift` in `[Days]`, so
+  appointment mornings fire.
+- Add a **presence gate** before firing: away means nothing fires; unknown counts as home.
+  `person.michael_perschy` includes `device_tracker.macbook`, so a MacBook left at home reads
+  home: drop it from the person, or gate on the iPhone's tracker. The integration's "only when
+  you're home" option has the same issue.
+
+### 5. Dry run
+
+Move a rung to now + 60 s and check the Backstop fires it. (The integration publishes any rung
+that would land in the past as now + 60 s; this proves that lead is enough.) One way: on a Days
+night, set *Ladder early* so the early rung lands a couple of minutes ahead, watch it fire, then
+set it back to 50.
+
+### 6. Soak, then cut over
+
+- Soak: the bridge rungs and `sensor.wake_rung_*` show the same times on at least three Days
+  mornings, including one first day back (bridge 15 minutes earlier there, by design).
+- Cutover: point the Backstop (`rung_early_sensor`, `rung_deadline_sensor`, `rung_late_sensor`),
+  the Watchdog (`rung_sensors`) and the Readout at the bridge's rung sensors, all at once.
+- Rollback: point those inputs back at `sensor.wake_rung_*` and restore the previous Readout file.

@@ -16,8 +16,10 @@ CONF_HOME_ONLY = "home_only"
 CONF_BEDTIME_HELPER = "bedtime_helper"
 CONF_NOTIFY = "notify_service"
 CONF_REPLAN_ALERT = "replan_alert"
-CONF_SAFETY_CAUSES = "safety_net_causes"
-CONF_SAFETY_MINUTES = "safety_net_minutes"
+# Leave-by backstop ladder (item 6): which shift types get one, and the calendar used to tell a
+# first day back when there's no plan.
+CONF_LADDER_SHIFT_TYPES = "ladder_shift_types"
+CONF_CALENDAR = "calendar_entity"
 CONF_BED_SENSOR = "bed_sensor"
 CONF_EXIT_LATCH = "exit_latch"
 CONF_PHONE_COMMANDS = "phone_commands"
@@ -36,6 +38,7 @@ WAKE_ACTIONS = [WAKE_BOTH, WAKE_HELPERS, WAKE_EVENTS]
 
 # Suggested defaults, used only when these entities exist.
 SUGGESTED = {
+    CONF_CALENDAR: "calendar.calendar",
     CONF_SNOOZE_HELPER: "input_boolean.wake_fade",
     CONF_STOP_HELPER: "input_boolean.wake_mike",
     CONF_BEDTIME_HELPER: "input_boolean.bedtime_routine",
@@ -56,8 +59,10 @@ SUGGESTED_HOME_CHECKS = [
     "lock.front_door_lock",
 ]
 DEFAULT_SHIFT_TYPES = "Days, Swings"
-DEFAULT_SAFETY_CAUSES = ["calendar"]
-DEFAULT_SAFETY_MINUTES = 15
+DEFAULT_LADDER_SHIFT_TYPES = ["Days"]
+DEFAULT_CALENDAR = "calendar.calendar"
+# Arrive-early buffer for the calendar leave-by until a plan has sent the app's own.
+DEFAULT_WORK_BUFFER = 10
 DEFAULT_REARM_MINUTES = 5
 DEFAULT_RERUN_MINUTES = 15
 DEFAULT_CURTAIN_OFFSET = 15
@@ -76,6 +81,16 @@ REARM_GIVE_UP_HOURS = 6
 REPLAN_URL = "bedtimebridge://replan"
 
 # Settings the app reads back from Home Assistant: key -> (name, min, max, step).
+# Ladder settings (item 6): key -> (name, min, max, step, default). Home Assistant owns these; the
+# app can read them.
+LADDER_SETTINGS = {
+    "rung_early_minutes": ("Ladder early, minutes before leave-by", 10, 180, 5, 50),
+    "rung_deadline_minutes": ("Ladder deadline, minutes before leave-by", 10, 180, 5, 35),
+    "rung_late_minutes": ("Ladder late, minutes before leave-by", 5, 120, 5, 20),
+    "first_day_back_minutes": ("First day back extra", 0, 60, 5, 15),
+    "fallback_drive_minutes": ("Fallback drive time", 0, 120, 5, 35),
+}
+
 SETTINGS = {
     "get_ready_minutes": ("Get-ready time", 0, 240, 5),
     "arrival_buffer_minutes": ("Arrive early", 0, 60, 5),
@@ -104,6 +119,8 @@ MSG_HOME_CHECK = "home_check"
 MSG_BEDTIME_UNDONE = "bedtime_undone"
 # The phone ran the shortcut a command asked for (its last step reports back).
 MSG_COMMAND_RAN = "command_ran"
+# Item 3: the morning's alarms were moved or cancelled.
+MSG_MORNING_CHANGED = "morning_changed"
 EVENT_RERUN = "bedtime_rerun"
 EVENT_REARMED = "temporary_rearmed"
 # The bed sensor drops out for up to ~19 s while you're in it; "empty" must last longer.

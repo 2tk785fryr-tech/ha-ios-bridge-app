@@ -15,8 +15,8 @@
           "shift_sensor_entity": "Shift sensor (checks next_shift_start)",
           "weather_entity": "Weather forecast",
           "shift_types": "Shift types (comma separated, as they appear in calendar titles)",
-          "safety_net_causes": "Safety-net times for",
-          "safety_net_minutes": "Safety-net margin",
+          "ladder_shift_types": "Backstop ladder for these shift types",
+          "calendar_entity": "Work calendar",
           "notify_service": "Notify action for your phone",
           "replan_alert": "Tell me when my plan goes out of date",
           "bed_sensor": "Bed sensor (your side)",
@@ -34,7 +34,8 @@
           "shift_types": "Each one gets a lead-time setting, and its name is sent as the alarm cause.",
           "home_only": "Snooze, stop and Start Bedtime Routine skip the helpers and wake events while you're away. If your location is unknown, you count as home.",
           "bedtime_helper": "Turned on by the app's Start Bedtime Routine action (e.g. input_boolean.bedtime_routine).",
-          "safety_net_causes": "Publishes safety-net times after the last alarm for these alarm causes, for a Wake Deadline Backstop instance: early at the last alarm, deadline (out of bed) one margin later, late (left the room) two margins later. Shift mornings already have your own rung sensors, so the default is calendar only.",
+          "ladder_shift_types": "Shift mornings that get the leave-by backstop ladder (early, deadline, late before leave-by). Appointments with a location always get one.",
+          "calendar_entity": "Read to tell a first day back (no shift the day before) when the phone hasn't planned.",
           "notify_service": "e.g. notify.mobile_app_mikes_iphone. Used for the re-plan notification and phone commands.",
           "replan_alert": "If the shift override or your next shift changes after you planned (and before you wake), send a notification with a Re-plan button.",
           "bed_sensor": "With the helper below, tells the app whether you're really up when you stop an alarm, so it keeps the later alarms if you're still in bed. Empty only counts after a minute (the sensor drops out briefly).",
@@ -73,8 +74,8 @@
           "shift_sensor_entity": "Shift sensor (checks next_shift_start)",
           "weather_entity": "Weather forecast",
           "shift_types": "Shift types (comma separated, as they appear in calendar titles)",
-          "safety_net_causes": "Safety-net times for",
-          "safety_net_minutes": "Safety-net margin",
+          "ladder_shift_types": "Backstop ladder for these shift types",
+          "calendar_entity": "Work calendar",
           "notify_service": "Notify action for your phone",
           "replan_alert": "Tell me when my plan goes out of date",
           "bed_sensor": "Bed sensor (your side)",
@@ -92,7 +93,8 @@
           "shift_types": "Each one gets a lead-time setting, and its name is sent as the alarm cause.",
           "home_only": "Snooze, stop and Start Bedtime Routine skip the helpers and wake events while you're away. If your location is unknown, you count as home.",
           "bedtime_helper": "Turned on by the app's Start Bedtime Routine action (e.g. input_boolean.bedtime_routine).",
-          "safety_net_causes": "Publishes safety-net times after the last alarm for these alarm causes, for a Wake Deadline Backstop instance: early at the last alarm, deadline (out of bed) one margin later, late (left the room) two margins later. Shift mornings already have your own rung sensors, so the default is calendar only.",
+          "ladder_shift_types": "Shift mornings that get the leave-by backstop ladder (early, deadline, late before leave-by). Appointments with a location always get one.",
+          "calendar_entity": "Read to tell a first day back (no shift the day before) when the phone hasn't planned.",
           "notify_service": "e.g. notify.mobile_app_mikes_iphone. Used for the re-plan notification and phone commands.",
           "replan_alert": "If the shift override or your next shift changes after you planned (and before you wake), send a notification with a Re-plan button.",
           "bed_sensor": "With the helper below, tells the app whether you're really up when you stop an alarm, so it keeps the later alarms if you're still in bed. Empty only counts after a minute (the sensor drops out briefly).",
@@ -153,13 +155,25 @@
         "name": "Last plan"
       },
       "rung_early": {
-        "name": "Safety net early"
+        "name": "Ladder early"
       },
       "rung_deadline": {
-        "name": "Safety net deadline"
+        "name": "Ladder deadline"
       },
       "rung_late": {
-        "name": "Safety net late"
+        "name": "Ladder late"
+      },
+      "ladder_status": {
+        "name": "Ladder status",
+        "state": {
+          "armed": "Armed",
+          "done": "Done for this morning",
+          "idle_override_off": "Off (shift override)",
+          "idle_leave": "Off (leave)",
+          "idle_uncovered": "Off (no ladder for this shift)",
+          "idle_no_shift": "Off (no shift)",
+          "fault": "Fault"
+        }
       }
     },
     "binary_sensor": {
@@ -188,6 +202,21 @@
       },
       "shift_lead": {
         "name": "{shift} lead time"
+      },
+      "rung_early_minutes": {
+        "name": "Ladder early"
+      },
+      "rung_deadline_minutes": {
+        "name": "Ladder deadline"
+      },
+      "rung_late_minutes": {
+        "name": "Ladder late"
+      },
+      "first_day_back_minutes": {
+        "name": "First day back extra"
+      },
+      "fallback_drive_minutes": {
+        "name": "Fallback drive time"
       }
     }
   }

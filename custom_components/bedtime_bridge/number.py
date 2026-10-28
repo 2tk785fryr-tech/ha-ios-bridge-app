@@ -8,7 +8,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import BedtimeBridgeConfigEntry
-from .const import SETTINGS, SHIFT_LEAD_PREFIX
+from .const import LADDER_SETTINGS, SETTINGS, SHIFT_LEAD_PREFIX
 from .entity import BedtimeBridgeEntity
 
 
@@ -35,6 +35,11 @@ class BridgeSetting(BedtimeBridgeEntity, NumberEntity):
             self._attr_translation_key = "shift_lead"
             self._attr_translation_placeholders = {"shift": shift}
             self._attr_native_min_value, self._attr_native_max_value, self._attr_native_step = 0, 240, 5
+        elif key in LADDER_SETTINGS:
+            _, low, high, step, _default = LADDER_SETTINGS[key]
+            self._attr_translation_key = key
+            self._attr_native_min_value, self._attr_native_max_value, self._attr_native_step = low, high, step
+            self._attr_icon = "mdi:stairs"
         else:
             _, low, high, step = SETTINGS[key]
             self._attr_translation_key = key
@@ -42,7 +47,7 @@ class BridgeSetting(BedtimeBridgeEntity, NumberEntity):
 
     @property
     def native_value(self) -> float | None:
-        return self.bridge.settings.get(self._key)
+        return self.bridge.setting_value(self._key)
 
     async def async_set_native_value(self, value: float) -> None:
         self.bridge.set_setting(self._key, int(value))
