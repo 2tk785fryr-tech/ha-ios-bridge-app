@@ -404,6 +404,8 @@ final class BedtimeCoordinator {
         alarmSeries = settings.alarmStyle == .app ? actual : []
         storedPattern = plan.hasAlarm ? SeriesPattern.from(series: plan.alarmTimes, wake: plan.wakeTime, fallback: settings) : nil
         morningChangeReason = nil
+        calendarChangedSinceSet = false
+        setFingerprint = settings.planFingerprint
         stoppedThisWakeUp = false
         recordShortfall(planned: planned, actual: actual)
 
@@ -665,6 +667,38 @@ final class BedtimeCoordinator {
 
     nonisolated static func changePhase(requested: MorningChangePhase, stopped: Bool) -> MorningChangePhase {
         stopped ? .up : requested
+    }
+
+    private static let calendarChangedKey = "calendarChangedSinceSet.v1"
+    private static let fingerprintKey = "planFingerprint.v1"
+    private var calendarObserver: NSObjectProtocol?
+
+    /// The calendar changed after the alarms were set (v0.4.1 item 10).
+    private(set) var calendarChangedSinceSet: Bool {
+        get { UserDefaults.standard.bool(forKey: Self.calendarChangedKey) }
+        set { UserDefaults.standard.set(newValue, forKey: Self.calendarChangedKey) }
+    }
+
+    /// The plan-relevant settings when the alarms were set.
+    private var setFingerprint: String? {
+        get { UserDefaults.standard.string(forKey: Self.fingerprintKey) }
+        set { UserDefaults.standard.set(newValue, forKey: Self.fingerprintKey) }
+    }
+
+    func settingsChangedSinceSet(_ settings: BridgeSettings) -> Bool {
+        guard let setFingerprint else { return false }
+        return setFingerprint != settings.planFingerprint
+    }
+
+    /// Starts watching the calendar for changes after the alarms were set.
+    func watchCalendar() {
+        guard calendarObserver == nil else { return }
+        calendarObserver = NotificationCenter.default.addObserver(forName: .EKEventStoreChanged, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, !self.alarmSeries.isEmpty else { return }
+                self.calendarChangedSinceSet = true
+            }
+        }
     }
 
     private static let morningChangeKey = "morningChangeReason.v1"

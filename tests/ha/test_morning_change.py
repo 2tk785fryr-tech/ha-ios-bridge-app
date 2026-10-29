@@ -211,3 +211,10 @@ async def test_context_reports_what_the_house_backstop_reads(hass, ladder, hass_
     assert dt_util.as_local(dt_util.parse_datetime(house["times"]["deadline"])).strftime("%H:%M") == "05:10"
     status = hass.states.get("sensor.bedtime_bridge_ladder_status").attributes["house_backstop"]
     assert status["source"] == "old"
+
+
+async def test_context_says_when_the_plan_is_out_of_date(hass, ladder, hass_client_no_auth):
+    """v0.4.1 item 10: Tonight brings the button back as "Plan changed: update alarms"."""
+    await ladder()
+    reply = await send(hass_client_no_auth, {"type": "context", "data": {}})
+    assert reply["plan_outdated"] is False

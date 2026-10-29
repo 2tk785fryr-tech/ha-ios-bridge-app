@@ -156,7 +156,10 @@ struct ContentView: View {
             .background(Theme.ground.ignoresSafeArea())
             .safeAreaInset(edge: .bottom) { actions }
             .toolbar(.hidden, for: .navigationBar)
-            .onAppear(perform: refreshScheduled)
+            .onAppear {
+                coordinator.watchCalendar()
+                refreshScheduled()
+            }
             // The bedtime shortcut (or a phone command) may have set or cleared alarms while the
             // app was in the background: show what's set now, not the plan from before.
             .onChange(of: scenePhase) { _, phase in
@@ -263,21 +266,44 @@ struct ContentView: View {
         return night.formatted(.dateTime.weekday(.wide)).uppercased() + " NIGHT"
     }
 
+    /// v0.4.1 item 10: the big button only when nothing is set or something changed.
+    private var primaryAction: PrimaryAction {
+        PrimaryAction.make(
+            alarmsSet: store.settings.alarmStyle == .app && !scheduled.isEmpty,
+            defaultTitle: primaryTitle,
+            changedThisMorning: coordinator.morningChangeReason,
+            missingAlarms: coordinator.alarmShortfall != nil,
+            calendarChanged: coordinator.calendarChangedSinceSet,
+            planChanged: morningContext?.planOutdated == true || coordinator.settingsChangedSinceSet(store.settings)
+        )
+    }
+
     private var actions: some View {
         VStack(spacing: 10) {
-            Button { run(schedule: true) } label: {
-                HStack(spacing: 8) {
-                    if isWorking {
-                        ProgressView().tint(.white)
-                    } else {
-                        Image(systemName: "alarm")
+            let action = primaryAction
+            if let title = action.buttonTitle {
+                Button { run(schedule: true) } label: {
+                    HStack(spacing: 8) {
+                        if isWorking {
+                            ProgressView().tint(.white)
+                        } else {
+                            Image(systemName: "alarm")
+                        }
+                        Text(title)
                     }
-                    Text(primaryTitle)
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, minHeight: 56)
+                    .background(Theme.accent, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                 }
-                .font(.system(size: 17, weight: .bold))
-                .foregroundStyle(.white)
+            } else {
+                VStack(spacing: 4) {
+                    SetStatus(status: coordinator.alarmStatus())
+                    if let note = action.note {
+                        Text(note).font(.footnote).foregroundStyle(Theme.textMuted)
+                    }
+                }
                 .frame(maxWidth: .infinity, minHeight: 56)
-                .background(Theme.accent, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             }
             Button { run(schedule: false) } label: {
                 Text("Preview plan")

@@ -43,6 +43,8 @@ struct MorningContext {
     /// cutover ("old"), then this ladder ("bridge").
     var houseSource = "old"
     var houseTimes: [String: Date] = [:]
+    /// Home Assistant says the plan is out of date (override or next shift changed).
+    var planOutdated = false
 
     var houseUsesOldTimes: Bool { houseSource == "old" }
 }
@@ -165,7 +167,8 @@ struct IntegrationLink: HomeAssistantLink {
             leaveBy: (ladder["leave_by"] as? String).flatMap(Self.parseDate),
             firstDayBack: ladder["first_day_back"] as? Bool ?? false,
             houseSource: house["source"] as? String ?? "old",
-            houseTimes: (house["times"] as? [String: String] ?? [:]).compactMapValues(Self.parseDate)
+            houseTimes: (house["times"] as? [String: String] ?? [:]).compactMapValues(Self.parseDate),
+            planOutdated: reply["plan_outdated"] as? Bool ?? false
         )
     }
 

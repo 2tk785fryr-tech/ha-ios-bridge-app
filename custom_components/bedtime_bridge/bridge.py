@@ -327,6 +327,9 @@ class BedtimeBridge:
             # For item 3's confirm screen: the backstops now, and when the curtains open on the
             # morning of the first new alarm (Sleep In's rule).
             "ladder": self._ladder_summary(),
+            # The override or HA's next shift changed after the plan (v0.4.1 item 10).
+            "plan_outdated": bool(self.state.get("plan_outdated")),
+            "outdated_reason": self.state.get("outdated_reason"),
             "curtains_open_at": self._curtains_open(_time(data.get("first_alarm")) or dt_util.utcnow()),
         }
 

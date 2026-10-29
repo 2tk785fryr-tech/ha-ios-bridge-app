@@ -191,6 +191,21 @@ struct BridgeSettings: Codable, Equatable {
     var widgetLeaveByMinutes = 30
 }
 
+extension BridgeSettings {
+    /// The settings a plan depends on (shifts, alarm series, timings, drive, weather, calendars,
+    /// home), so Tonight can tell the plan changed after the alarms were set (v0.4.1 item 10).
+    var planFingerprint: String {
+        let parts: [Any] = [
+            (try? JSONEncoder().encode(shiftRules)).map { String(decoding: $0, as: UTF8.self) } ?? "",
+            alarmCount, alarmSpacingMinutes, wakeTimeIs.rawValue, getReadyMinutes, arrivalBufferMinutes,
+            workArrivalBufferMinutes, homeAddress, driveTimeSource.rawValue, weatherExtraMinutes,
+            badWeatherConditions.sorted(), weatherConditionMinutes.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" },
+            shiftCalendarIDs.sorted(), appointmentCalendarIDs.sorted(), alarmStyle.rawValue,
+        ]
+        return parts.map { "\($0)" }.joined(separator: "|")
+    }
+}
+
 enum WakeTimeAlarm: String, Codable, CaseIterable, Identifiable {
     /// Default: e.g. wake-up 5:30 → alarms 5:10, 5:20, 5:30.
     case last
