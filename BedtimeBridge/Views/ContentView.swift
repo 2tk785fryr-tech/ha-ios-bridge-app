@@ -143,12 +143,10 @@ struct ContentView: View {
                         }
                     }
 
-                    if let plan {
-                        Text("alarm_cause → \(plan.cause)")
-                            .font(.caption.monospaced())
-                            .foregroundStyle(Theme.textFaint)
-                            .padding(.horizontal, 4)
-                    }
+                    Text(reasonLine)
+                        .font(.caption)
+                        .foregroundStyle(Theme.textFaint)
+                        .padding(.horizontal, 4)
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 8)
@@ -315,6 +313,14 @@ struct ContentView: View {
                       minutes("rung_late_minutes", 20), minutes("first_day_back_minutes", 15)),
             firstDayBack: firstDayBack
         )
+    }
+
+    /// "Reason for alarm: Days shift" (v0.4.1 item 9), from the plan on screen or what's set.
+    private var reasonLine: String {
+        let snapshot = NextAlarmSnapshot.load()
+        let cause = plan?.cause ?? (scheduled.isEmpty ? AlarmCause.none : snapshot.cause)
+        let label = plan?.appointment?.title ?? plan?.label ?? snapshot.label
+        return AlarmReasonText.make(cause: cause, label: label, insteadOfShift: plan?.replacedShift, changeReason: coordinator.morningChangeReason)
     }
 
     private var primaryTitle: String {
