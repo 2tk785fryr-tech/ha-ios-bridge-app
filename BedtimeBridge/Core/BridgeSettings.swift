@@ -209,8 +209,11 @@ struct BridgeSettings: Codable, Equatable {
     var leaveReminderEnabled = true
     /// Notify about "wake up" appointments with no location (answer from the notification).
     var askAboutMissingLocations = true
-    /// Notification this many minutes before leave-by time.
+    /// Notification this many minutes before leave-by time (v0.4; Home Assistant's copy).
     var leaveReminderLeadMinutes = 15
+    /// Leave reminders, minutes before leave-by; 0 is at leave time (v0.4.1 item 17).
+    var leaveReminderOffsets = [15, 0]
+    static let leaveReminderChoices = [0, 5, 10, 15, 20, 25, 30]
     /// The Lock Screen widget keeps showing leave-by this long after it, once the alarms are done.
     var widgetLeaveByMinutes = 30
 }

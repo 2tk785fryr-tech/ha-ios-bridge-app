@@ -25,6 +25,7 @@ from .const import (
     BED_EMPTY_SECONDS,
     CMD_ARM,
     CMD_BACK_TO_BED,
+    CMD_LEAVE_CHECK,
     CMD_BEDTIME,
     CMD_DISARM,
     CMD_MORNING,
@@ -32,6 +33,7 @@ from .const import (
     COMMAND_NAMES,
     COMMANDS,
     LADDER_SETTINGS,
+    LEAVE_CHECK_TAIL_MINUTES,
     CONF_AWAKE_HELPER,
     CONF_BED_SENSOR,
     CONF_BEDTIME_HELPER,
@@ -203,6 +205,8 @@ class BedtimeBridge:
         self._ladder_unsub: Callable[[], None] | None = None
         # Phone shortcuts that reported Started and are expected to report Completed.
         self._command_unsubs: dict[str, Callable[[], None]] = {}
+        # The leave checks still to send (item 17).
+        self._leave_unsubs: list[Callable[[], None]] = []
 
     @property
     def options(self) -> dict[str, Any]:
@@ -229,6 +233,7 @@ class BedtimeBridge:
         self._watch_bed("rearm")
         self._watch_bed("rerun")
         self._schedule_skip_restore()
+        self._schedule_leave_checks()
         for command in list(self.state.get("command_started") or {}):
             self._watch_command(command)
         # The ladder: recompute once loaded (keeping a stored one inside its lock), then check the
@@ -313,6 +318,12 @@ class BedtimeBridge:
         result = await handler(data) or {}
         if kind in (MSG_PLANNED, MSG_CANCELLED, MSG_SKIPPED, MSG_UNSKIPPED, MSG_BEDTIME_UNDONE):
             await self._recompute_ladder()
+        if kind == MSG_PLANNED:
+            self._schedule_leave_checks()
+        elif kind in (MSG_CANCELLED, MSG_SKIPPED, MSG_BEDTIME_UNDONE, MSG_MORNING_CHANGED):
+            # The morning changed or went: no more leave checks (item 17).
+            self.state["leave_reminders"] = []
+            self._cancel_leave_checks()
         return {"settings": self.settings_for_app(), **result}
 
     async def _context(self, data: dict[str, Any]) -> dict[str, Any]:
@@ -400,6 +411,7 @@ class BedtimeBridge:
         self.state["last_plan"] = dt_util.utcnow().isoformat()
         self.state["plan_error"] = None
         self.state["ladder_plan"] = data.get("ladder") or {}
+        self.state["leave_reminders"] = [int(m) for m in data.get("leave_reminders") or []]
         self._check_alarms_set(data)
         if (data.get("ladder") or {}).get("work_buffer_minutes") is not None:
             self.state["work_buffer_minutes"] = int(data["ladder"]["work_buffer_minutes"])
@@ -1080,6 +1092,46 @@ class BedtimeBridge:
             self._ladder_unsub = None
         for command in list(self._command_unsubs):
             self._unwatch_command(command)
+        self._cancel_leave_checks()
+
+    # MARK: Leave checks (v0.4.1 item 17)
+
+    @callback
+    def _cancel_leave_checks(self) -> None:
+        for unsub in self._leave_unsubs:
+            unsub()
+        self._leave_unsubs = []
+
+    @callback
+    def _schedule_leave_checks(self) -> None:
+        """A RUN_LEAVE_CHECK push at each reminder (minutes before leave-by) still ahead, until 15
+        minutes after leave-by. The phone re-checks the drive, notifies and reports leave_by."""
+        self._cancel_leave_checks()
+        leave_by = _time(self.state.get("leave_by"))
+        if leave_by is None:
+            return
+        now = dt_util.utcnow()
+        if now > leave_by + timedelta(minutes=LEAVE_CHECK_TAIL_MINUTES):
+            return
+        for minutes in sorted(set(self.state.get("leave_reminders") or []), reverse=True):
+            due = leave_by - timedelta(minutes=minutes)
+            if due <= now:
+                continue
+            self._leave_unsubs.append(
+                async_track_point_in_utc_time(self.hass, callback(lambda _now: self.hass.async_create_task(self._leave_check_due())), due)
+            )
+
+    async def _leave_check_due(self) -> None:
+        leave_by = _time(self.state.get("leave_by"))
+        now = dt_util.utcnow()
+        if leave_by is None or now > leave_by + timedelta(minutes=LEAVE_CHECK_TAIL_MINUTES):
+            return
+        if not self.is_home():
+            # Already left: no more checks.
+            self.state["leave_reminders"] = []
+            self._cancel_leave_checks()
+            return
+        await self._command(CMD_LEAVE_CHECK)
 
     # MARK: Change this morning (item 3)
 
@@ -1454,6 +1506,9 @@ class BedtimeBridge:
     async def _leave_by(self, data: dict[str, Any]) -> None:
         self._traffic_moved(_time(data.get("leave_by")))
         self.state["leave_by"] = data.get("leave_by")
+        # A fresh drive time: the reminders still ahead follow the new leave-by (item 17).
+        await self._clear_command(CMD_LEAVE_CHECK)
+        self._schedule_leave_checks()
         if data.get("drive_minutes") is not None:
             self.state["drive_minutes"] = data["drive_minutes"]
         self._event(MSG_LEAVE_BY, note=data.get("note"))

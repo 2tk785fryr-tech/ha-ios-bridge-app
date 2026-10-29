@@ -435,7 +435,7 @@ final class BedtimeCoordinator {
         recordShortfall(planned: planned, actual: actual)
 
         if settings.leaveReminderEnabled, let trip = Self.trip(for: plan, settings: settings) {
-            await leaveReminder.schedule(trip, leadMinutes: settings.leaveReminderLeadMinutes)
+            await leaveReminder.schedule(trip, offsets: settings.leaveReminderOffsets)
         } else {
             leaveReminder.clear()
         }
@@ -463,6 +463,8 @@ final class BedtimeCoordinator {
         lastCause = plan.cause
         var payload = plan.homeAssistantPayload(settings: settings)
         payload["app_settings"] = settings.homeAssistantSettings
+        // Home Assistant sends RUN_LEAVE_CHECK at each of these (item 17).
+        payload["leave_reminders"] = Self.trip(for: plan, settings: settings) != nil && settings.leaveReminderEnabled ? settings.leaveReminderOffsets.sorted(by: >) : []
         if settings.alarmStyle == .app, plan.hasAlarm {
             // What AlarmKit really holds, not what was asked for.
             payload["alarm_times"] = actual.map(Self.iso)
@@ -975,7 +977,7 @@ final class BedtimeCoordinator {
             // A delayed start (a snow delay) moves the leave-by reminder with it.
             trip.start += shift
             trip.arriveBy += shift
-            await leaveReminder.schedule(trip, leadMinutes: settings.leaveReminderLeadMinutes)
+            await leaveReminder.schedule(trip, offsets: settings.leaveReminderOffsets)
         }
         updateWidget { snapshot in
             snapshot.snoozedUntil = nil
@@ -1071,18 +1073,45 @@ final class BedtimeCoordinator {
         if let upAnswer { stopped["up"] = upAnswer }
         await report(.stopped, data: stopped, settings: settings)
 
-        if settings.leaveReminderEnabled, leaveReminder.pendingTrip != nil,
-           let provider = try? travel.provider(for: settings),
-           let origin = try? await origin(settings: settings) {
-            await leaveReminder.recheck(using: provider, origin: origin, travel: travel, leadMinutes: settings.leaveReminderLeadMinutes)
-            updateWidget { $0.leaveBy = leaveReminder.pendingTrip?.leaveBy }
-            if let trip = leaveReminder.pendingTrip {
-                await report(.leaveBy, data: [
-                    "leave_by": Self.iso(trip.leaveBy),
-                    "drive_minutes": Int((trip.plannedTravelSeconds / 60).rounded()),
-                ], settings: settings)
-            }
-        }
+        await recheckDrive(settings: settings)
+    }
+
+    // MARK: Leave reminders (v0.4.1 item 17)
+
+    /// When the drive was last re-checked by opening the app, so opening it again and again
+    /// doesn't ask Apple Maps each time.
+    private var lastOpenCheck: Date?
+
+    /// Re-checks the drive for the morning's trip, moves the reminders still ahead, and tells
+    /// the widget, Home Assistant (backstops, leave checks) and "Your morning" the new leave-by.
+    /// `notify`: Check drive and remind, from Home Assistant's RUN_LEAVE_CHECK.
+    @discardableResult
+    func recheckDrive(notify: Bool = false, settings: BridgeSettings) async -> PendingTrip? {
+        guard settings.leaveReminderEnabled, leaveReminder.pendingTrip != nil,
+              let provider = try? travel.provider(for: settings),
+              let origin = try? await origin(settings: settings),
+              let trip = await leaveReminder.recheck(using: provider, origin: origin, travel: travel, offsets: settings.leaveReminderOffsets, notify: notify)
+        else { return nil }
+        updateWidget { $0.leaveBy = trip.leaveBy }
+        await report(.leaveBy, data: [
+            "leave_by": Self.iso(trip.leaveBy),
+            "drive_minutes": Int((trip.plannedTravelSeconds / 60).rounded()),
+        ], settings: settings)
+        return trip
+    }
+
+    /// Opening the app on the morning of a trip re-checks the drive, at most every 10 minutes,
+    /// from 3 hours before leave-by.
+    func recheckDriveOnOpen(settings: BridgeSettings) async {
+        guard let trip = leaveReminder.pendingTrip,
+              Self.shouldRecheckOnOpen(leaveBy: trip.leaveBy, lastCheck: lastOpenCheck ?? trip.checkedAt) else { return }
+        lastOpenCheck = .now
+        await recheckDrive(settings: settings)
+    }
+
+    nonisolated static func shouldRecheckOnOpen(leaveBy: Date, lastCheck: Date?, now: Date = .now) -> Bool {
+        guard now > leaveBy.addingTimeInterval(-3 * 3600), now < leaveBy.addingTimeInterval(LeaveReminder.tail) else { return false }
+        return lastCheck.map { now.timeIntervalSince($0) >= 600 } ?? true
     }
 
     // MARK: Bedtime and Clock app alarms

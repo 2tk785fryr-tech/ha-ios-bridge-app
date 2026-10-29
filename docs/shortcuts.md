@@ -16,6 +16,7 @@ or home IDs.
 | Home Assistant push `RUN_DISARM` (temporary alarm in disarm mode stopped; *Not going to sleep yet*) | Set Disarm |
 | Home Assistant push `RUN_ARM_STAY` (back in bed after a temporary alarm) | Set Arm Stay |
 | Home Assistant push `RUN_BACK_TO_BED` (v0.4: *Back to bed* after you're up) | Back To Bed - App |
+| Home Assistant push `RUN_LEAVE_CHECK` (v0.4.1: at each leave reminder) | Bedtime Bridge **Check Drive and Remind** (no shortcut needed) |
 | By hand | Temporary Wake-Up - App |
 
 Each push trigger is an iOS 27 "When I receive a notification from Home Assistant" personal
@@ -92,6 +93,20 @@ New in v0.4, for item 3's *Back to bed*. Puts back on the phone what Good Mornin
 
 Phone setup: a "When I receive a notification from Home Assistant" automation, message
 `RUN_BACK_TO_BED`, running this shortcut immediately.
+
+## Leave check (v0.4.1 item 17)
+
+No shortcut to build. Phone setup: a "When I receive a notification from Home Assistant"
+automation, message `RUN_LEAVE_CHECK`, run immediately, with one action: Bedtime Bridge
+**Check Drive and Remind**. The app asks Apple Maps for the drive with current traffic, notifies
+("Leave by 5:48 · 32 min drive (5 min worse than planned)" / "Leave now · 35 min drive"), and
+reports the new leave-by, which clears the push and moves the remaining reminders.
+
+Home Assistant sends the push at each reminder chosen in Settings → Leave-by reminder → Leave
+reminders (default 15 min before and at leave time), while you're home, until 15 min after
+leave-by; a morning change or skip stops them. Without the automation you still get the
+reminders set at bedtime, 2 min after each time and marked "not re-checked", refreshed whenever
+you stop an alarm or open the app.
 
 ## Temporary Wake-Up - App
 

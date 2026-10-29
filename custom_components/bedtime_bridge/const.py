@@ -78,7 +78,11 @@ CMD_BEDTIME = "RUN_BEDTIME"
 # Item 3 back to bed: the phone puts back what Good Morning changed (MorningState, house alarm,
 # Sleep Focus). Runs Back To Bed - App.
 CMD_BACK_TO_BED = "RUN_BACK_TO_BED"
-COMMANDS = (CMD_DISARM, CMD_ARM, CMD_MORNING, CMD_BEDTIME, CMD_BACK_TO_BED)
+# Item 17 (v0.4.1): at each leave reminder the phone re-checks the drive (Check drive and remind).
+CMD_LEAVE_CHECK = "RUN_LEAVE_CHECK"
+COMMANDS = (CMD_DISARM, CMD_ARM, CMD_MORNING, CMD_BEDTIME, CMD_BACK_TO_BED, CMD_LEAVE_CHECK)
+# Leave checks stop this long after leave-by.
+LEAVE_CHECK_TAIL_MINUTES = 15
 # Item 3 stops what's already running (until v0.5 fires the ladder itself): these automations
 # are turned off (cancelling running actions) and straight back on, and these notification tags
 # cleared.
@@ -102,6 +106,7 @@ COMMAND_NAMES = {
     "RUN_GOOD_MORNING": "Good Morning",
     "RUN_BEDTIME": "the bedtime shortcut",
     "RUN_BACK_TO_BED": "Back To Bed",
+    "RUN_LEAVE_CHECK": "the leave check",
 }
 DEFAULT_RESTART_AUTOMATIONS = ["automation.wake_confirm_still_in_bed_after_alarm", "automation.wake_deadline_backstop"]
 RESTART_NOTIFICATION_TAGS = ("wake_backstop", "wake_confirm")

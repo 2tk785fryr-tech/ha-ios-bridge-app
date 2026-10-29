@@ -454,7 +454,7 @@ extension BridgeSettings {
             "arrival_buffer_minutes": arrivalBufferMinutes,
             "snooze_minutes": snoozeMinutes,
             "weather_extra_minutes": weatherExtraMinutes,
-            "leave_reminder_minutes": leaveReminderLeadMinutes,
+            "leave_reminder_minutes": leaveReminderOffsets.max() ?? leaveReminderLeadMinutes,
             "shift_lead_minutes": Dictionary(
                 shiftRules.map { ($0.keyword.trimmingCharacters(in: .whitespaces), $0.wakeMinutesBefore) },
                 uniquingKeysWith: { first, _ in first }

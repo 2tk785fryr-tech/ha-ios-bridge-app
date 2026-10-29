@@ -179,11 +179,45 @@ private struct LeaveReminderSection: View {
         Section {
             Toggle("Leave-by reminder", isOn: $settings.leaveReminderEnabled)
             if settings.leaveReminderEnabled {
-                Stepper("\(settings.leaveReminderLeadMinutes) min before leave-by", value: $settings.leaveReminderLeadMinutes, in: 0...60, step: 5)
+                NavigationLink {
+                    LeaveRemindersPicker(offsets: $settings.leaveReminderOffsets)
+                } label: {
+                    LabeledContent("Leave reminders", value: LeaveRemindersPicker.summary(settings.leaveReminderOffsets))
+                }
             }
             Stepper("Widget: leave-by until \(settings.widgetLeaveByMinutes) min after", value: $settings.widgetLeaveByMinutes, in: 0...120, step: 5)
         } footer: {
-            Text("For shifts and appointments with a location. Set at bedtime; when you stop a Bedtime Bridge alarm, traffic is rechecked and the reminder moves if it changed. Once the alarms are done, the Lock Screen widget shows leave-by until this long after it.")
+            Text("For shifts and appointments with a location. Each reminder re-checks traffic: Home Assistant sends RUN_LEAVE_CHECK at its time and Check Drive and Remind notifies with the fresh drive. The drive is also re-checked when you stop an alarm and when you open the app. Reminders set at bedtime arrive 2 min late, marked \"not re-checked\", if no fresh check came. They stop 15 min after leave-by. Once the alarms are done, the Lock Screen widget shows leave-by until this long after it.")
+        }
+    }
+}
+
+/// Settings → Leave reminders: any of At leave time, 5…30 min before (item 17).
+private struct LeaveRemindersPicker: View {
+    @Binding var offsets: [Int]
+
+    static func name(_ minutes: Int) -> String { minutes == 0 ? "At leave time" : "\(minutes) min before" }
+
+    static func summary(_ offsets: [Int]) -> String {
+        offsets.isEmpty ? "None" : offsets.sorted(by: >).map { $0 == 0 ? "at leave time" : "\($0) min" }.joined(separator: ", ")
+    }
+
+    var body: some View {
+        SettingsPage(title: "Leave reminders") {
+            Section {
+                ForEach(BridgeSettings.leaveReminderChoices.reversed(), id: \.self) { minutes in
+                    Toggle(Self.name(minutes), isOn: Binding(
+                        get: { offsets.contains(minutes) },
+                        set: { on in
+                            offsets.removeAll { $0 == minutes }
+                            if on { offsets.append(minutes) }
+                            offsets.sort(by: >)
+                        }
+                    ))
+                }
+            } footer: {
+                Text("Each one re-checks the drive and tells you when to leave. Later reminders follow the new leave-by.")
+            }
         }
     }
 }

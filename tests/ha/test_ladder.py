@@ -439,3 +439,62 @@ async def test_own_alarm_backstops_edited_in_the_preview(hass, ladder, hass_clie
     assert hass.states.get("sensor.bedtime_bridge_ladder_deadline").state == "unknown", "removed"
     late = hass.states.get("sensor.bedtime_bridge_ladder_late").state
     assert dt_util.as_local(dt_util.parse_datetime(late)).strftime("%H:%M") == "09:00"
+
+
+async def test_leave_checks_at_each_reminder_follow_a_new_leave_by(hass, ladder, hass_client_no_auth, freezer):
+    """v0.4.1 item 17: RUN_LEAVE_CHECK at 15 min before and at leave time; a fresh leave-by moves the rest."""
+    from pytest_homeassistant_custom_component.common import async_mock_service
+
+    notify = async_mock_service(hass, "notify", "mobile_app_test")
+    await ladder(notify_service="notify.mobile_app_test", phone_commands=True)
+    data = plan(local("05:45").isoformat())
+    data["data"]["leave_by"] = local("05:45").isoformat()
+    data["data"]["leave_reminders"] = [15, 0]
+    await send(hass_client_no_auth, data)
+    await hass.async_block_till_done()
+
+    pushes = lambda: [c.data["message"] for c in notify if c.data.get("message") == "RUN_LEAVE_CHECK"]  # noqa: E731
+    freezer.move_to(local("05:30"))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert pushes() == ["RUN_LEAVE_CHECK"]
+
+    # The phone's check: 10 min worse, leave by 05:35, so "at leave time" moves to 05:35.
+    await send(hass_client_no_auth, {"type": "leave_by", "data": {"leave_by": local("05:35").isoformat(), "drive_minutes": 45}})
+    freezer.move_to(local("05:35") + timedelta(seconds=30))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert pushes() == ["RUN_LEAVE_CHECK", "RUN_LEAVE_CHECK"]
+
+
+async def test_leave_checks_stop_once_youve_left(hass, ladder, hass_client_no_auth, freezer):
+    from pytest_homeassistant_custom_component.common import async_mock_service
+
+    notify = async_mock_service(hass, "notify", "mobile_app_test")
+    hass.states.async_set("person.me", "home")
+    await ladder(notify_service="notify.mobile_app_test", phone_commands=True, presence_entities=["person.me"])
+    data = plan(local("05:45").isoformat())
+    data["data"]["leave_by"] = local("05:45").isoformat()
+    data["data"]["leave_reminders"] = [15, 0]
+    await send(hass_client_no_auth, data)
+    hass.states.async_set("person.me", "not_home")
+    freezer.move_to(local("05:31"))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert not [c for c in notify if c.data.get("message") == "RUN_LEAVE_CHECK"]
+
+
+async def test_leave_checks_stop_when_the_morning_changes(hass, ladder, hass_client_no_auth, freezer):
+    from pytest_homeassistant_custom_component.common import async_mock_service
+
+    notify = async_mock_service(hass, "notify", "mobile_app_test")
+    await ladder(notify_service="notify.mobile_app_test", phone_commands=True)
+    data = plan(local("05:45").isoformat())
+    data["data"]["leave_by"] = local("05:45").isoformat()
+    data["data"]["leave_reminders"] = [15, 0]
+    await send(hass_client_no_auth, data)
+    await send(hass_client_no_auth, {"type": "skipped", "data": {}})
+    freezer.move_to(local("05:31"))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert not [c for c in notify if c.data.get("message") == "RUN_LEAVE_CHECK"]

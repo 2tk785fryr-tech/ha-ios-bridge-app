@@ -187,6 +187,7 @@ struct ContentView: View {
                 let before = scheduled
                 refreshScheduled()
                 if scheduled != before { plan = coordinator.lastAppliedPlan }
+                Task { await coordinator.recheckDriveOnOpen(settings: store.settings) }
             }
             // bedtimebridge://replan, from Home Assistant's "plan out of date" and
             // "missing plan" notifications.
