@@ -17,6 +17,7 @@ struct ContentView: View {
     @State private var temporaryAlarms: [TemporaryAlarm] = []
     @State private var morningEnd: MorningEnd?
     @State private var backToBed = false
+    @State private var notReadyForBed = false
     @State private var sleepLater = false
     /// From Home Assistant for "Your morning" (v0.4.1 item 8); nil when it couldn't be reached.
     @State private var morningContext: MorningContext?
@@ -137,7 +138,7 @@ struct ContentView: View {
                     }
 
                     if skippedMorning == nil, let morning = scheduled.first ?? plan?.firstAlarm {
-                        ScheduledAlarmsCard(times: store.settings.alarmStyle == .app ? scheduled : [], morning: morning, isShift: plan?.source == .shift) {
+                        ScheduledAlarmsCard(times: store.settings.alarmStyle == .app ? scheduled : [], morning: morning, isShift: plan?.source == .shift, notReadyForBed: notReadyForBed) {
                             skip(morning, then: .sleepIn)
                         } differentTime: {
                             sheet = .skipToTime
@@ -400,6 +401,7 @@ struct ContentView: View {
         temporaryAlarms = coordinator.temporaryAlarms
         morningEnd = coordinator.morningEnd(settings: store.settings)
         backToBed = coordinator.backToBedAvailable(settings: store.settings)
+        notReadyForBed = coordinator.notReadyForBedAvailable(settings: store.settings)
         sleepLater = coordinator.sleepLaterAvailable(settings: store.settings)
         // After a change this morning, the old plan's times are no longer what's set: show the
         // alarms AlarmKit holds instead (v0.4.1 items 4 and 10).
@@ -1152,6 +1154,8 @@ private struct ScheduledAlarmsCard: View {
     let times: [Date]
     let morning: Date
     let isShift: Bool
+    /// Inside Not ready for bed's window (v0.4.2 item 7).
+    let notReadyForBed: Bool
     let sleepIn: () -> Void
     let differentTime: () -> Void
     let undoBedtime: () -> Void
@@ -1183,7 +1187,7 @@ private struct ScheduledAlarmsCard: View {
                     }
                 }
             }
-            if !times.isEmpty {
+            if !times.isEmpty && notReadyForBed {
                 Button { confirmingUndo = true } label: {
                     Label("Not going to sleep yet", systemImage: "figure.walk")
                         .font(.system(size: 15, weight: .semibold))

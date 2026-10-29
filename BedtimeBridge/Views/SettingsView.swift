@@ -447,11 +447,13 @@ private struct AlarmSettingsSection: View {
             if settings.alarmStyle == .app {
                 Stepper("Snooze: \(settings.snoozeMinutes) min", value: $settings.snoozeMinutes, in: 1...30)
                 AlarmSoundPicker(sound: $settings.alarmSound)
-                Stepper("End early from \(settings.endAlarmsEarlyHours) h before", value: $settings.endAlarmsEarlyHours, in: 1...6)
                 Picker("When I stop an alarm", selection: $settings.stopBehavior) {
                     ForEach(StopBehavior.allCases) { Text($0.displayName).tag($0) }
                 }
                 TestAlarmButton(settings: settings)
+                NavigationLink("When options show") {
+                    OptionWindowsSettings(settings: $settings)
+                }
                 NavigationLink("Change this morning") {
                     MorningChangeSettings(settings: $settings)
                 }
@@ -472,6 +474,24 @@ private struct AlarmSettingsSection: View {
                 Text("Rings through Silent and Focus. Snooze and Stop tell Home Assistant directly (set it up below), because the Shortcuts \"alarm snoozed/stopped\" automations only see Clock app alarms. \"Keep the rest until I'm up\" cancels the later alarms only once Home Assistant sees the bedroom door opened or the bed empty for over a minute, so stopping the first alarm and dozing off still leaves the others. A new sound is used from the next time alarms are set.")
             case .clock:
                 Text("The app works out the times and your shortcut creates Clock alarms from Wake Plan › Alarm Dates. Your snooze/stop automations keep working, but Apple fixes Clock snooze at 9 minutes.")
+            }
+        }
+    }
+}
+
+/// When each situational option shows (v0.4.2 item 7).
+private struct OptionWindowsSettings: View {
+    @Binding var settings: BridgeSettings
+
+    var body: some View {
+        SettingsPage(title: "When options show") {
+            Section {
+                Stepper("I'm up early / End this morning's alarms: from \(settings.endAlarmsEarlyHours) h before the first alarm", value: $settings.endAlarmsEarlyHours, in: 1...12)
+                Stepper("Not ready for bed: for \(settings.notReadyForBedHours) h after bedtime ran", value: $settings.notReadyForBedHours, in: 1...12)
+                Stepper("Back to bed: until \(settings.backToBedHours) h after the wake-up or the last stop, whichever is later", value: $settings.backToBedHours, in: 1...12)
+                LabeledContent("Sleep later", value: "until the first alarm")
+            } footer: {
+                Text("These decide when each option shows in the bottom bar, the ⋯ menu and the cards.")
             }
         }
     }

@@ -113,6 +113,10 @@ struct BridgeSettings: Codable, Equatable {
     var alarmSound: AlarmSound = .standard
     /// Tonight offers "Up before the alarms?" from this many hours before the first one.
     var endAlarmsEarlyHours = 2
+    /// Not ready for bed shows this long after bedtime ran (v0.4.2 item 7).
+    var notReadyForBedHours = 2
+    /// Back to bed shows until this long after the wake-up or the last stop (v0.4.2 item 7).
+    var backToBedHours = 3
     /// Why a morning changed, each with what it moves (v0.4.1 item 7). New reasons ask.
     var morningReasons: [MorningReason] = [
         MorningReason(name: "Snow delay", scope: .wakeUp),

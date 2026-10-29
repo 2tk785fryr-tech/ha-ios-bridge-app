@@ -680,6 +680,7 @@ final class BedtimeCoordinator {
         let cause = lastCause
         lastCause = AlarmCause.none
         stoppedThisWakeUp = true
+        lastStopAt = .now
         await report(.stopped, data: ["all": true, "early": early, "alarm_times": [String](), "alarm_cause": cause], settings: settings)
     }
 
@@ -702,6 +703,25 @@ final class BedtimeCoordinator {
     }
 
     private static let stoppedKey = "stoppedThisWakeUp.v1"
+    private static let lastStopKey = "lastStop.v1"
+    private static let bedtimeRanKey = "bedtimeRanAt.v1"
+
+    /// When an alarm of this wake-up was last stopped, for Back to bed's window (v0.4.2 item 7).
+    private(set) var lastStopAt: Date? {
+        get { UserDefaults.standard.object(forKey: Self.lastStopKey) as? Date }
+        set { UserDefaults.standard.set(newValue, forKey: Self.lastStopKey) }
+    }
+
+    /// When the bedtime routine last started, for Not ready for bed's window (v0.4.2 item 7).
+    private(set) var bedtimeRanAt: Date? {
+        get { UserDefaults.standard.object(forKey: Self.bedtimeRanKey) as? Date }
+        set { UserDefaults.standard.set(newValue, forKey: Self.bedtimeRanKey) }
+    }
+
+    func notReadyForBedAvailable(settings: BridgeSettings, now: Date = .now) -> Bool {
+        OptionWindows.notReadyForBed(bedtimeRanAt: bedtimeRanAt, alarmsSet: !setAlarmTimes().filter { $0 > now }.isEmpty,
+                                     hours: settings.notReadyForBedHours, now: now)
+    }
 
     /// An alarm of this wake-up was stopped (so Wake Mike and Good Morning ran): a change this
     /// morning is then "back to bed", wherever it's started (v0.4.1 item 2). A new series resets it.
@@ -878,8 +898,8 @@ final class BedtimeCoordinator {
 
     /// Sleep later is offered while the alarms are set and none has rung yet.
     func sleepLaterAvailable(settings: BridgeSettings, now: Date = .now) -> Bool {
-        guard settings.alarmStyle == .app, let first = setAlarmTimes().first else { return false }
-        return first > now && !stoppedThisWakeUp
+        guard settings.alarmStyle == .app else { return false }
+        return OptionWindows.sleepLater(firstAlarm: setAlarmTimes().first, stopped: stoppedThisWakeUp, now: now)
     }
 
     /// Back to planned alarms, until the first alarm rings.
@@ -930,11 +950,10 @@ final class BedtimeCoordinator {
     /// Back to bed on Tonight: this morning's series is over (stopped, or ended early) and it's
     /// still that morning.
     func backToBedAvailable(settings: BridgeSettings, now: Date = .now) -> Bool {
-        guard settings.alarmStyle == .app, let first = alarmSeries.min(), let last = alarmSeries.max() else { return false }
+        guard settings.alarmStyle == .app else { return false }
         let remaining = alarms.scheduledAlarms().filter { !keptAlarms.contains($0.id) }
-        return remaining.isEmpty
-            && now >= first.addingTimeInterval(-Double(settings.endAlarmsEarlyHours) * 3600)
-            && now <= last.addingTimeInterval(12 * 3600)
+        return OptionWindows.backToBed(series: alarmSeries, lastStop: lastStopAt, anyLeft: !remaining.isEmpty,
+                                       upEarlyHours: settings.endAlarmsEarlyHours, hours: settings.backToBedHours, now: now)
     }
 
     func morningContext(firstAlarm: Date?, settings: BridgeSettings) async -> MorningContext? {
@@ -1061,6 +1080,7 @@ final class BedtimeCoordinator {
             }
         }
         stoppedThisWakeUp = true
+        lastStopAt = .now
         let remaining = scheduledAlarmTimes().filter { $0 > .now }
         updateWidget { snapshot in
             snapshot.snoozedUntil = nil
@@ -1136,6 +1156,7 @@ final class BedtimeCoordinator {
     /// Returns whether it started, so the shortcut can branch.
     func startBedtime(settings: BridgeSettings) async throws -> (started: Bool, atHome: Bool) {
         guard let link = HomeAssistantLinks.current(settings) else { throw BridgeError.homeAssistantNotSetUp }
+        bedtimeRanAt = .now
         return try await link.startBedtime(settings: settings)
     }
 
