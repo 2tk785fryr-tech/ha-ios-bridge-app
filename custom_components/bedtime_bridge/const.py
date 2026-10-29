@@ -78,21 +78,35 @@ CMD_BEDTIME = "RUN_BEDTIME"
 # Item 3 back to bed: the phone puts back what Good Morning changed (MorningState, house alarm,
 # Sleep Focus). Runs Back To Bed - App.
 CMD_BACK_TO_BED = "RUN_BACK_TO_BED"
-COMMANDS = (CMD_DISARM, CMD_ARM, CMD_MORNING, CMD_BEDTIME, CMD_BACK_TO_BED)
+# Item 17 (v0.4.1): at each leave reminder the phone re-checks the drive (Check drive and remind).
+CMD_LEAVE_CHECK = "RUN_LEAVE_CHECK"
+COMMANDS = (CMD_DISARM, CMD_ARM, CMD_MORNING, CMD_BEDTIME, CMD_BACK_TO_BED, CMD_LEAVE_CHECK)
+# Leave checks stop this long after leave-by.
+LEAVE_CHECK_TAIL_MINUTES = 15
 # Item 3 stops what's already running (until v0.5 fires the ladder itself): these automations
 # are turned off (cancelling running actions) and straight back on, and these notification tags
 # cleared.
 CONF_RESTART_AUTOMATIONS = "restart_automations"
+# Item 8 (v0.4.1): what the house backstop reads until the cutover, and the old template's rungs.
+CONF_HOUSE_BACKSTOP = "house_backstop_source"
+HOUSE_OLD = "old"
+HOUSE_BRIDGE = "bridge"
+CONF_OLD_RUNGS = "old_rung_sensors"
+DEFAULT_OLD_RUNGS = ["sensor.wake_rung_early", "sensor.wake_rung_deadline", "sensor.wake_rung_late"]
+EVENT_CHANGE_REFUSED = "morning_change_refused"
 # A phone shortcut that reports Started but not Completed within this long is flagged.
 CONF_COMPLETE_MINUTES = "command_complete_minutes"
 DEFAULT_COMPLETE_MINUTES = 5
 EVENT_COMMAND_INCOMPLETE = "command_incomplete"
+# The phone set fewer alarms than it meant to (it reads back what AlarmKit holds).
+EVENT_ALARMS_MISSING = "alarms_missing"
 COMMAND_NAMES = {
     "RUN_DISARM": "Disarm",
     "RUN_ARM_STAY": "Arm Stay",
     "RUN_GOOD_MORNING": "Good Morning",
     "RUN_BEDTIME": "the bedtime shortcut",
     "RUN_BACK_TO_BED": "Back To Bed",
+    "RUN_LEAVE_CHECK": "the leave check",
 }
 DEFAULT_RESTART_AUTOMATIONS = ["automation.wake_confirm_still_in_bed_after_alarm", "automation.wake_deadline_backstop"]
 RESTART_NOTIFICATION_TAGS = ("wake_backstop", "wake_confirm")

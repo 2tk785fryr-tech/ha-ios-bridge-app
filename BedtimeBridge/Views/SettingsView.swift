@@ -57,7 +57,8 @@ struct SettingsView: View {
                 SettingsLink(title: "Alarms", icon: "alarm", value: "\(settings.alarmCount) alarms, \(settings.alarmSpacingMinutes) min apart") {
                     SettingsPage(title: "Alarms") { AlarmSettingsSection(settings: $store.settings) }
                 }
-                SettingsLink(title: "Appointments", icon: "calendar.badge.clock", value: "Notes say \"\(settings.appointmentKeyword)\"") {
+                SettingsLink(title: "Appointments", icon: "calendar.badge.clock",
+                             value: settings.appointmentKeyword.isEmpty ? "Wake-up keyword: none" : "Wake-up keyword: \(settings.appointmentKeyword)") {
                     SettingsPage(title: "Appointments") { AppointmentsSection(settings: $store.settings) }
                 }
                 SettingsLink(title: "Drive time", icon: "car", value: settings.driveTimeSource.displayName) {
@@ -136,17 +137,38 @@ private struct SettingsLink<Destination: View>: View {
 
 private struct AppointmentsSection: View {
     @Binding var settings: BridgeSettings
+    @State private var markedCount: Int?
 
     var body: some View {
         Section {
-            TextField("Notes contain", text: $settings.appointmentKeyword)
+            LabeledContent("Wake-up keyword") {
+                TextField("wake up", text: $settings.appointmentKeyword)
+                    .multilineTextAlignment(.trailing)
+                    .textInputAutocapitalization(.never)
+            }
+            if settings.appointmentKeyword.trimmingCharacters(in: .whitespaces).isEmpty {
+                Label("With no keyword, no appointment gets an alarm; only shifts do.", systemImage: "exclamationmark.triangle")
+                    .font(.footnote).foregroundStyle(Theme.warning.text)
+            }
+            if let markedCount {
+                Text(markedCount == 1 ? "1 upcoming event is marked \(settings.appointmentKeyword)" : "\(markedCount) upcoming events are marked \(settings.appointmentKeyword)")
+                    .foregroundStyle(Theme.textMuted)
+            }
+            NavigationLink("Mark events in Upcoming events") { UpcomingEventsView() }
+        } header: {
+            Text("Wake-up keyword")
+        } footer: {
+            Text("Put this word or phrase in an event's notes and the app will wake you for that event. Events without it are ignored for alarms. Work shifts don't need it: they're found by their title (Days, Swings). Example: \"Notes: wake up · bring insurance card\". It matches anywhere in the notes, in any case. You can also set it for each event from Upcoming events.")
+        }
+        Section {
             Stepper("Arrive early: \(settings.arrivalBufferMinutes) min", value: $settings.arrivalBufferMinutes, in: 0...60, step: 5)
             Toggle("Ask about missing locations", isOn: $settings.askAboutMissingLocations)
         } header: {
             Text("Appointments")
         } footer: {
-            Text("Wake time = start − arrive-early buffer − drive time − get-ready time (on the main Settings page). Only used when it's earlier than your shift alarm. A \"wake up\" appointment without a location is planned with the fallback drive until you answer the notification about it.")
+            Text("Wake time = start − arrive-early buffer − drive time − get-ready time (on the main Settings page). On a work morning, a marked appointment that starts before your shift ends is used instead of the shift (you're going in late); one after the shift ends isn't. A marked appointment without a location is planned with the fallback drive until you answer the notification about it.")
         }
+        .task(id: settings.appointmentKeyword) { markedCount = BedtimeCoordinator.shared.markedUpcomingCount(settings: settings) }
     }
 }
 
@@ -157,11 +179,45 @@ private struct LeaveReminderSection: View {
         Section {
             Toggle("Leave-by reminder", isOn: $settings.leaveReminderEnabled)
             if settings.leaveReminderEnabled {
-                Stepper("\(settings.leaveReminderLeadMinutes) min before leave-by", value: $settings.leaveReminderLeadMinutes, in: 0...60, step: 5)
+                NavigationLink {
+                    LeaveRemindersPicker(offsets: $settings.leaveReminderOffsets)
+                } label: {
+                    LabeledContent("Leave reminders", value: LeaveRemindersPicker.summary(settings.leaveReminderOffsets))
+                }
             }
             Stepper("Widget: leave-by until \(settings.widgetLeaveByMinutes) min after", value: $settings.widgetLeaveByMinutes, in: 0...120, step: 5)
         } footer: {
-            Text("For shifts and appointments with a location. Set at bedtime; when you stop a Bedtime Bridge alarm, traffic is rechecked and the reminder moves if it changed. Once the alarms are done, the Lock Screen widget shows leave-by until this long after it.")
+            Text("For shifts and appointments with a location. Each reminder re-checks traffic: Home Assistant sends RUN_LEAVE_CHECK at its time and Check Drive and Remind notifies with the fresh drive. The drive is also re-checked when you stop an alarm and when you open the app. Reminders set at bedtime arrive 2 min late, marked \"not re-checked\", if no fresh check came. They stop 15 min after leave-by. Once the alarms are done, the Lock Screen widget shows leave-by until this long after it.")
+        }
+    }
+}
+
+/// Settings → Leave reminders: any of At leave time, 5…30 min before (item 17).
+private struct LeaveRemindersPicker: View {
+    @Binding var offsets: [Int]
+
+    static func name(_ minutes: Int) -> String { minutes == 0 ? "At leave time" : "\(minutes) min before" }
+
+    static func summary(_ offsets: [Int]) -> String {
+        offsets.isEmpty ? "None" : offsets.sorted(by: >).map { $0 == 0 ? "at leave time" : "\($0) min" }.joined(separator: ", ")
+    }
+
+    var body: some View {
+        SettingsPage(title: "Leave reminders") {
+            Section {
+                ForEach(BridgeSettings.leaveReminderChoices.reversed(), id: \.self) { minutes in
+                    Toggle(Self.name(minutes), isOn: Binding(
+                        get: { offsets.contains(minutes) },
+                        set: { on in
+                            offsets.removeAll { $0 == minutes }
+                            if on { offsets.append(minutes) }
+                            offsets.sort(by: >)
+                        }
+                    ))
+                }
+            } footer: {
+                Text("Each one re-checks the drive and tells you when to leave. Later reminders follow the new leave-by.")
+            }
         }
     }
 }
@@ -396,8 +452,14 @@ private struct AlarmSettingsSection: View {
                     ForEach(StopBehavior.allCases) { Text($0.displayName).tag($0) }
                 }
                 TestAlarmButton(settings: settings)
-                NavigationLink("Reasons for changing a morning") {
-                    MorningReasonsEditor(reasons: $settings.morningChangeReasons)
+                NavigationLink("Change this morning") {
+                    MorningChangeSettings(settings: $settings)
+                }
+                NavigationLink("Backstops for your own alarm") {
+                    OwnBackstopsSettings(settings: $settings)
+                }
+                NavigationLink("Wake at a different time") {
+                    OwnAlarmSettings(settings: $settings)
                 }
             }
             Stepper("Look ahead \(settings.lookAheadHours) h", value: $settings.lookAheadHours, in: 6...72)
@@ -414,35 +476,115 @@ private struct AlarmSettingsSection: View {
     }
 }
 
-/// Item 3's reason list: picked when moving or cancelling a morning's alarms, logged in Home
-/// Assistant.
-private struct MorningReasonsEditor: View {
-    @Binding var reasons: [String]
+/// Wake at a different time's defaults (v0.4.1 item 18).
+private struct OwnAlarmSettings: View {
+    @Binding var settings: BridgeSettings
+
+    var body: some View {
+        SettingsPage(title: "Wake at a different time") {
+            Section {
+                Picker("Round the time to", selection: $settings.ownAlarmRoundingMinutes) {
+                    Text("Exact").tag(0)
+                    ForEach([5, 10, 15, 30], id: \.self) { Text("\($0) min").tag($0) }
+                }
+                if settings.ownAlarmRoundingMinutes > 0 {
+                    Toggle("Picker shows only those times", isOn: $settings.ownAlarmPickerSnaps)
+                }
+            } footer: {
+                Text("The time starts at 6 hours from now, rounded up (15 min: 6:54 → 7:00, 7:02 → 7:15). Off: the picker allows any minute.")
+            }
+            Section {
+                Picker("The time is the", selection: $settings.ownAlarmWakeIs) {
+                    ForEach(WakeTimeAlarm.allCases) { Text($0.displayName).tag($0) }
+                }
+                Stepper("\(settings.ownAlarmCount) alarms", value: $settings.ownAlarmCount, in: 1...10)
+                Stepper("\(settings.ownAlarmSpacingMinutes) min apart", value: $settings.ownAlarmSpacingMinutes, in: 1...60)
+            } header: {
+                Text("Defaults")
+            } footer: {
+                Text("The backstops switch starts from Backstops for your own alarm (day off or leave).")
+            }
+        }
+    }
+}
+
+/// Your own alarm on a day off or leave (v0.4.1 item 14): backstops off by default.
+private struct OwnBackstopsSettings: View {
+    @Binding var settings: BridgeSettings
+
+    var body: some View {
+        SettingsPage(title: "Own alarm backstops") {
+            Section {
+                Toggle("On by default on a day off", isOn: $settings.ownBackstopsDayOff)
+                Toggle("On by default on leave", isOn: $settings.ownBackstopsLeave)
+            } footer: {
+                Text("Where you set the alarm there's a switch for that morning. Off: no backstops.")
+            }
+            Section {
+                Stepper("Early: \(settings.ownEarlyMinutes) min after the last alarm", value: $settings.ownEarlyMinutes, in: 0...120, step: 5)
+                Stepper("Deadline: \(settings.ownDeadlineMinutes) min after", value: $settings.ownDeadlineMinutes, in: 5...180, step: 5)
+                Stepper("Late: \(settings.ownLateMinutes) min after", value: $settings.ownLateMinutes, in: 10...240, step: 5)
+                if !settings.ownOffsetsValid {
+                    Text("Early must come before deadline, and deadline before late; until then Home Assistant uses 15, 30 and 45.")
+                        .font(.footnote).foregroundStyle(Theme.danger)
+                }
+            } header: {
+                Text("Times")
+            }
+            Section {
+                Toggle("Use the full backstop actions", isOn: $settings.ownBackstopsFull)
+            } footer: {
+                Text("Off: gentle (a push and the early light ramp; no critical sound, no speakers). Takes effect after the backstop cutover; until then the house backstop fires on shifts only.")
+            }
+        }
+    }
+}
+
+/// Settings → Change this morning (v0.4.1 item 7): the reasons, what each moves, and the gap
+/// the early backstop keeps after the new last alarm.
+private struct MorningChangeSettings: View {
+    @Binding var settings: BridgeSettings
     @State private var newReason = ""
 
     var body: some View {
-        SettingsPage(title: "Reasons") {
+        SettingsPage(title: "Change this morning") {
             Section {
-                ForEach(reasons, id: \.self) { Text($0) }
-                    .onDelete { reasons.remove(atOffsets: $0) }
-                    .onMove { reasons.move(fromOffsets: $0, toOffset: $1) }
+                ForEach($settings.morningReasons) { $reason in
+                    VStack(alignment: .leading, spacing: 6) {
+                        TextField("Reason", text: $reason.name)
+                            .foregroundStyle(Theme.text)
+                        Picker("Moves", selection: $reason.scope) {
+                            ForEach(MorningChangeScope.allCases) { Text($0.displayName).tag($0) }
+                        }
+                        .font(.footnote)
+                    }
+                }
+                .onDelete { settings.morningReasons.remove(atOffsets: $0) }
+                .onMove { settings.morningReasons.move(fromOffsets: $0, toOffset: $1) }
                 HStack {
                     TextField("Add a reason", text: $newReason)
                         .onSubmit(add)
                     Button("Add", action: add)
                         .disabled(newReason.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
+            } header: {
+                Text("Reasons")
             } footer: {
-                Text("Picked when you change a morning's alarms, and logged in Home Assistant with the change.")
+                Text("Picked when you change a morning's alarms, and logged in Home Assistant. Shift alarms only: you sleep longer and the start stays (leave-by and the deadline and late backstops stay). Shift entire wake-up: the start is later, and everything moves. Ask: choose each time.")
+            }
+            Section {
+                Stepper("Early backstop: \(settings.earlyBackstopGapMinutes) min after the last alarm", value: $settings.earlyBackstopGapMinutes, in: 0...30)
+            } footer: {
+                Text("With Shift alarms only, the early backstop moves to this long after the new last alarm if it would otherwise come before it.")
             }
         }
         .toolbar { EditButton() }
     }
 
     private func add() {
-        let reason = newReason.trimmingCharacters(in: .whitespaces)
-        guard !reason.isEmpty, !reasons.contains(reason) else { return }
-        reasons.append(reason)
+        let name = newReason.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty, !settings.morningReasons.contains(where: { $0.name == name }) else { return }
+        settings.morningReasons.append(MorningReason(name: name, scope: .ask))
         newReason = ""
     }
 }

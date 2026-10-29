@@ -87,10 +87,17 @@ final class BedtimeCoordinator {
         leaveReminder.clear()
         lastAppliedPlan = nil
         alarmSeries = []
+        morningChangeReason = nil
+        plannedBeforeSleepLater = nil
+        storedPattern = nil
         updateWidget { $0 = NextAlarmSnapshot(alarmStyle: settings.alarmStyle.rawValue, temporaryAlarms: temporaryAlarms.map(\.time)) }
         lastCause = AlarmCause.none
-        guard case .wakeAt(let time, let wakeIs) = choice else { return nil }
-        let replacement = SkipReplacement(wake: Self.nextOccurrence(ofTimeIn: time), wakeIs: wakeIs)
+        let replacement: SkipReplacement
+        switch choice {
+        case .sleepIn: return nil
+        case .wakeAt(let time, let wakeIs): replacement = SkipReplacement(wake: Self.nextOccurrence(ofTimeIn: time), wakeIs: wakeIs)
+        case .exactly(let chosen): replacement = chosen
+        }
         skipReplacement = replacement
         let manual = manualPlan(replacement, settings: settings)
         try await apply(manual, settings: settings)
@@ -113,13 +120,15 @@ final class BedtimeCoordinator {
     }
 
     private func manualPlan(_ replacement: SkipReplacement, settings: BridgeSettings) -> WakePlan {
-        let times = WakePlanner.alarmTimes(
+        let times = replacement.times.flatMap { $0.isEmpty ? nil : $0.sorted() } ?? WakePlanner.alarmTimes(
             wakeTime: replacement.wake,
             count: settings.alarmCount,
             spacingMinutes: settings.alarmSpacingMinutes,
             wakeIs: replacement.wakeIs
         )
         var plan = WakePlan(source: .manual, wakeTime: replacement.wake, alarmTimes: times, reason: "Your own time")
+        plan.ownBackstops = replacement.backstops
+        plan.customBackstops = replacement.customBackstops
         if skippedMorning != nil {
             plan.reason = "Your own time; the planned wake-up was skipped"
         }
@@ -137,6 +146,9 @@ final class BedtimeCoordinator {
         leaveReminder.clear()
         lastAppliedPlan = nil
         alarmSeries = []
+        morningChangeReason = nil
+        plannedBeforeSleepLater = nil
+        storedPattern = nil
         updateWidget { $0 = NextAlarmSnapshot(alarmStyle: settings.alarmStyle.rawValue, temporaryAlarms: temporaryAlarms.map(\.time)) }
         lastCause = AlarmCause.none
         await report(.bedtimeUndone, data: [:], settings: settings)
@@ -190,6 +202,14 @@ final class BedtimeCoordinator {
         temporaryAlarms = temporaryAlarms + [alarm]
         updateWidget { $0.temporaryAlarms = temporaryAlarms.map(\.time) }
         return alarm
+    }
+
+    /// A temporary alarm moved to a new time (snoozing or not), keeping its house-alarm choice.
+    func moveTemporaryAlarm(_ id: UUID, to time: Date, settings: BridgeSettings) async throws {
+        guard let alarm = temporaryAlarms.first(where: { $0.id == id }) else { return }
+        alarms.stop(id)
+        cancelTemporaryAlarm(id)
+        _ = try await setTemporaryAlarm(at: time, disarmHouse: alarm.disarmHouse, settings: settings)
     }
 
     func cancelTemporaryAlarm(_ id: UUID) {
@@ -267,6 +287,7 @@ final class BedtimeCoordinator {
                 guard let rule = WakePlanner.matchingRule(forTitle: event.title ?? "", rules: settings.shiftRules) else { return nil }
                 var (candidate, warning) = ShiftCandidate.make(title: event.title ?? rule.keyword, start: event.startDate, rule: rule)
                 candidate.location = event.location ?? ""
+                candidate.end = event.endDate
                 candidate.latitude = event.structuredLocation?.geoLocation?.coordinate.latitude
                 candidate.longitude = event.structuredLocation?.geoLocation?.coordinate.longitude
                 return (candidate, warning)
@@ -330,6 +351,10 @@ final class BedtimeCoordinator {
 
         if plan.source == .shift, let shift = plan.shift {
             plan.firstDayBack = firstDayBack(before: shift.start, settings: settings)
+            // An appointment that morning without the keyword doesn't move the alarms: say so.
+            if let note = unmarkedAppointmentNote(for: shift, settings: settings) {
+                plan.reason += ". \(note)"
+            }
         }
         plan.atHome = context?.atHome
         if context?.atHome == false {
@@ -351,11 +376,13 @@ final class BedtimeCoordinator {
     /// For the day-off path: you pick the time, the app sets the usual alarm series.
     /// For the day-off path: you pick the time, the app sets the usual alarm series. The
     /// time is the first or last alarm (`wakeIs`, or Settings' choice when nil).
-    func scheduleManual(wakeTime: Date, wakeIs: WakeTimeAlarm? = nil, settings phoneSettings: BridgeSettings) async throws -> WakePlan {
+    func scheduleManual(wakeTime: Date, wakeIs: WakeTimeAlarm? = nil, ownBackstops: Bool? = nil,
+                        exactly chosen: SkipReplacement? = nil, settings phoneSettings: BridgeSettings) async throws -> WakePlan {
         let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
         let wake = Self.nextOccurrence(ofTimeIn: wakeTime)
-        let replacement = SkipReplacement(wake: wake, wakeIs: wakeIs ?? settings.wakeTimeIs)
+        let replacement = chosen ?? SkipReplacement(wake: wake, wakeIs: wakeIs ?? settings.wakeTimeIs)
         var plan = manualPlan(replacement, settings: settings)
+        plan.ownBackstops = ownBackstops ?? plan.ownBackstops ?? settings.ownBackstopsDayOff
         if let skipped = skippedMorning, Calendar.current.isDate(skipped, inSameDayAs: wake) {
             // Your own time for a skipped morning: the skip (and its failsafe-off) stands.
             skipReplacement = replacement
@@ -372,6 +399,9 @@ final class BedtimeCoordinator {
         leaveReminder.clear()
         lastAppliedPlan = nil
         alarmSeries = []
+        morningChangeReason = nil
+        plannedBeforeSleepLater = nil
+        storedPattern = nil
         updateWidget { $0 = NextAlarmSnapshot(alarmStyle: settings.alarmStyle.rawValue, temporaryAlarms: temporaryAlarms.map(\.time)) }
         lastCause = AlarmCause.none
         await report(.cancelled, data: [:], settings: settings)
@@ -380,9 +410,9 @@ final class BedtimeCoordinator {
     /// Sets (or clears) alarms, the leave-by reminder and the HA sensor for a plan.
     private func apply(_ plan: WakePlan, settings: BridgeSettings) async throws {
         lastAppliedPlan = plan
-        alarmSeries = plan.hasAlarm && settings.alarmStyle == .app ? plan.alarmTimes : []
+        var actual = plan.alarmTimes
         if plan.hasAlarm, settings.alarmStyle == .app {
-            try await alarms.replaceAlarms(
+            actual = try await alarms.replaceAlarms(
                 with: plan.alarmTimes,
                 title: alarmTitle(for: plan),
                 cause: plan.cause,
@@ -394,9 +424,18 @@ final class BedtimeCoordinator {
             // No alarm, or the shortcut is making Clock alarms: don't leave old app alarms ringing.
             try alarms.cancelAll(keeping: keptAlarms)
         }
+        let planned = settings.alarmStyle == .app ? plan.alarmTimes.filter { $0 > .now } : []
+        alarmSeries = settings.alarmStyle == .app ? actual : []
+        plannedBeforeSleepLater = nil
+        storedPattern = plan.hasAlarm ? SeriesPattern.from(series: plan.alarmTimes, wake: plan.wakeTime, fallback: settings) : nil
+        morningChangeReason = nil
+        calendarChangedSinceSet = false
+        setFingerprint = settings.planFingerprint
+        stoppedThisWakeUp = false
+        recordShortfall(planned: planned, actual: actual)
 
         if settings.leaveReminderEnabled, let trip = Self.trip(for: plan, settings: settings) {
-            await leaveReminder.schedule(trip, leadMinutes: settings.leaveReminderLeadMinutes)
+            await leaveReminder.schedule(trip, offsets: settings.leaveReminderOffsets)
         } else {
             leaveReminder.clear()
         }
@@ -409,7 +448,7 @@ final class BedtimeCoordinator {
 
         updateWidget { snapshot in
             snapshot = NextAlarmSnapshot(
-                alarmTimes: plan.alarmTimes,
+                alarmTimes: settings.alarmStyle == .app ? actual : plan.alarmTimes,
                 cause: plan.cause,
                 label: plan.label,
                 leaveBy: plan.leaveBy(settings: settings),
@@ -424,7 +463,38 @@ final class BedtimeCoordinator {
         lastCause = plan.cause
         var payload = plan.homeAssistantPayload(settings: settings)
         payload["app_settings"] = settings.homeAssistantSettings
+        // Home Assistant sends RUN_LEAVE_CHECK at each of these (item 17).
+        payload["leave_reminders"] = Self.trip(for: plan, settings: settings) != nil && settings.leaveReminderEnabled ? settings.leaveReminderOffsets.sorted(by: >) : []
+        if settings.alarmStyle == .app, plan.hasAlarm {
+            // What AlarmKit really holds, not what was asked for.
+            payload["alarm_times"] = actual.map(Self.iso)
+            payload["alarm_time"] = actual.min().map(Self.iso)
+            payload["alarms_planned"] = planned.count
+        }
         await report(.planned, data: payload, settings: settings)
+    }
+
+    /// How many events in the next week carry the wake-up keyword (v0.4.1 item 16); nil without
+    /// calendar access or a keyword.
+    func markedUpcomingCount(settings: BridgeSettings, now: Date = .now) -> Int? {
+        let keyword = settings.appointmentKeyword.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !keyword.isEmpty, EKEventStore.authorizationStatus(for: .event) == .fullAccess else { return nil }
+        return calendar.events(from: now, to: now.addingTimeInterval(7 * 86400), calendarIDs: settings.appointmentCalendarIDs)
+            .filter { WakePlanner.matchingRule(forTitle: $0.title ?? "", rules: settings.shiftRules) == nil }
+            .filter { WakePlanner.notesRequestWakeUp($0.notes, keyword: settings.appointmentKeyword) }
+            .count
+    }
+
+    /// "Ultrasound at 10:00 AM isn't marked wake up, so your Days alarms are used." (v0.4.1 item 11)
+    private func unmarkedAppointmentNote(for shift: ShiftCandidate, settings: BridgeSettings) -> String? {
+        let day = Calendar.current.startOfDay(for: shift.start)
+        let end = shift.end ?? shift.start.addingTimeInterval(12 * 3600)
+        let event = calendar.events(from: day, to: end, calendarIDs: settings.appointmentCalendarIDs).first { event in
+            WakePlanner.matchingRule(forTitle: event.title ?? "", rules: settings.shiftRules) == nil
+                && !WakePlanner.notesRequestWakeUp(event.notes, keyword: settings.appointmentKeyword)
+        }
+        guard let event else { return nil }
+        return "\(event.title ?? "An appointment") at \(WakePlanner.format(event.startDate)) isn't marked \(settings.appointmentKeyword), so your \(shift.cause) alarms are used"
     }
 
     /// No shift on the calendar the day before this one: a first day back (item 6).
@@ -609,14 +679,250 @@ final class BedtimeCoordinator {
         }
         let cause = lastCause
         lastCause = AlarmCause.none
+        stoppedThisWakeUp = true
         await report(.stopped, data: ["all": true, "early": early, "alarm_times": [String](), "alarm_cause": cause], settings: settings)
+    }
+
+    // MARK: What's really set (v0.4.1 items 1 and 4)
+
+    private static let shortfallKey = "alarmShortfall.v1"
+
+    /// The last time alarms were set and AlarmKit took fewer than asked: (set, asked). nil when
+    /// they all went in.
+    private(set) var alarmShortfall: (set: Int, planned: Int)? {
+        get {
+            guard let pair = UserDefaults.standard.array(forKey: Self.shortfallKey) as? [Int], pair.count == 2 else { return nil }
+            return (pair[0], pair[1])
+        }
+        set { UserDefaults.standard.set(newValue.map { [$0.set, $0.planned] }, forKey: Self.shortfallKey) }
+    }
+
+    private func recordShortfall(planned: [Date], actual: [Date]) {
+        alarmShortfall = actual.count < planned.count ? (actual.count, planned.count) : nil
+    }
+
+    private static let stoppedKey = "stoppedThisWakeUp.v1"
+
+    /// An alarm of this wake-up was stopped (so Wake Mike and Good Morning ran): a change this
+    /// morning is then "back to bed", wherever it's started (v0.4.1 item 2). A new series resets it.
+    private(set) var stoppedThisWakeUp: Bool {
+        get { UserDefaults.standard.bool(forKey: Self.stoppedKey) }
+        set { UserDefaults.standard.set(newValue, forKey: Self.stoppedKey) }
+    }
+
+    /// The phase to send for a change started on a screen that thinks it's `requested`.
+    func changePhase(requested: MorningChangePhase) -> MorningChangePhase {
+        Self.changePhase(requested: requested, stopped: stoppedThisWakeUp)
+    }
+
+    nonisolated static func changePhase(requested: MorningChangePhase, stopped: Bool) -> MorningChangePhase {
+        stopped ? .up : requested
+    }
+
+    private static let calendarChangedKey = "calendarChangedSinceSet.v1"
+    private static let fingerprintKey = "planFingerprint.v1"
+    private var calendarObserver: NSObjectProtocol?
+
+    /// The calendar changed after the alarms were set (v0.4.1 item 10).
+    private(set) var calendarChangedSinceSet: Bool {
+        get { UserDefaults.standard.bool(forKey: Self.calendarChangedKey) }
+        set { UserDefaults.standard.set(newValue, forKey: Self.calendarChangedKey) }
+    }
+
+    /// The plan-relevant settings when the alarms were set.
+    private var setFingerprint: String? {
+        get { UserDefaults.standard.string(forKey: Self.fingerprintKey) }
+        set { UserDefaults.standard.set(newValue, forKey: Self.fingerprintKey) }
+    }
+
+    func settingsChangedSinceSet(_ settings: BridgeSettings) -> Bool {
+        guard let setFingerprint else { return false }
+        return setFingerprint != settings.planFingerprint
+    }
+
+    /// Starts watching the calendar for changes after the alarms were set.
+    func watchCalendar() {
+        guard calendarObserver == nil else { return }
+        calendarObserver = NotificationCenter.default.addObserver(forName: .EKEventStoreChanged, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, !self.alarmSeries.isEmpty else { return }
+                self.calendarChangedSinceSet = true
+            }
+        }
+    }
+
+    private static let morningChangeKey = "morningChangeReason.v1"
+
+    /// Set when this morning's alarms were changed (item 3) or edited, so Tonight shows what's
+    /// set rather than offering to set the old plan again. Cleared by the next plan.
+    private(set) var morningChangeReason: String? {
+        get { UserDefaults.standard.string(forKey: Self.morningChangeKey) }
+        set { UserDefaults.standard.set(newValue, forKey: Self.morningChangeKey) }
+    }
+
+    func alarmStatus() -> AlarmStatus {
+        AlarmStatus.make(setTimes: setAlarmTimes(), shortfall: alarmShortfall)
+    }
+
+    /// The series alarms AlarmKit holds now (snoozing ones included), earliest first.
+    func setAlarmTimes() -> [Date] {
+        alarms.scheduledAlarms().filter { !keptAlarms.contains($0.id) }.map(\.date).sorted()
+    }
+
+    // MARK: Edit single alarms (v0.4.1 item 13)
+
+    /// One alarm in Edit alarms: still ahead, or snoozing (shown at its snooze-until time).
+    struct EditableAlarm: Equatable, Identifiable {
+        let id: UUID
+        var time: Date
+        /// Snoozing: unchanged, it keeps snoozing; moved, it's ended and set again at the new time.
+        var snoozing = false
+        var original: Date
+    }
+
+    /// The series alarms Tonight lets you edit: those still ahead, and any snoozing one.
+    func editableAlarms(now: Date = .now) -> [EditableAlarm] {
+        let snoozeEnds = NextAlarmSnapshot.load().snoozedUntil
+        return alarms.scheduledAlarms().filter { !keptAlarms.contains($0.id) }.map { alarm in
+            if alarm.date > now { return EditableAlarm(id: alarm.id, time: alarm.date, original: alarm.date) }
+            let until = snoozeEnds.flatMap { $0 > now ? $0 : nil } ?? now.addingTimeInterval(5 * 60)
+            return EditableAlarm(id: alarm.id, time: until, snoozing: true, original: until)
+        }
+        .sorted { $0.time < $1.time }
+    }
+
+    /// Sets exactly these alarms in place of the ones still ahead (a snoozing one stays). Always
+    /// Shift alarms only: deadline and late never move, early follows the last alarm, and Home
+    /// Assistant refuses an alarm after the late backstop.
+    func editAlarms(_ edited: [EditableAlarm], settings phoneSettings: BridgeSettings) async throws {
+        let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
+        // A snoozing alarm that was moved or removed ends now; one left as it was keeps snoozing.
+        let keptSnoozing = Set(edited.filter { $0.snoozing && abs($0.time.timeIntervalSince($0.original)) < 30 }.map(\.id))
+        let wasSnoozing = alarms.scheduledAlarms().contains { $0.date <= .now && !keptAlarms.contains($0.id) }
+        // The edit ended every snooze: the bedroom goes back to before the wake fade.
+        let snoozeEnded = wasSnoozing && keptSnoozing.isEmpty
+        for alarm in alarms.scheduledAlarms() where alarm.date <= .now && !keptAlarms.contains(alarm.id) && !keptSnoozing.contains(alarm.id) {
+            alarms.stop(alarm.id)
+            alarms.cancel(alarm.id)
+        }
+        let future = edited.filter { !keptSnoozing.contains($0.id) }.map(\.time).filter { $0 > .now }.sorted()
+        let before = currentWake(settings: settings)
+        let added = try await alarms.replaceAlarms(
+            with: future,
+            title: lastAppliedPlan.map(alarmTitle(for:)) ?? "Wake up",
+            cause: lastCause == AlarmCause.none ? AlarmCause.manual : lastCause,
+            snoozeMinutes: settings.snoozeMinutes,
+            sound: settings.alarmSound,
+            keeping: keptAlarms,
+            onlyFuture: true
+        )
+        let all = setAlarmTimes()
+        alarmSeries = all
+        recordShortfall(planned: future, actual: added)
+        if morningChangeReason == nil { morningChangeReason = "Edited alarms" }
+        updateWidget { snapshot in
+            snapshot.alarmTimes = all
+            if snoozeEnded { snapshot.snoozedUntil = nil }
+        }
+        let wake = MorningChange.currentWake(series: all, wakeIs: seriesPattern(settings: settings).wakeIs)
+        var data: [String: Any] = [
+            "alarm_times": all.map(Self.iso),
+            "alarms_planned": future.count + all.filter { $0 <= .now }.count,
+            "delay_minutes": wake.flatMap { new in before.map { Int((new.timeIntervalSince($0) / 60).rounded()) } } ?? 0,
+            "phase": MorningChangePhase.edit.rawValue,
+            "scope": "alarms",
+            "early_gap_minutes": settings.earlyBackstopGapMinutes,
+            "changed_by": "edit",
+            "reason": "Edited alarms",
+        ]
+        if all.isEmpty { data["sleep_in"] = true }
+        if snoozeEnded { data["snooze_ended"] = true }
+        if let link = HomeAssistantLinks.current(settings) {
+            do {
+                try await link.report(.morningChanged, data: data, settings: settings)
+            } catch let BridgeError.homeAssistant(code, message) where code == 200 {
+                throw BridgeError.homeAssistant(code, message)
+            } catch {}
+        }
+    }
+
+    // MARK: Your own alarm's backstops (v0.4.1 item 14)
+
+    /// Your own alarm is set (a day off or leave): Tonight shows its backstops switch.
+    var ownAlarmSet: Bool { lastAppliedPlan?.source == .manual && !alarmSeries.isEmpty }
+    var ownBackstopsOn: Bool { lastAppliedPlan?.ownBackstops ?? false }
+
+    /// Turns your own alarm's backstops on or off, and tells Home Assistant.
+    func setOwnBackstops(_ on: Bool, settings phoneSettings: BridgeSettings) async {
+        guard var plan = lastAppliedPlan, plan.source == .manual else { return }
+        let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
+        plan.ownBackstops = on
+        lastAppliedPlan = plan
+        var payload = plan.homeAssistantPayload(settings: settings)
+        payload["alarm_times"] = alarmSeries.map(Self.iso)
+        payload["alarm_time"] = alarmSeries.min().map(Self.iso)
+        await report(.planned, data: payload, settings: settings)
+    }
+
+    // MARK: Sleep later (v0.4.1 item 12)
+
+    private static let plannedKey = "plannedBeforeSleepLater.v1"
+
+    /// The alarms as planned, before Sleep later moved them, for "Back to planned alarms".
+    private(set) var plannedBeforeSleepLater: [Date]? {
+        get { UserDefaults.standard.array(forKey: Self.plannedKey) as? [Date] }
+        set { UserDefaults.standard.set(newValue, forKey: Self.plannedKey) }
+    }
+
+    /// Sleep later is offered while the alarms are set and none has rung yet.
+    func sleepLaterAvailable(settings: BridgeSettings, now: Date = .now) -> Bool {
+        guard settings.alarmStyle == .app, let first = setAlarmTimes().first else { return false }
+        return first > now && !stoppedThisWakeUp
+    }
+
+    /// Back to planned alarms, until the first alarm rings.
+    func backToPlannedAvailable(now: Date = .now) -> Bool {
+        guard let planned = plannedBeforeSleepLater, let first = setAlarmTimes().first, first > now else { return false }
+        return planned.contains { $0 > now }
+    }
+
+    /// Moves tonight's alarms later, like Shift alarms only: one slide-and-hold, no Face ID,
+    /// nothing in the house changes.
+    func sleepLater(_ change: MorningChange, reason: String?, settings: BridgeSettings) async throws {
+        if plannedBeforeSleepLater == nil { plannedBeforeSleepLater = alarmSeries }
+        var change = change
+        change.scope = .alarms
+        try await changeMorning(change, phase: .bedtime, sleepIn: true, reason: reason ?? "Sleep later", note: nil, settings: settings)
+    }
+
+    func backToPlannedAlarms(settings: BridgeSettings) async throws {
+        guard let planned = plannedBeforeSleepLater?.filter({ $0 > .now }), !planned.isEmpty else { return }
+        let current = currentWake(settings: settings) ?? planned.max()!
+        let wake = MorningChange.currentWake(series: planned, wakeIs: seriesPattern(settings: settings).wakeIs) ?? planned.max()!
+        let change = MorningChange(choice: .at(wake), scope: .alarms, alarmTimes: planned, newWake: wake,
+                                   delayMinutes: Int((wake.timeIntervalSince(current) / 60).rounded()))
+        try await changeMorning(change, phase: .bedtime, sleepIn: true, reason: "Back to planned alarms", note: nil, settings: settings)
+        plannedBeforeSleepLater = nil
+        morningChangeReason = nil
     }
 
     // MARK: Change this morning (item 3)
 
+    private static let patternKey = "seriesPattern.v1"
+
+    /// This morning's own pattern, kept from the plan that set it (v0.4.1 item 3).
+    private(set) var storedPattern: SeriesPattern? {
+        get { UserDefaults.standard.data(forKey: Self.patternKey).flatMap { try? JSONDecoder().decode(SeriesPattern.self, from: $0) } }
+        set { UserDefaults.standard.set(newValue.flatMap { try? JSONEncoder().encode($0) }, forKey: Self.patternKey) }
+    }
+
+    func seriesPattern(settings: BridgeSettings) -> SeriesPattern {
+        storedPattern ?? SeriesPattern.from(series: alarmSeries, wake: NextAlarmSnapshot.load().wakeTime, fallback: settings)
+    }
+
     /// The wake-up this morning's series is built around.
     func currentWake(settings: BridgeSettings) -> Date? {
-        MorningChange.currentWake(series: alarmSeries, wakeIs: settings.wakeTimeIs) ?? NextAlarmSnapshot.load().wakeTime
+        MorningChange.currentWake(series: alarmSeries, wakeIs: seriesPattern(settings: settings).wakeIs) ?? NextAlarmSnapshot.load().wakeTime
     }
 
     /// Back to bed on Tonight: this morning's series is over (stopped, or ended early) and it's
@@ -636,16 +942,20 @@ final class BedtimeCoordinator {
     /// Moves this morning's alarms (the usual series around the new wake-up) or cancels them,
     /// then tells Home Assistant, which moves the backstops, sets Sleep In and puts the house
     /// back to bedtime. Temporary alarms stay.
-    func changeMorning(_ change: MorningChange, phase: MorningChangePhase, sleepIn: Bool, reason: String?, note: String?,
-                       settings phoneSettings: BridgeSettings) async throws {
+    func changeMorning(_ change: MorningChange, phase requested: MorningChangePhase, sleepIn: Bool, reason: String?, note: String?,
+                       changedBy: String = "app", settings phoneSettings: BridgeSettings) async throws {
         let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
+        // Once an alarm was stopped this wake-up, the house has to go back to bed, even when
+        // the change starts on the snooze screen (v0.4.1 item 2).
+        let phase = changePhase(requested: requested)
         for alarm in alarms.scheduledAlarms() where !keptAlarms.contains(alarm.id) {
             alarms.stop(alarm.id)
         }
+        var actual: [Date] = []
         if change.alarmTimes.isEmpty {
             try alarms.cancelAll(keeping: keptAlarms)
         } else {
-            try await alarms.replaceAlarms(
+            actual = try await alarms.replaceAlarms(
                 with: change.alarmTimes,
                 title: lastAppliedPlan.map(alarmTitle(for:)) ?? "Wake up",
                 cause: lastCause == AlarmCause.none ? AlarmCause.manual : lastCause,
@@ -654,32 +964,49 @@ final class BedtimeCoordinator {
                 keeping: keptAlarms
             )
         }
-        alarmSeries = change.alarmTimes
-        let shift = TimeInterval(change.delayMinutes * 60)
+        alarmSeries = actual
+        recordShortfall(planned: change.alarmTimes.filter { $0 > .now }, actual: actual)
+        morningChangeReason = reason ?? "Changed"
+        // The new series is a new wake-up.
+        stoppedThisWakeUp = false
+        // Only an entire wake-up moves leave-by and its reminder (v0.4.1 item 7).
+        let shift = change.scope == .wakeUp ? TimeInterval(change.delayMinutes * 60) : 0
         if change.alarmTimes.isEmpty {
             lastCause = AlarmCause.none
         } else if shift != 0, var trip = leaveReminder.pendingTrip {
             // A delayed start (a snow delay) moves the leave-by reminder with it.
             trip.start += shift
             trip.arriveBy += shift
-            await leaveReminder.schedule(trip, leadMinutes: settings.leaveReminderLeadMinutes)
+            await leaveReminder.schedule(trip, offsets: settings.leaveReminderOffsets)
         }
         updateWidget { snapshot in
             snapshot.snoozedUntil = nil
-            snapshot.alarmTimes = change.alarmTimes
+            snapshot.alarmTimes = actual
             if let wake = change.newWake { snapshot.wakeTime = wake }
             if !change.alarmTimes.isEmpty, let leaveBy = snapshot.leaveBy { snapshot.leaveBy = leaveBy + shift }
         }
         var data: [String: Any] = [
-            "alarm_times": change.alarmTimes.map(Self.iso),
+            // What AlarmKit really holds after the change (item 1), and how many were asked for.
+            "alarm_times": actual.map(Self.iso),
+            "alarms_planned": change.alarmTimes.filter { $0 > .now }.count,
             "delay_minutes": change.delayMinutes,
             "phase": phase.rawValue,
-            "changed_by": "app",
+            "scope": change.scope == .alarms ? "alarms" : "wake_up",
+            "early_gap_minutes": settings.earlyBackstopGapMinutes,
+            "changed_by": changedBy,
         ]
         if change.alarmTimes.isEmpty { data["sleep_in"] = sleepIn }
         if let reason { data["reason"] = reason }
         if let note, !note.isEmpty { data["note"] = note }
-        await report(.morningChanged, data: data, settings: settings)
+        // Home Assistant can refuse (shift alarms only past the late backstop): say so. If it
+        // can't be reached, the change on the phone stands.
+        if let link = HomeAssistantLinks.current(settings) {
+            do {
+                try await link.report(.morningChanged, data: data, settings: settings)
+            } catch let BridgeError.homeAssistant(code, message) where code == 200 {
+                throw BridgeError.homeAssistant(code, message)
+            } catch {}
+        }
     }
 
     /// What the Stop screen says about this alarm (item 1).
@@ -717,6 +1044,7 @@ final class BedtimeCoordinator {
             ], settings: settings)
             return
         }
+        var upAnswer: Bool?
         switch all ? .cancelRest : settings.stopBehavior {
         case .cancelRest:
             alarms.cancelAll(except: id, keeping: keptAlarms)
@@ -725,10 +1053,12 @@ final class BedtimeCoordinator {
         case .keepUntilUp:
             // Only once HA confirms you're up. Still in bed, HA unreachable or no sensors:
             // the later alarms stay as your phone's own backstop.
-            if await HomeAssistantLinks.current(settings)?.isUp(settings: settings) == true {
+            upAnswer = await HomeAssistantLinks.current(settings)?.isUp(settings: settings)
+            if upAnswer == true {
                 alarms.cancelAll(except: id, keeping: keptAlarms)
             }
         }
+        stoppedThisWakeUp = true
         let remaining = scheduledAlarmTimes().filter { $0 > .now }
         updateWidget { snapshot in
             snapshot.snoozedUntil = nil
@@ -737,21 +1067,51 @@ final class BedtimeCoordinator {
         if remaining.isEmpty { lastCause = AlarmCause.none }
         var stopped: [String: Any] = ["alarm_times": remaining.map(Self.iso), "alarm_cause": lastCause]
         stopped["alarm_time"] = remaining.first.map(Self.iso)
-        if all { stopped["all"] = true }
+        // How this stop was decided, so a morning can be traced afterwards (item 1).
+        stopped["all"] = all
+        stopped["stop_behavior"] = settings.stopBehavior.rawValue
+        if let upAnswer { stopped["up"] = upAnswer }
         await report(.stopped, data: stopped, settings: settings)
 
-        if settings.leaveReminderEnabled, leaveReminder.pendingTrip != nil,
-           let provider = try? travel.provider(for: settings),
-           let origin = try? await origin(settings: settings) {
-            await leaveReminder.recheck(using: provider, origin: origin, travel: travel, leadMinutes: settings.leaveReminderLeadMinutes)
-            updateWidget { $0.leaveBy = leaveReminder.pendingTrip?.leaveBy }
-            if let trip = leaveReminder.pendingTrip {
-                await report(.leaveBy, data: [
-                    "leave_by": Self.iso(trip.leaveBy),
-                    "drive_minutes": Int((trip.plannedTravelSeconds / 60).rounded()),
-                ], settings: settings)
-            }
-        }
+        await recheckDrive(settings: settings)
+    }
+
+    // MARK: Leave reminders (v0.4.1 item 17)
+
+    /// When the drive was last re-checked by opening the app, so opening it again and again
+    /// doesn't ask Apple Maps each time.
+    private var lastOpenCheck: Date?
+
+    /// Re-checks the drive for the morning's trip, moves the reminders still ahead, and tells
+    /// the widget, Home Assistant (backstops, leave checks) and "Your morning" the new leave-by.
+    /// `notify`: Check drive and remind, from Home Assistant's RUN_LEAVE_CHECK.
+    @discardableResult
+    func recheckDrive(notify: Bool = false, settings: BridgeSettings) async -> PendingTrip? {
+        guard settings.leaveReminderEnabled, leaveReminder.pendingTrip != nil,
+              let provider = try? travel.provider(for: settings),
+              let origin = try? await origin(settings: settings),
+              let trip = await leaveReminder.recheck(using: provider, origin: origin, travel: travel, offsets: settings.leaveReminderOffsets, notify: notify)
+        else { return nil }
+        updateWidget { $0.leaveBy = trip.leaveBy }
+        await report(.leaveBy, data: [
+            "leave_by": Self.iso(trip.leaveBy),
+            "drive_minutes": Int((trip.plannedTravelSeconds / 60).rounded()),
+        ], settings: settings)
+        return trip
+    }
+
+    /// Opening the app on the morning of a trip re-checks the drive, at most every 10 minutes,
+    /// from 3 hours before leave-by.
+    func recheckDriveOnOpen(settings: BridgeSettings) async {
+        guard let trip = leaveReminder.pendingTrip,
+              Self.shouldRecheckOnOpen(leaveBy: trip.leaveBy, lastCheck: lastOpenCheck ?? trip.checkedAt) else { return }
+        lastOpenCheck = .now
+        await recheckDrive(settings: settings)
+    }
+
+    nonisolated static func shouldRecheckOnOpen(leaveBy: Date, lastCheck: Date?, now: Date = .now) -> Bool {
+        guard now > leaveBy.addingTimeInterval(-3 * 3600), now < leaveBy.addingTimeInterval(LeaveReminder.tail) else { return false }
+        return lastCheck.map { now.timeIntervalSince($0) >= 600 } ?? true
     }
 
     // MARK: Bedtime and Clock app alarms

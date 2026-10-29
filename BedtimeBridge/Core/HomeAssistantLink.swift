@@ -27,12 +27,26 @@ enum BridgeEvent: String {
 /// For item 3's confirm screen: the backstops now, and when the curtains open that morning.
 struct MorningContext {
     var ladderArmed: Bool
+    /// "armed", "idle_no_shift", "fault", …
+    var ladderStatus: String? = nil
+    /// Why the ladder isn't armed (or what's wrong).
+    var ladderReason: String? = nil
     /// "shift" or "appointment"
     var ladderKind: String?
     var backstops: [String: Date]
     var shiftStart: Date?
     var appointment: String?
     var curtainsOpenAt: Date?
+    var leaveBy: Date? = nil
+    var firstDayBack = false
+    /// What the house backstop fires on (v0.4.1 item 8): the old template's times until the
+    /// cutover ("old"), then this ladder ("bridge").
+    var houseSource = "old"
+    var houseTimes: [String: Date] = [:]
+    /// Home Assistant says the plan is out of date (override or next shift changed).
+    var planOutdated = false
+
+    var houseUsesOldTimes: Bool { houseSource == "old" }
 }
 
 /// The two ways the app can talk to Home Assistant: the Bedtime Bridge integration
@@ -140,13 +154,21 @@ struct IntegrationLink: HomeAssistantLink {
         guard let reply = try? await send("context", data: data) else { return nil }
         let ladder = reply["ladder"] as? [String: Any] ?? [:]
         let times = (ladder["times"] as? [String: String] ?? [:]).compactMapValues(Self.parseDate)
+        let house = ladder["house_backstop"] as? [String: Any] ?? [:]
         return MorningContext(
             ladderArmed: ladder["status"] as? String == "armed",
+            ladderStatus: ladder["status"] as? String,
+            ladderReason: ladder["reason"] as? String,
             ladderKind: ladder["kind"] as? String,
             backstops: times,
             shiftStart: (ladder["shift_start"] as? String).flatMap(Self.parseDate),
             appointment: ladder["appointment"] as? String,
-            curtainsOpenAt: (reply["curtains_open_at"] as? String).flatMap(Self.parseDate)
+            curtainsOpenAt: (reply["curtains_open_at"] as? String).flatMap(Self.parseDate),
+            leaveBy: (ladder["leave_by"] as? String).flatMap(Self.parseDate),
+            firstDayBack: ladder["first_day_back"] as? Bool ?? false,
+            houseSource: house["source"] as? String ?? "old",
+            houseTimes: (house["times"] as? [String: String] ?? [:]).compactMapValues(Self.parseDate),
+            planOutdated: reply["plan_outdated"] as? Bool ?? false
         )
     }
 
@@ -354,7 +376,18 @@ extension WakePlan {
             block["leave_by"] = iso.string(from: leaveBy)
             block["appointment"] = appointment.title
             block["appointment_start"] = iso.string(from: appointment.start)
-        case .manual, .none:
+            // It replaces this shift's alarms for the morning (v0.4.1 item 11).
+            if let replacedShift { block["replaces_shift"] = replacedShift }
+        case .manual:
+            // Your own alarm (item 14): backstops after its last alarm, off unless switched on.
+            guard let last = alarmTimes.max() else { break }
+            block["type"] = "own"
+            block["on"] = ownBackstops ?? false
+            block["last_alarm"] = iso.string(from: last)
+            block["offsets"] = ["early": settings.ownEarlyMinutes, "deadline": settings.ownDeadlineMinutes, "late": settings.ownLateMinutes]
+            block["firing"] = settings.ownBackstopsFull ? "full" : "gentle"
+            if let customBackstops { block["times"] = customBackstops.mapValues { iso.string(from: $0) } }
+        case .none:
             break
         }
         return block
@@ -421,7 +454,7 @@ extension BridgeSettings {
             "arrival_buffer_minutes": arrivalBufferMinutes,
             "snooze_minutes": snoozeMinutes,
             "weather_extra_minutes": weatherExtraMinutes,
-            "leave_reminder_minutes": leaveReminderLeadMinutes,
+            "leave_reminder_minutes": leaveReminderOffsets.max() ?? leaveReminderLeadMinutes,
             "shift_lead_minutes": Dictionary(
                 shiftRules.map { ($0.keyword.trimmingCharacters(in: .whitespaces), $0.wakeMinutesBefore) },
                 uniquingKeysWith: { first, _ in first }

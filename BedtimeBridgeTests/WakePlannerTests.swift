@@ -36,13 +36,31 @@ final class WakePlannerTests: XCTestCase {
         XCTAssertEqual(appointment.leaveBy(bufferMinutes: 10), hours(6).addingTimeInterval(20 * 60))
     }
 
-    func testLaterAppointmentDoesNotOverrideShift() {
-        let shift = ShiftCandidate(title: "Swings", start: hours(7), wakeMinutesBefore: 60, cause: "Swings")
-        let appointment = AppointmentCandidate(title: "Lunch", start: hours(12), location: "Cafe", travelSeconds: 900)
+    /// v0.4.1 item 11: a marked appointment before the shift ends replaces it, even if later
+    /// (going in late). It used to be "the earliest wake-up wins".
+    func testMarkedAppointmentDuringTheShiftReplacesIt() {
+        var shift = ShiftCandidate(title: "Days", start: hours(6.5), wakeMinutesBefore: 120, cause: "Days")
+        shift.end = hours(18.5)
+        let ultrasound = AppointmentCandidate(title: "Ultrasound", start: hours(7), location: "Clinic", travelSeconds: 1200)
+        let plan = WakePlanner.plan(shift: shift, appointments: [ultrasound], settings: settings, now: now)
+
+        XCTAssertEqual(plan.source, .appointment)
+        XCTAssertEqual(plan.replacedShift, "Days")
+        XCTAssertEqual(plan.wakeTime, ultrasound.wakeTime(settings: settings), "its own leave-by, drive and get-ready")
+        XCTAssertTrue(plan.reason.hasPrefix("Using Ultrasound at \(WakePlanner.format(hours(7))) for your alarms instead of your Days shift (\(WakePlanner.format(hours(6.5)))). You marked it wake up, so you're going in late."))
+        XCTAssertEqual(plan.ladderBlock(settings: settings)["replaces_shift"] as? String, "Days")
+    }
+
+    func testMarkedAppointmentAfterTheShiftEndsKeepsTheShiftWithAWarning() {
+        var shift = ShiftCandidate(title: "Swings", start: hours(7), wakeMinutesBefore: 60, cause: "Swings")
+        shift.end = hours(15)
+        let appointment = AppointmentCandidate(title: "Dinner", start: hours(19), location: "Cafe", travelSeconds: 900)
         let plan = WakePlanner.plan(shift: shift, appointments: [appointment], settings: settings, now: now)
 
         XCTAssertEqual(plan.cause, "Swings")
         XCTAssertEqual(plan.wakeTime, hours(6))
+        XCTAssertNil(plan.replacedShift)
+        XCTAssertTrue(plan.warnings.contains { $0.contains("Dinner") && $0.contains("after your Swings shift ends") })
     }
 
     func testAppointmentWithoutShiftIsUsed() {
@@ -149,5 +167,13 @@ final class WakePlannerTests: XCTestCase {
         }
         XCTAssertEqual(allow, 25 * 60)
         XCTAssertLessThanOrEqual(requests, 2)
+    }
+
+    /// v0.4.1 item 16: the keyword matches anywhere in the notes, in any case.
+    func testWakeUpKeywordMatchesAnywhereInAnyCase() {
+        XCTAssertTrue(WakePlanner.notesRequestWakeUp("Notes: Wake Up · bring insurance card", keyword: "wake up"))
+        XCTAssertTrue(WakePlanner.notesRequestWakeUp("bring card\nWAKE UP", keyword: "wake up"))
+        XCTAssertFalse(WakePlanner.notesRequestWakeUp("bring insurance card", keyword: "wake up"))
+        XCTAssertFalse(WakePlanner.notesRequestWakeUp(nil, keyword: "wake up"))
     }
 }

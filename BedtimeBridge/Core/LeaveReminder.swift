@@ -11,15 +11,26 @@ struct PendingTrip: Codable, Equatable {
     var plannedTravelSeconds: TimeInterval
     var latitude: Double?
     var longitude: Double?
+    /// The drive time at bedtime, so a re-check can say how much worse or lighter it got.
+    var bedtimeTravelSeconds: TimeInterval?
+    /// When the drive was last re-checked; nil means only the bedtime figure.
+    var checkedAt: Date?
 
     var leaveBy: Date { arriveBy.addingTimeInterval(-plannedTravelSeconds) }
 }
 
-/// A "time to leave" notification for appointment mornings. It's set at bedtime, then
-/// moved when you stop the alarm, using traffic as it looks that morning.
+/// "Time to leave" notifications for shift and appointment mornings (v0.4.1 item 17: one per
+/// chosen reminder). Set at bedtime as a fallback; each is rescheduled with a fresh drive time
+/// when you stop an alarm, open the app, or Home Assistant's RUN_LEAVE_CHECK runs Check drive
+/// and remind.
 final class LeaveReminder {
-    private static let requestID = "leave-reminder"
+    private static let requestPrefix = "leave-reminder"
     private static let tripKey = "pendingTrip.v1"
+    /// Scheduled notifications fire this long after each reminder time, so Home Assistant's
+    /// RUN_LEAVE_CHECK (on time, with a fresh drive) gets there first and replaces them.
+    static let fallbackDelay: TimeInterval = 120
+    /// No reminders or re-checks this long after leave-by.
+    static let tail: TimeInterval = 15 * 60
     private let center = UNUserNotificationCenter.current()
     private let defaults = UserDefaults.standard
 
@@ -28,47 +39,82 @@ final class LeaveReminder {
         set { defaults.set(newValue.flatMap { try? JSONEncoder().encode($0) }, forKey: Self.tripKey) }
     }
 
-    func schedule(_ trip: PendingTrip, leadMinutes: Int, note: String? = nil) async {
+    /// Each reminder still ahead: minutes before leave-by, and when it's due.
+    static func dueTimes(leaveBy: Date, offsets: [Int], now: Date = .now) -> [(minutes: Int, due: Date)] {
+        Set(offsets).sorted(by: >).compactMap { minutes in
+            let due = leaveBy.addingTimeInterval(-Double(minutes) * 60)
+            return due > now ? (minutes, due) : nil
+        }
+    }
+
+    /// "Leave by 5:48 · 32 min drive (5 min worse than planned)", or "Leave now · …" once leave-by
+    /// is within a minute.
+    static func message(leaveBy: Date, travelSeconds: TimeInterval, bedtimeSeconds: TimeInterval?, now: Date = .now) -> String {
+        let minutes = Int((travelSeconds / 60).rounded())
+        let head = leaveBy <= now.addingTimeInterval(60) ? "Leave now" : "Leave by \(WakePlanner.format(leaveBy))"
+        var text = "\(head) · \(minutes) min drive"
+        if let bedtimeSeconds {
+            let change = Int(((travelSeconds - bedtimeSeconds) / 60).rounded())
+            if change >= 3 { text += " (\(change) min worse than planned)" }
+            if change <= -3 { text += " (\(-change) min lighter than planned)" }
+        }
+        return text
+    }
+
+    /// The fallback notifications, one per reminder still ahead, with the trip's current figures.
+    func schedule(_ trip: PendingTrip, offsets: [Int]) async {
+        var trip = trip
+        if trip.bedtimeTravelSeconds == nil { trip.bedtimeTravelSeconds = trip.plannedTravelSeconds }
         pendingTrip = trip
-        center.removePendingNotificationRequests(withIdentifiers: [Self.requestID])
+        await removePending()
         guard (try? await center.requestAuthorization(options: [.alert, .sound])) == true else { return }
-
-        // Traffic rechecked in the morning can pull leave-by inside the lead time: say so now.
-        guard trip.leaveBy > .now else { return }
-        let fireAt = max(trip.leaveBy.addingTimeInterval(-Double(leadMinutes) * 60), Date.now.addingTimeInterval(5))
-
-        let content = UNMutableNotificationContent()
-        content.title = "Leave by \(WakePlanner.format(trip.leaveBy))"
-        let minutes = Int((trip.plannedTravelSeconds / 60).rounded())
-        content.body = [
-            "\(trip.title) at \(WakePlanner.format(trip.start)), \(minutes) min drive.",
-            note,
-        ].compactMap { $0 }.joined(separator: " ")
-        content.sound = .default
-
-        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: fireAt.timeIntervalSinceNow, repeats: false)
-        try? await center.add(UNNotificationRequest(identifier: Self.requestID, content: content, trigger: trigger))
+        let checked = trip.checkedAt.map { "Drive checked at \(WakePlanner.format($0)); not re-checked since." } ?? "Not re-checked."
+        for (minutes, due) in Self.dueTimes(leaveBy: trip.leaveBy, offsets: offsets) {
+            let content = UNMutableNotificationContent()
+            content.title = Self.message(leaveBy: trip.leaveBy, travelSeconds: trip.plannedTravelSeconds, bedtimeSeconds: trip.bedtimeTravelSeconds, now: due)
+            content.body = "\(trip.title) at \(WakePlanner.format(trip.start)). \(checked)"
+            content.sound = .default
+            let fireAt = max(due.addingTimeInterval(Self.fallbackDelay), Date.now.addingTimeInterval(5))
+            let trigger = UNTimeIntervalNotificationTrigger(timeInterval: fireAt.timeIntervalSinceNow, repeats: false)
+            try? await center.add(UNNotificationRequest(identifier: "\(Self.requestPrefix)-\(minutes)", content: content, trigger: trigger))
+        }
     }
 
     func clear() {
         pendingTrip = nil
-        center.removePendingNotificationRequests(withIdentifiers: [Self.requestID])
+        Task { await removePending() }
     }
 
-    /// Re-asks the drive-time service now that it's morning and moves the reminder.
-    func recheck(using provider: DriveTimeProvider, origin: MKMapItem, travel: TravelTimeService, leadMinutes: Int) async {
-        guard var trip = pendingTrip, trip.arriveBy > .now else { return }
-        let coordinates = trip.latitude.flatMap { lat in trip.longitude.map { CLLocation(latitude: lat, longitude: $0) } }
-        guard let destination = try? await travel.destination(locationText: trip.location, coordinates: coordinates),
-              let fresh = try? await provider.drivingTime(from: origin, to: destination, arrivingBy: trip.arriveBy) else { return }
+    private func removePending() async {
+        let ids = await center.pendingNotificationRequests().map(\.identifier).filter { $0.hasPrefix(Self.requestPrefix) }
+        center.removePendingNotificationRequests(withIdentifiers: ids)
+    }
 
-        let change = Int(((fresh - trip.plannedTravelSeconds) / 60).rounded())
-        let note: String? = switch change {
-        case 3...: "Traffic is \(change) min worse than planned."
-        case ...(-3): "Traffic is \(-change) min lighter than planned."
-        default: nil
+    /// Re-asks the drive-time service and moves the reminders still ahead. With `notify` (Check
+    /// drive and remind), also notifies now and drops the fallback for the reminder that's due.
+    /// Returns the updated trip, or nil when there's nothing to check.
+    @discardableResult
+    func recheck(using provider: DriveTimeProvider, origin: MKMapItem, travel: TravelTimeService, offsets: [Int], notify: Bool = false) async -> PendingTrip? {
+        guard var trip = pendingTrip, Date.now < trip.leaveBy.addingTimeInterval(Self.tail) else { return nil }
+        let coordinates = trip.latitude.flatMap { lat in trip.longitude.map { CLLocation(latitude: lat, longitude: $0) } }
+        if let destination = try? await travel.destination(locationText: trip.location, coordinates: coordinates),
+           let fresh = try? await provider.drivingTime(from: origin, to: destination, arrivingBy: trip.arriveBy) {
+            if trip.bedtimeTravelSeconds == nil { trip.bedtimeTravelSeconds = trip.plannedTravelSeconds }
+            trip.plannedTravelSeconds = fresh
+            trip.checkedAt = .now
+        } else if !notify {
+            return nil
         }
-        trip.plannedTravelSeconds = fresh
-        await schedule(trip, leadMinutes: leadMinutes, note: note)
+        // A reminder due within the fallback delay is the one this check stands in for.
+        let ahead = Self.dueTimes(leaveBy: trip.leaveBy, offsets: offsets, now: Date.now.addingTimeInterval(Self.fallbackDelay)).map(\.minutes)
+        await schedule(trip, offsets: ahead)
+        if notify {
+            let content = UNMutableNotificationContent()
+            content.title = Self.message(leaveBy: trip.leaveBy, travelSeconds: trip.plannedTravelSeconds, bedtimeSeconds: trip.bedtimeTravelSeconds)
+            content.body = "\(trip.title) at \(WakePlanner.format(trip.start))." + (trip.checkedAt == nil ? " Couldn't re-check the drive." : "")
+            content.sound = .default
+            try? await center.add(UNNotificationRequest(identifier: "leave-check-now", content: content, trigger: nil))
+        }
+        return trip
     }
 }

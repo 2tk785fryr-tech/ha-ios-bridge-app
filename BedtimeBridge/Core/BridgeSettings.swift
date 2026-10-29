@@ -113,8 +113,42 @@ struct BridgeSettings: Codable, Equatable {
     var alarmSound: AlarmSound = .standard
     /// Tonight offers "Up before the alarms?" from this many hours before the first one.
     var endAlarmsEarlyHours = 2
-    /// Item 3: why a morning changed, picked when moving or cancelling its alarms.
-    var morningChangeReasons = ["Snow delay", "Canceled", "Postponed", "Not feeling well", "Tired", "Other"]
+    /// Why a morning changed, each with what it moves (v0.4.1 item 7). New reasons ask.
+    var morningReasons: [MorningReason] = [
+        MorningReason(name: "Snow delay", scope: .wakeUp),
+        MorningReason(name: "Canceled", scope: .ask),
+        MorningReason(name: "Postponed", scope: .wakeUp),
+        MorningReason(name: "Not feeling well", scope: .ask),
+        MorningReason(name: "Tired", scope: .alarms),
+        MorningReason(name: "Other", scope: .ask),
+    ]
+    /// Shift alarms only: the early backstop moves to this long after the new last alarm when
+    /// it would otherwise come before it.
+    var earlyBackstopGapMinutes = 5
+
+    // MARK: Your own alarm's backstops (v0.4.1 item 14)
+
+    /// Whether your own alarm on a day off, or on leave, starts with backstops on.
+    var ownBackstopsDayOff = false
+    var ownBackstopsLeave = false
+    /// Minutes after the LAST alarm.
+    var ownEarlyMinutes = 15
+    var ownDeadlineMinutes = 30
+    var ownLateMinutes = 45
+    /// Full backstop actions instead of the gentle ones (push and early light ramp).
+    var ownBackstopsFull = false
+
+    // MARK: Wake at a different time (v0.4.1 item 18)
+
+    /// The default time (6 hours from now) rounds UP to this many minutes; 0 is exact.
+    var ownAlarmRoundingMinutes = 15
+    /// The time picker only offers that interval (otherwise any minute).
+    var ownAlarmPickerSnaps = true
+    var ownAlarmCount = 3
+    var ownAlarmSpacingMinutes = 10
+    var ownAlarmWakeIs: WakeTimeAlarm = .first
+
+    var ownOffsetsValid: Bool { 0 <= ownEarlyMinutes && ownEarlyMinutes < ownDeadlineMinutes && ownDeadlineMinutes < ownLateMinutes }
     /// App alarms only: what Stop does to the rest of the series. Default keeps them until
     /// Home Assistant confirms you're up: stopping the first alarm and falling back asleep is
     /// exactly how Wake Deadline Backstop came to exist.
@@ -175,10 +209,28 @@ struct BridgeSettings: Codable, Equatable {
     var leaveReminderEnabled = true
     /// Notify about "wake up" appointments with no location (answer from the notification).
     var askAboutMissingLocations = true
-    /// Notification this many minutes before leave-by time.
+    /// Notification this many minutes before leave-by time (v0.4; Home Assistant's copy).
     var leaveReminderLeadMinutes = 15
+    /// Leave reminders, minutes before leave-by; 0 is at leave time (v0.4.1 item 17).
+    var leaveReminderOffsets = [15, 0]
+    static let leaveReminderChoices = [0, 5, 10, 15, 20, 25, 30]
     /// The Lock Screen widget keeps showing leave-by this long after it, once the alarms are done.
     var widgetLeaveByMinutes = 30
+}
+
+extension BridgeSettings {
+    /// The settings a plan depends on (shifts, alarm series, timings, drive, weather, calendars,
+    /// home), so Tonight can tell the plan changed after the alarms were set (v0.4.1 item 10).
+    var planFingerprint: String {
+        let parts: [Any] = [
+            (try? JSONEncoder().encode(shiftRules)).map { String(decoding: $0, as: UTF8.self) } ?? "",
+            alarmCount, alarmSpacingMinutes, wakeTimeIs.rawValue, getReadyMinutes, arrivalBufferMinutes,
+            workArrivalBufferMinutes, homeAddress, driveTimeSource.rawValue, weatherExtraMinutes,
+            badWeatherConditions.sorted(), weatherConditionMinutes.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" },
+            shiftCalendarIDs.sorted(), appointmentCalendarIDs.sorted(), alarmStyle.rawValue,
+        ]
+        return parts.map { "\($0)" }.joined(separator: "|")
+    }
 }
 
 enum WakeTimeAlarm: String, Codable, CaseIterable, Identifiable {
@@ -241,6 +293,32 @@ enum AlarmSound: String, Codable, CaseIterable, Identifiable {
 
     /// The bundled file, or nil for the system sound.
     var fileName: String? { self == .standard ? nil : "\(rawValue).caf" }
+}
+
+/// What a change this morning moves (v0.4.1 item 7).
+enum MorningChangeScope: String, Codable, CaseIterable, Identifiable {
+    /// Sleep longer, same start: only the alarms (the early backstop follows them).
+    case alarms
+    /// The start is later (a snow delay): alarms, leave-by and all three backstops.
+    case wakeUp = "wake_up"
+    /// Ask each time.
+    case ask
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .alarms: "Shift alarms only"
+        case .wakeUp: "Shift entire wake-up"
+        case .ask: "Ask"
+        }
+    }
+}
+
+struct MorningReason: Codable, Equatable, Hashable, Identifiable {
+    var id = UUID()
+    var name: String
+    var scope: MorningChangeScope = .ask
 }
 
 enum AlarmStyle: String, Codable, CaseIterable, Identifiable {

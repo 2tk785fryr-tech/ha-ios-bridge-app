@@ -31,10 +31,11 @@ class BridgeSensorDescription(SensorEntityDescription):
     value: Callable[[dict[str, Any]], Any]
     attributes: Callable[[dict[str, Any]], dict[str, Any]] | None = None
     available: Callable[[dict[str, Any]], bool] | None = None
+    bridge_attributes: Callable[[Any], dict[str, Any]] | None = None
 
 
 LADDER_STATUSES = [
-    "armed", "done", "idle_override_off", "idle_leave", "idle_uncovered", "idle_no_shift", "fault",
+    "armed", "done", "idle_override_off", "idle_leave", "idle_uncovered", "idle_no_shift", "idle_own_off", "fault",
 ]
 
 
@@ -52,6 +53,9 @@ def _rung_attributes(s: dict[str, Any]) -> dict[str, Any]:
         "shift_start": ladder.get("shift_start"),
         "appointment": ladder.get("appointment"),
         "appointment_start": ladder.get("appointment_start"),
+        "replaces_shift": ladder.get("replaces_shift"),
+        # Your own alarm (item 14): how the backstop should fire, gentle or full.
+        "firing": ladder.get("firing"),
         "delay_minutes": ladder.get("delay_minutes", 0),
         "changed_by": ladder.get("changed_by"),
         "reason": ladder.get("change_reason"),
@@ -165,6 +169,8 @@ SENSORS = (
             "morning": _ladder(s).get("shift_start") or _ladder(s).get("appointment_start"),
             "next_rung": _next_rung(s),
         },
+        # The house backstop's own times (old template until the cutover) come from the bridge.
+        bridge_attributes=lambda bridge: {"house_backstop": bridge.house_backstop()},
     ),
     BridgeSensorDescription(
         key="last_event",
@@ -179,6 +185,9 @@ SENSORS = (
             "last_command": s.get("last_command"),
             # Item 3: the last morning change, with its reason, for tracking.
             "last_morning_change": s.get("last_morning_change"),
+            # v0.4.1 item 1: how the last stop was decided, and alarms the phone couldn't set.
+            "last_stop": s.get("last_stop"),
+            "alarms_missing": s.get("alarms_missing"),
         },
     ),
 )
@@ -210,4 +219,7 @@ class BridgeSensor(BedtimeBridgeEntity, SensorEntity):
     def extra_state_attributes(self) -> dict[str, Any] | None:
         if self.entity_description.attributes is None:
             return None
-        return self.entity_description.attributes(self.bridge.state)
+        attributes = self.entity_description.attributes(self.bridge.state)
+        if self.entity_description.bridge_attributes:
+            attributes |= self.entity_description.bridge_attributes(self.bridge)
+        return attributes

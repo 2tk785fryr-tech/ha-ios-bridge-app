@@ -100,8 +100,7 @@ async def test_while_snoozing_only_the_ramp_is_undone(hass, ladder, hass_client_
     assert hass.states.get("input_boolean.wake_fade").state == "off"
     assert hass.states.get("input_boolean.bedtime_routine").state == "off"
     assert "RUN_BACK_TO_BED" not in [c.data["message"] for c in notify]
-    assert hass.states.get("sensor.bedtime_bridge_snooze_count").state == "0", "old series' count cleared"
-    assert hass.states.get("sensor.bedtime_bridge_snoozes_last_morning").state == "1"
+    assert hass.states.get("sensor.bedtime_bridge_snooze_count").state == "1", "still the same morning (v0.4.1 item 5)"
     assert rungs(hass) == ["05:25", "05:40", "05:55"]
 
 
@@ -127,3 +126,151 @@ async def test_context_reply_has_the_ladder_and_curtain_time(hass, ladder, hass_
     assert reply["ladder"]["shift_start"]
     # Sunrise moved to the first alarm's own day (28th), plus 15 minutes.
     assert dt_util.as_local(dt_util.parse_datetime(reply["curtains_open_at"])).strftime("%d %H:%M") == "28 07:36"
+
+
+async def test_fewer_alarms_set_than_planned_is_reported(hass, ladder, hass_client_no_auth):
+    """v0.4.1 item 1: the phone sends what AlarmKit really holds."""
+    await ladder()
+    events = async_capture_events(hass, "bedtime_bridge")
+    await send(hass_client_no_auth, change(local("05:00"), delay=30, alarms_planned=3))
+    await hass.async_block_till_done()
+    missing = [e.data for e in events if e.data["type"] == "alarms_missing"]
+    assert missing == [{"type": "alarms_missing", "set": 1, "planned": 3}]
+    assert hass.states.get("sensor.bedtime_bridge_last_event").attributes["alarms_missing"]["set"] == 1
+
+    await send(hass_client_no_auth, change(local("05:00"), local("05:05"), local("05:10"), delay=30, alarms_planned=3))
+    await hass.async_block_till_done()
+    assert hass.states.get("sensor.bedtime_bridge_last_event").attributes["alarms_missing"] is None
+
+
+async def test_each_stop_records_how_it_was_decided(hass, ladder, hass_client_no_auth):
+    await ladder()
+    await send(hass_client_no_auth, {"type": "stopped", "data": {
+        "all": False, "up": False, "stop_behavior": "keepUntilUp", "alarm_times": [local("04:50").isoformat()],
+    }})
+    await hass.async_block_till_done()
+    last = hass.states.get("sensor.bedtime_bridge_last_event").attributes["last_stop"]
+    assert last["all"] is False and last["up"] is False and last["alarms_left"] == 1
+    await send(hass_client_no_auth, {"type": "stopped", "data": {"all": True, "alarm_times": []}})
+    await hass.async_block_till_done()
+    assert hass.states.get("sensor.bedtime_bridge_last_event").attributes["last_stop"]["all"] is True
+
+
+async def test_change_from_the_snooze_screen_after_a_stop_goes_back_to_bed(hass, ladder, hass_client_no_auth):
+    """v0.4.1 item 2 (28 Oct): stop, then snooze, then change from the snooze screen."""
+    await helpers(hass)
+    notify = async_mock_service(hass, "notify", "mobile_app_test")
+    await ladder(bedtime_helper="input_boolean.bedtime_routine", sleep_in_helper="input_boolean.sleep_in", **COMMANDS)
+    await send(hass_client_no_auth, {"type": "stopped", "data": {"alarm_times": [local("04:30").isoformat()]}})
+    await send(hass_client_no_auth, {"type": "snoozed", "data": {"rings_again": local("04:39").isoformat()}})
+    await send(hass_client_no_auth, change(local("04:50"), local("04:55"), local("05:00"), delay=30, phase="snoozing"))
+    await hass.async_block_till_done()
+    assert hass.states.get("input_boolean.bedtime_routine").state == "on"
+    assert "RUN_BACK_TO_BED" in [c.data["message"] for c in notify]
+    last = hass.states.get("sensor.bedtime_bridge_last_event").attributes["last_morning_change"]
+    assert last["phase"] == "up"
+
+
+async def test_shift_alarms_only_keeps_deadline_and_late_and_moves_early_past_the_last_alarm(hass, ladder, hass_client_no_auth):
+    """v0.4.1 item 7 (28 Oct): Tired, +30 → 4:50/4:55/5:00; early 4:55 → 5:05, deadline/late stay."""
+    await ladder()
+    await send(hass_client_no_auth, change(local("04:50"), local("04:55"), local("05:00"), delay=30, scope="alarms"))
+    await hass.async_block_till_done()
+    assert rungs(hass) == ["05:05", "05:10", "05:25"]
+    assert hass.states.get("sensor.bedtime_bridge_last_event").attributes["last_morning_change"]["scope"] == "alarms"
+
+
+async def test_shift_alarms_only_past_the_late_backstop_is_refused(hass, ladder, hass_client_no_auth):
+    await ladder()
+    events = async_capture_events(hass, "bedtime_bridge")
+    client = await hass_client_no_auth()
+    response = await client.post("/api/webhook/test_webhook", json=change(local("05:20"), local("05:30"), delay=60, scope="alarms"))
+    reply = await response.json()
+    await hass.async_block_till_done()
+    assert "after the late backstop" in reply["error"]
+    assert rungs(hass) == ["04:55", "05:10", "05:25"], "nothing moves"
+    assert hass.states.get("sensor.bedtime_bridge_next_alarm").state == "unknown"
+    assert events[-1].data["type"] == "morning_change_refused"
+
+
+async def test_shift_entire_wake_up_moves_all_three(hass, ladder, hass_client_no_auth):
+    await ladder()
+    await send(hass_client_no_auth, change(local("06:20"), local("06:25"), local("06:30"), delay=120, scope="wake_up"))
+    await hass.async_block_till_done()
+    assert rungs(hass) == ["06:55", "07:10", "07:25"]
+
+
+async def test_context_reports_what_the_house_backstop_reads(hass, ladder, hass_client_no_auth):
+    """v0.4.1 item 8: until the cutover the house backstop fires on sensor.wake_rung_*."""
+    for rung, hhmm in (("early", "04:55"), ("deadline", "05:10"), ("late", "05:25")):
+        hass.states.async_set(f"sensor.wake_rung_{rung}", local(hhmm).astimezone(dt_util.UTC).isoformat())
+    await ladder()
+    reply = await send(hass_client_no_auth, {"type": "context", "data": {}})
+    house = reply["ladder"]["house_backstop"]
+    assert house["source"] == "old"
+    assert dt_util.as_local(dt_util.parse_datetime(house["times"]["deadline"])).strftime("%H:%M") == "05:10"
+    status = hass.states.get("sensor.bedtime_bridge_ladder_status").attributes["house_backstop"]
+    assert status["source"] == "old"
+
+
+async def test_context_says_when_the_plan_is_out_of_date(hass, ladder, hass_client_no_auth):
+    """v0.4.1 item 10: Tonight brings the button back as "Plan changed: update alarms"."""
+    await ladder()
+    reply = await send(hass_client_no_auth, {"type": "context", "data": {}})
+    assert reply["plan_outdated"] is False
+
+
+async def test_sleep_later_before_bed_changes_nothing_in_the_house(hass, ladder, hass_client_no_auth):
+    """v0.4.1 item 12: phase bedtime, scope alarms."""
+    await helpers(hass)
+    notify = async_mock_service(hass, "notify", "mobile_app_test")
+    hass.states.async_set("automation.wake_deadline_backstop", "on")
+    restarts = async_mock_service(hass, "automation", "turn_off")
+    await ladder(bedtime_helper="input_boolean.bedtime_routine", **COMMANDS)
+    await send(hass_client_no_auth, change(local("04:50"), local("04:55"), local("05:00"), delay=30, scope="alarms", phase="bedtime"))
+    await hass.async_block_till_done()
+    assert hass.states.get("input_boolean.bedtime_routine").state == "off"
+    assert not [c for c in notify if c.data["message"] == "RUN_BACK_TO_BED"]
+    assert not restarts, "nothing running to stop"
+    assert rungs(hass) == ["05:05", "05:10", "05:25"]
+
+    # Back to planned alarms: the early backstop goes back too.
+    await send(hass_client_no_auth, change(local("04:20"), local("04:25"), local("04:30"), delay=-30, scope="alarms", phase="bedtime"))
+    await hass.async_block_till_done()
+    assert rungs(hass) == ["04:55", "05:10", "05:25"]
+
+
+async def test_an_edit_is_alarms_only_and_keeps_the_wake_routine_once(hass, ladder, hass_client_no_auth):
+    """v0.4.1 item 13: changed_by edit, nothing in the house, deadline/late never move."""
+    await helpers(hass)
+    notify = async_mock_service(hass, "notify", "mobile_app_test")
+    await ladder(bedtime_helper="input_boolean.bedtime_routine", **COMMANDS)
+    await send(hass_client_no_auth, {"type": "stopped", "data": {"alarm_times": [local("04:30").isoformat()]}})
+    await send(hass_client_no_auth, change(local("04:30"), local("05:00"), delay=30, scope="alarms", phase="edit", changed_by="edit"))
+    await send(hass_client_no_auth, {"type": "stopped", "data": {"alarm_times": [local("05:00").isoformat()]}})
+    await hass.async_block_till_done()
+    assert rungs(hass) == ["05:05", "05:10", "05:25"]
+    assert hass.states.get("input_boolean.bedtime_routine").state == "off"
+    assert [c.data["message"] for c in notify].count("RUN_GOOD_MORNING") == 1, "an edit is the same wake-up"
+
+
+async def test_an_edit_that_ends_the_snooze_fades_the_bedroom_down(hass, ladder, hass_client_no_auth):
+    """v0.4.1 item 13: moving the only snoozing alarm later ends its snooze."""
+    await helpers(hass)
+    await ladder()
+    await send(hass_client_no_auth, {"type": "snoozed", "data": {"rings_again": local("04:34").isoformat()}})
+    await hass.async_block_till_done()
+    assert hass.states.get("input_boolean.wake_fade").state == "on"
+    await send(hass_client_no_auth, change(local("04:50"), local("04:55"), local("05:00"), scope="alarms", phase="edit",
+                                           changed_by="edit", snooze_ended=True))
+    await hass.async_block_till_done()
+    assert hass.states.get("input_boolean.wake_fade").state == "off"
+
+
+async def test_an_edit_while_another_alarm_still_snoozes_leaves_the_fade(hass, ladder, hass_client_no_auth):
+    await helpers(hass)
+    await ladder()
+    await send(hass_client_no_auth, {"type": "snoozed", "data": {"rings_again": local("04:34").isoformat()}})
+    await send(hass_client_no_auth, change(local("04:34"), local("05:00"), scope="alarms", phase="edit", changed_by="edit"))
+    await hass.async_block_till_done()
+    assert hass.states.get("input_boolean.wake_fade").state == "on"

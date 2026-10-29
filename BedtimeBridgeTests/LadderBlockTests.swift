@@ -59,4 +59,20 @@ final class LadderBlockTests: XCTestCase {
         XCTAssertEqual(minutes?["freezing"], 15)
         XCTAssertEqual(plan.ladderBlock(settings: settings)["type"] as? String, "none")
     }
+
+    /// v0.4.1 item 14: your own alarm carries type own, on/off, offsets and firing.
+    func testOwnAlarmBlock() {
+        var settings = BridgeSettings()
+        settings.ownBackstopsFull = false
+        let wake = hours(8)
+        var plan = WakePlan(source: .manual, wakeTime: wake, alarmTimes: [wake.addingTimeInterval(-600), wake], reason: "Day off alarm")
+        let off = plan.ladderBlock(settings: settings)
+        XCTAssertEqual(off["type"] as? String, "own")
+        XCTAssertEqual(off["on"] as? Bool, false, "off by default")
+        XCTAssertEqual(off["last_alarm"] as? String, iso.string(from: wake))
+        XCTAssertEqual(off["offsets"] as? [String: Int], ["early": 15, "deadline": 30, "late": 45])
+        XCTAssertEqual(off["firing"] as? String, "gentle")
+        plan.ownBackstops = true
+        XCTAssertEqual(plan.ladderBlock(settings: settings)["on"] as? Bool, true)
+    }
 }

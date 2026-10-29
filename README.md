@@ -223,8 +223,26 @@ a shift, Tonight warns you and offers a one-tap earlier wake-up for that night. 
 *Wake early enough to get ready* and shift alarms move earlier by themselves.
 
 **Is it set?** The Tonight card says **Preview, not set yet** until alarms are actually
-scheduled, then **✓ 3 alarms set**. The Lock Screen widget shows the same count
-("3 alarms set · Leave by 6:26").
+scheduled, then shows what the phone really holds, read back from the system: **3 alarms set ·
+4:20 4:25 4:30**, or **Couldn't set 1 of 3 alarms** in red. The Lock Screen widget shows the same
+count ("3 alarms set · Leave by 6:26").
+
+**New in v0.4.1:**
+- **Change this morning** asks the reason first, then whether to shift just the alarms or the
+  entire wake-up (snow delay). The confirm screen shows the backstops before and after, and choices
+  past the late backstop are off.
+- **Sleep later** from Tonight before bed moves the alarms later, with **Back to planned**.
+- **Edit alarms:** move, add or remove any single alarm once they're set, including one that's
+  snoozing. Moving or removing it ends its snooze. If nothing is still snoozing, the bedroom fades
+  back down.
+- **Your morning** on the main screen shows the three house backstops and where their times come
+  from.
+- **Wake at a different time** (day off, skip) rounds its default time, then shows a preview where
+  you can add an alarm before, between or after the others and edit the backstops. Your own alarm's
+  backstops are off by default on days off and leave, with a switch.
+- A **"wake up" appointment** on a work morning replaces the shift's alarms when it starts before
+  the shift ends. Settings → Appointments explains the keyword and lists what's marked.
+- The reason line reads in plain words ("Reason for alarm: Days shift").
 
 ## Home Assistant integration (recommended)
 
@@ -331,6 +349,7 @@ automation (iOS 27) runs the matching shortcut:
 | `RUN_BACK_TO_BED` | *Back to bed* after you're up (moving or cancelling this morning's alarms) | Back To Bed - App: MorningState back to sleeping, arm stay, Sleep Focus on |
 | `RUN_GOOD_MORNING` | The first stop of a wake-up while you're home (Wake Mike too runs once per wake-up) | Good Morning (curtains, house alarm, briefing) |
 | `RUN_BEDTIME` | Back in bed after *Not going to sleep yet* (and the existing bedtime nudge) | The bedtime shortcut |
+| `RUN_LEAVE_CHECK` | Each leave reminder, while you're home (v0.4.1) | Bedtime Bridge **Check Drive and Remind** (no shortcut needed) |
 
 Set each automation to *Run Immediately* and match on the message containing the marker.
 
@@ -450,10 +469,15 @@ see Clock snoozes. The app and widget share data through the App Group
 
 ## Leave-by reminder and bad weather
 
-- **Leave-by reminder.** On appointment mornings you get a notification 15 min (adjustable)
-  before leave-by. When you stop an app alarm, the app re-asks the drive-time service with that
-  morning's traffic and moves the reminder ("Traffic is 8 min worse than planned"). In Clock
-  mode it stays at the bedtime estimate.
+- **Leave reminders.** On shift and appointment mornings you get a reminder at each time you pick
+  in Settings → Leave-by reminder → Leave reminders (any of at leave time, 5 to 30 min before;
+  default 15 min before and at leave time). Each one re-checks the drive with current traffic:
+  Home Assistant sends `RUN_LEAVE_CHECK`, and **Check Drive and Remind** notifies ("Leave by 5:48 ·
+  32 min drive (5 min worse than planned)", "Leave now · 35 min drive"). Later reminders, the
+  widget and the backstops (earlier only) follow the new leave-by. The app also re-checks when you
+  stop an alarm and when you open it that morning. Without Home Assistant the bedtime reminders
+  still arrive, 2 min after each time, marked "not re-checked". They stop once you've left, 15 min
+  after leave-by, or when the morning is changed or skipped.
 - **Bad weather.** Uses an hourly forecast, from Home Assistant (`weather.forecast_home`) or
   the free **Open-Meteo** service (Settings → Bad weather → *Forecast from*). Each condition can
   use the default extra time, its own amount (snow: 30 min), or be off. It reads the forecast
@@ -493,6 +517,7 @@ them; re-render after editing a design.
 | **Start Bedtime Routine** | Turns on the bedtime helper through the integration, only if you're home. Returns *Started*. |
 | **Report Alarm Event** | For Clock app mode: reports a snooze or stop so the home check applies. |
 | **Report Shortcut Ran** | Last step of a shortcut a [phone command](#phone-commands) runs, so Home Assistant clears that command's notification. |
+| **Check Drive and Remind** | Run by the `RUN_LEAVE_CHECK` automation: re-checks this morning's drive, notifies when to leave, tells Home Assistant the new leave-by. |
 | **Get Drive Time** | Drive minutes from home to a place, arriving by a given time. Useful in other shortcuts. |
 
 ## Alarm cause

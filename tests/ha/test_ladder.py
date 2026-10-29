@@ -337,3 +337,164 @@ async def test_no_shift_sensor_at_all_is_a_fault(hass, ladder):
     await ladder()
     assert status(hass) == "fault"
     assert rungs(hass) is None
+
+
+async def test_after_an_appointment_morning_with_no_covered_shift_the_status_is_idle_not_done(hass, ladder, hass_client_no_auth, freezer):
+    """v0.4.1 item 19: a day off before Swings must not read "done" all day."""
+    shift_sensor(hass, start="2026-10-30T14:00:00-04:00", shift="Swings")
+    await ladder()
+    await send(hass_client_no_auth, plan(local("09:00").isoformat(), kind="appointment", appointment="Dentist",
+                                         appointment_start=local("09:40").isoformat()))
+    await hass.async_block_till_done()
+    assert status(hass) == "armed"
+    freezer.move_to(local("09:41"))  # late 08:40 + 60 min
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert status(hass) == "idle_uncovered"
+    assert rungs(hass) is None
+
+
+async def test_after_a_shift_morning_the_next_shift_arms_without_waiting_for_current_shift(hass, ladder, freezer):
+    """v0.4.1 item 19: current_shift still shows today's shift after late + 60."""
+    async def get_events(call):
+        start = dt_util.parse_datetime(str(call.data["start_date_time"]))
+        if start.date().isoformat() >= "2026-10-28":
+            return {CALENDAR: {"events": [{"summary": "Days", "start": "2026-10-29T06:30:00-04:00", "end": "2026-10-29T19:00:00-04:00"}]}}
+        return {CALENDAR: {"events": [{"summary": "Days", "start": "x", "end": "y"}]}}
+
+    hass.services.async_register("calendar", "get_events", get_events, supports_response=SupportsResponse.ONLY)
+    await ladder()
+    assert rungs(hass) == ["04:55", "05:10", "05:25"]
+    freezer.move_to(local("06:26"))  # late 05:25 + 60 min; current_shift unchanged
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert status(hass) == "armed"
+    assert dt_util.as_local(dt_util.parse_datetime(attrs(hass)["shift_start"])).day == 29
+    assert rungs(hass) == ["04:55", "05:10", "05:25"]
+
+
+async def test_after_a_shift_morning_with_nothing_ahead_the_status_says_so(hass, ladder, freezer):
+    async def get_events(call):
+        start = dt_util.parse_datetime(str(call.data["start_date_time"]))
+        if start.date().isoformat() >= "2026-10-28":
+            return {CALENDAR: {"events": []}}
+        return {CALENDAR: {"events": [{"summary": "Days", "start": "x", "end": "y"}]}}
+
+    hass.services.async_register("calendar", "get_events", get_events, supports_response=SupportsResponse.ONLY)
+    await ladder()
+    freezer.move_to(local("06:26"))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert status(hass) == "idle_no_shift"
+
+
+async def test_a_marked_appointment_replacing_the_shift_gets_the_ladder(hass, ladder, hass_client_no_auth):
+    """v0.4.1 item 11: going in late for a 7:00 ultrasound on a Days morning."""
+    await ladder()
+    await send(hass_client_no_auth, plan(local("06:35").isoformat(), kind="appointment", appointment="Ultrasound",
+                                         appointment_start=local("07:00").isoformat(), replaces_shift="Days"))
+    await hass.async_block_till_done()
+    assert rungs(hass) == ["05:45", "06:00", "06:15"], "the appointment's leave-by, not the shift's 05:45"
+    assert attrs(hass)["replaces_shift"] == "Days"
+    assert attrs(hass)["appointment"] == "Ultrasound"
+
+
+def own_plan(last: str, on: bool, **extra) -> dict:
+    ladder = {"type": "own", "last_alarm": local(last).isoformat(), "on": on,
+              "offsets": {"early": 15, "deadline": 30, "late": 45}, "firing": "gentle", **extra}
+    return {"type": "planned", "data": {"alarm_cause": "automade", "alarm_times": [], "has_alarm": True, "ladder": ladder}}
+
+
+async def test_own_alarm_backstops_are_off_unless_switched_on(hass, ladder, hass_client_no_auth):
+    """v0.4.1 item 14: a day off, your own alarm at 8:00."""
+    shift_sensor(hass, start=None)
+    await ladder()
+    await send(hass_client_no_auth, own_plan("08:00", on=False))
+    await hass.async_block_till_done()
+    assert status(hass) == "idle_own_off"
+    assert rungs(hass) is None
+
+    await send(hass_client_no_auth, own_plan("08:00", on=True))
+    await hass.async_block_till_done()
+    assert rungs(hass) == ["08:15", "08:30", "08:45"], "after the last alarm"
+    assert attrs(hass)["firing"] == "gentle"
+
+
+async def test_own_alarm_offsets_that_cross_fall_back_to_the_defaults(hass, ladder, hass_client_no_auth):
+    shift_sensor(hass, start=None)
+    await ladder()
+    await send(hass_client_no_auth, own_plan("08:00", on=True, offsets={"early": 30, "deadline": 20, "late": 45}))
+    await hass.async_block_till_done()
+    assert rungs(hass) == ["08:15", "08:30", "08:45"]
+
+
+async def test_own_alarm_backstops_edited_in_the_preview(hass, ladder, hass_client_no_auth):
+    """v0.4.1 item 18: times edited (and one removed) in Wake at a different time's preview."""
+    shift_sensor(hass, start=None)
+    await ladder()
+    await send(hass_client_no_auth, own_plan("08:00", on=True, times={"early": local("08:20").isoformat(), "late": local("09:00").isoformat()}))
+    await hass.async_block_till_done()
+    early = hass.states.get("sensor.bedtime_bridge_ladder_early").state
+    assert dt_util.as_local(dt_util.parse_datetime(early)).strftime("%H:%M") == "08:20"
+    assert hass.states.get("sensor.bedtime_bridge_ladder_deadline").state == "unknown", "removed"
+    late = hass.states.get("sensor.bedtime_bridge_ladder_late").state
+    assert dt_util.as_local(dt_util.parse_datetime(late)).strftime("%H:%M") == "09:00"
+
+
+async def test_leave_checks_at_each_reminder_follow_a_new_leave_by(hass, ladder, hass_client_no_auth, freezer):
+    """v0.4.1 item 17: RUN_LEAVE_CHECK at 15 min before and at leave time; a fresh leave-by moves the rest."""
+    from pytest_homeassistant_custom_component.common import async_mock_service
+
+    notify = async_mock_service(hass, "notify", "mobile_app_test")
+    await ladder(notify_service="notify.mobile_app_test", phone_commands=True)
+    data = plan(local("05:45").isoformat())
+    data["data"]["leave_by"] = local("05:45").isoformat()
+    data["data"]["leave_reminders"] = [15, 0]
+    await send(hass_client_no_auth, data)
+    await hass.async_block_till_done()
+
+    pushes = lambda: [c.data["message"] for c in notify if c.data.get("message") == "RUN_LEAVE_CHECK"]  # noqa: E731
+    freezer.move_to(local("05:30"))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert pushes() == ["RUN_LEAVE_CHECK"]
+
+    # The phone's check: 10 min worse, leave by 05:35, so "at leave time" moves to 05:35.
+    await send(hass_client_no_auth, {"type": "leave_by", "data": {"leave_by": local("05:35").isoformat(), "drive_minutes": 45}})
+    freezer.move_to(local("05:35") + timedelta(seconds=30))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert pushes() == ["RUN_LEAVE_CHECK", "RUN_LEAVE_CHECK"]
+
+
+async def test_leave_checks_stop_once_youve_left(hass, ladder, hass_client_no_auth, freezer):
+    from pytest_homeassistant_custom_component.common import async_mock_service
+
+    notify = async_mock_service(hass, "notify", "mobile_app_test")
+    hass.states.async_set("person.me", "home")
+    await ladder(notify_service="notify.mobile_app_test", phone_commands=True, presence_entities=["person.me"])
+    data = plan(local("05:45").isoformat())
+    data["data"]["leave_by"] = local("05:45").isoformat()
+    data["data"]["leave_reminders"] = [15, 0]
+    await send(hass_client_no_auth, data)
+    hass.states.async_set("person.me", "not_home")
+    freezer.move_to(local("05:31"))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert not [c for c in notify if c.data.get("message") == "RUN_LEAVE_CHECK"]
+
+
+async def test_leave_checks_stop_when_the_morning_changes(hass, ladder, hass_client_no_auth, freezer):
+    from pytest_homeassistant_custom_component.common import async_mock_service
+
+    notify = async_mock_service(hass, "notify", "mobile_app_test")
+    await ladder(notify_service="notify.mobile_app_test", phone_commands=True)
+    data = plan(local("05:45").isoformat())
+    data["data"]["leave_by"] = local("05:45").isoformat()
+    data["data"]["leave_reminders"] = [15, 0]
+    await send(hass_client_no_auth, data)
+    await send(hass_client_no_auth, {"type": "skipped", "data": {}})
+    freezer.move_to(local("05:31"))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert not [c for c in notify if c.data.get("message") == "RUN_LEAVE_CHECK"]

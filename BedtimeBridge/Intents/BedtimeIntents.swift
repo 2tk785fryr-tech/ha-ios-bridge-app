@@ -192,6 +192,23 @@ struct GetDriveTimeIntent: AppIntent {
     }
 }
 
+/// Run by Home Assistant's RUN_LEAVE_CHECK push at each leave reminder (v0.4.1 item 17): a fresh
+/// drive time, a notification, and the new leave-by back to Home Assistant.
+struct CheckDriveAndRemindIntent: AppIntent {
+    static var title: LocalizedStringResource = "Check Drive and Remind"
+    static var description = IntentDescription(
+        "Re-checks this morning's drive with current traffic, notifies you when to leave, and tells Home Assistant the new leave-by. Run it from a \"When I receive a notification from Home Assistant\" automation for RUN_LEAVE_CHECK."
+    )
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        let settings = SettingsStore.shared.settings
+        await BedtimeCoordinator.shared.recheckDrive(notify: true, settings: settings)
+        await BedtimeCoordinator.shared.commandRan(PhoneCommand.leaveCheck.rawValue, settings: settings)
+        return .result()
+    }
+}
+
 /// Replaces the shortcut's HomeKit "turn on Bedtime Routine" step: Home Assistant runs the
 /// bedtime routine only if you're home.
 struct StartBedtimeRoutineIntent: AppIntent {
@@ -247,6 +264,7 @@ enum PhoneCommand: String, AppEnum {
     case goodMorning = "RUN_GOOD_MORNING"
     case bedtime = "RUN_BEDTIME"
     case backToBed = "RUN_BACK_TO_BED"
+    case leaveCheck = "RUN_LEAVE_CHECK"
 
     static var typeDisplayRepresentation: TypeDisplayRepresentation = "Phone Command"
     static var caseDisplayRepresentations: [PhoneCommand: DisplayRepresentation] = [
@@ -255,6 +273,7 @@ enum PhoneCommand: String, AppEnum {
         .goodMorning: "Good Morning (RUN_GOOD_MORNING)",
         .bedtime: "Bedtime (RUN_BEDTIME)",
         .backToBed: "Back to bed (RUN_BACK_TO_BED)",
+        .leaveCheck: "Leave check (RUN_LEAVE_CHECK)",
     ]
 }
 
