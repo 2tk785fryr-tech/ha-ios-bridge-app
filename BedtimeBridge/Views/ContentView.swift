@@ -146,6 +146,11 @@ struct ContentView: View {
                         } remove: { id in
                             coordinator.cancelTemporaryAlarm(id)
                             refreshScheduled()
+                        } move: { id, time in
+                            Task {
+                                try? await coordinator.moveTemporaryAlarm(id, to: time, settings: store.settings)
+                                refreshScheduled()
+                            }
                         }
                     }
 

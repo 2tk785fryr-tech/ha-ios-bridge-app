@@ -198,6 +198,14 @@ final class BedtimeCoordinator {
         return alarm
     }
 
+    /// A temporary alarm moved to a new time (snoozing or not), keeping its house-alarm choice.
+    func moveTemporaryAlarm(_ id: UUID, to time: Date, settings: BridgeSettings) async throws {
+        guard let alarm = temporaryAlarms.first(where: { $0.id == id }) else { return }
+        alarms.stop(id)
+        cancelTemporaryAlarm(id)
+        _ = try await setTemporaryAlarm(at: time, disarmHouse: alarm.disarmHouse, settings: settings)
+    }
+
     func cancelTemporaryAlarm(_ id: UUID) {
         alarms.cancel(id)
         temporaryAlarms = temporaryAlarms.filter { $0.id != id }

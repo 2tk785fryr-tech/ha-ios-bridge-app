@@ -94,6 +94,10 @@ struct TemporaryAlarmsCard: View {
     let alarms: [TemporaryAlarm]
     let add: () -> Void
     let remove: (UUID) -> Void
+    /// Change a temporary alarm's time (tap it).
+    var move: ((UUID, Date) -> Void)? = nil
+    @State private var moving: TemporaryAlarm?
+    @State private var newTime = Date.now
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -103,9 +107,18 @@ struct TemporaryAlarmsCard: View {
             ForEach(alarms) { alarm in
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(alarm.time.formatted(.dateTime.weekday(.abbreviated).hour().minute()))
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(Theme.text)
+                        Button {
+                            newTime = alarm.time
+                            moving = alarm
+                        } label: {
+                            Label(alarm.time.formatted(.dateTime.weekday(.abbreviated).hour().minute()), systemImage: "pencil")
+                                .labelStyle(.titleAndIcon)
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(Theme.text)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(move == nil)
+                        .accessibilityHint("Change this alarm's time")
                         Text(alarm.disarmHouse ? "Disarms, then re-arms when you're back in bed" : "House alarm stays armed")
                             .font(.footnote)
                             .foregroundStyle(Theme.textMuted)
@@ -128,5 +141,27 @@ struct TemporaryAlarmsCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .nightfallCard()
+        .sheet(item: $moving) { alarm in
+            NavigationStack {
+                SettingsPage(title: "Temporary alarm") {
+                    Section {
+                        DatePicker("Time", selection: $newTime, displayedComponents: .hourAndMinute)
+                    } footer: {
+                        Text(alarm.disarmHouse ? "Still disarms, then re-arms when you're back in bed." : "The house alarm stays armed.")
+                    }
+                }
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) { Button("Cancel") { moving = nil } }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Save") {
+                            move?(alarm.id, newTime)
+                            moving = nil
+                        }
+                    }
+                }
+            }
+            .presentationDetents([.medium])
+        }
     }
 }
