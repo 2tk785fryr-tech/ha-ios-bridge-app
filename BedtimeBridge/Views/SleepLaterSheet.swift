@@ -67,7 +67,7 @@ struct SleepLaterSheet: View {
                     HoldSlider(
                         label: "Slide and hold to sleep later",
                         holdLabel: { "Moving the alarms in \($0)…" },
-                        knobSymbol: "moon.zzz",
+                        knobSymbol: "clock.fill",
                         tint: Theme.accent,
                         onHold: confirm,
                         accessibilityHint: "Moves tonight's alarms later."

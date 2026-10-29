@@ -30,6 +30,8 @@ enum Theme {
     static let danger = Color(hex: 0xFCA5A5)
     /// A snoozing alarm's ring (v0.4.2 item 5).
     static let snoozing = Color(hex: 0xFDE047)
+    /// Protected actions in the bottom bar and ⋯ (v0.4.2 item 6).
+    static let amber = Color(hex: 0xFBBF24)
 }
 
 /// Sora (SIL Open Font License, Shared/Fonts/OFL.txt) for times and titles; body text stays

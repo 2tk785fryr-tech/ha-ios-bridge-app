@@ -11,6 +11,7 @@ struct EditAlarmsSheet: View {
     @State private var context: MorningContext?
     @State private var message: String?
     @State private var saving = false
+    @State private var attempt = 0
     private let coordinator = BedtimeCoordinator.shared
 
     private var late: Date? { context?.ladderArmed == true ? context?.backstops["late"] : nil }
@@ -42,13 +43,20 @@ struct EditAlarmsSheet: View {
                 if let shown = problem ?? message {
                     Section { Text(shown).font(.footnote).foregroundStyle(Theme.danger) }
                 }
+                // Saving is protected (v0.4.2 item 6): slide and hold, purple clock.
+                Section {
+                    HoldSlider(label: "Slide and hold to save", holdLabel: { "Saving in \($0)…" },
+                               knobSymbol: "clock.fill", tint: Theme.accent, onHold: save,
+                               accessibilityHint: "Saves the edited alarms.")
+                        .frame(height: 72)
+                        .id(attempt)
+                        .disabled(problem != nil || saving)
+                        .listRowBackground(Color.clear)
+                }
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { save() }.disabled(problem != nil || saving)
-                }
             }
             .task { context = await coordinator.morningContext(firstAlarm: nil, settings: settings) }
         }
@@ -64,6 +72,7 @@ struct EditAlarmsSheet: View {
             } catch {
                 message = error.localizedDescription
                 saving = false
+                attempt += 1
             }
         }
     }

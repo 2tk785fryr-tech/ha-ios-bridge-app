@@ -18,15 +18,23 @@ struct ContentView: View {
     @State private var morningEnd: MorningEnd?
     @State private var backToBed = false
     @State private var notReadyForBed = false
+    /// A protected action waiting for its slide-and-hold in the bottom bar (v0.4.2 item 6).
+    @State private var barSlider: BarAction?
+    @State private var menuOpen = false
+    @State private var showSettings = false
     @State private var sleepLater = false
     /// From Home Assistant for "Your morning" (v0.4.1 item 8); nil when it couldn't be reached.
     @State private var morningContext: MorningContext?
     @State private var morningContextLoaded = false
     @State private var sheet: Sheet?
 
-    private enum Sheet: String, Identifiable {
-        case temporary, dayOff, skipToTime, nap
-        var id: String { rawValue }
+    private enum Sheet: Identifiable {
+        case temporary, dayOff, skipToTime, nap, napChange, sleepLater, editAlarms
+        case changeMorning(MorningChangePhase)
+        var id: String {
+            if case .changeMorning(let phase) = self { return "changeMorning-\(phase.rawValue)" }
+            return String(describing: self)
+        }
     }
 
     private let coordinator = BedtimeCoordinator.shared
@@ -224,6 +232,18 @@ struct ContentView: View {
                 switch which {
                 case .temporary:
                     TemporaryAlarmSheet { time, disarm in setTemporary(time, disarmHouse: disarm) }
+                case .napChange:
+                    NapSheet(settings: settings, protected: true) { minutes in
+                        try? await coordinator.startNap(minutes: minutes, settings: store.settings)
+                        refreshScheduled()
+                    }
+                case .sleepLater:
+                    SleepLaterSheet(settings: store.settings, done: refreshScheduled)
+                case .editAlarms:
+                    EditAlarmsSheet(settings: store.settings, done: refreshScheduled)
+                case .changeMorning(let phase):
+                    let wake = coordinator.currentWake(settings: store.settings)
+                    ChangeMorningFlow(phase: phase, currentWake: wake ?? .now, wakeKnown: wake != nil, settings: store.settings, done: refreshScheduled)
                 case .nap:
                     NapSheet(settings: settings) { minutes in
                         do {
@@ -251,6 +271,7 @@ struct ContentView: View {
                     }
                 }
             }
+            .navigationDestination(isPresented: $showSettings) { SettingsView() }
             .fullScreenCover(item: $stoppingAlarm) { alarm in
                 let description = coordinator.stopDescription(for: alarm.id)
                 SlideToStopView(description: description, canEndAll: description.canEndAll,
@@ -323,46 +344,90 @@ struct ContentView: View {
         )
     }
 
-    private var actions: some View {
-        VStack(spacing: 10) {
-            let action = primaryAction
-            if let title = action.buttonTitle {
-                Button { run(schedule: true) } label: {
-                    HStack(spacing: 8) {
-                        if isWorking {
-                            ProgressView().tint(.white)
-                        } else {
-                            Image(systemName: "alarm")
-                        }
-                        Text(title)
-                    }
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity, minHeight: 56)
-                    .background(Theme.accent, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                }
-            } else {
-                VStack(spacing: 4) {
-                    SetStatus(status: coordinator.alarmStatus())
-                    if let note = action.note {
-                        Text(note).font(.footnote).foregroundStyle(Theme.textMuted)
-                    }
-                }
-                .frame(maxWidth: .infinity, minHeight: 56)
-            }
-            Button { run(schedule: false) } label: {
-                Text("Preview plan")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(Theme.accentText)
-                    .frame(maxWidth: .infinity, minHeight: 52)
-                    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Theme.border, lineWidth: 1))
-            }
+    /// The moment the bottom bar is for (v0.4.2 item 6).
+    private var barInputs: BottomBar.Inputs {
+        let now = Date.now
+        let snapshot = NextAlarmSnapshot.load()
+        let set = store.settings.alarmStyle == .app ? coordinator.setAlarmTimes() : []
+        var i = BottomBar.Inputs(now: now)
+        i.napUpAt = coordinator.napAlarms.first?.time
+        i.snoozing = morningBubbles.contains { if case .snoozing = $0.ring { true } else { false } }
+        i.snoozingUntil = snapshot.snoozedUntil
+        if !set.isEmpty, let title = primaryAction.buttonTitle {
+            i.plansChanged = title.hasPrefix("Calendar") ? "Calendar changed · re-plan"
+                : title.hasPrefix("Set the missing") ? "Alarm missing · re-set" : "Plan changed · re-plan"
         }
-        .disabled(isWorking)
+        i.alarmsSet = set.count
+        i.firstAlarm = (coordinator.alarmSeries.min() ?? set.first)
+        i.nextAlarm = set.first { $0 > now }
+        i.upEarlyWindow = morningEnd != nil
+        i.notReadyWindow = notReadyForBed
+        i.backToBedWindow = backToBed
+        i.sleepLaterWindow = sleepLater
+        i.leaveBy = snapshot.leaveBy
+        if let plan, plan.hasAlarm, !isSet(plan) { i.planReady = (plan.alarmTimes.count, plan.wakeTime) }
+        i.tomorrow = plan?.wakeTime ?? plan?.firstAlarm
+        i.napEnabled = store.settings.napEnabled && store.settings.alarmStyle == .app
+        let hour = Calendar.current.component(.hour, from: now)
+        i.evening = hour >= 17 || hour < 4
+        return i
+    }
+
+    private var barMorning: Date? { scheduled.first ?? plan?.firstAlarm }
+    private var barDay: String { (barMorning ?? .now).formatted(.dateTime.weekday(.wide)) }
+
+    private var actions: some View {
+        BottomBarView(
+            bar: BottomBar.make(barInputs),
+            day: barDay,
+            working: isWorking,
+            slider: $barSlider,
+            perform: perform,
+            menu: { menuOpen = true }
+        )
         .padding(.horizontal, 20)
         .padding(.top, 12)
         .padding(.bottom, 8)
         .background(Theme.ground)
+        .sheet(isPresented: $menuOpen) {
+            BarMenu(items: BottomBar.menu(barInputs, alarmStyleApp: store.settings.alarmStyle == .app, morningKnown: barMorning != nil && skippedMorning == nil),
+                    day: barDay) { action in
+                menuOpen = false
+                // Protected actions from ⋯ take over the bar too.
+                if action.isProtected && !action.opensScreen { barSlider = action } else { perform(action) }
+            }
+        }
+    }
+
+    /// Runs a bar or ⋯ action (a protected one only after its slide-and-hold).
+    private func perform(_ action: BarAction) {
+        barSlider = nil
+        switch action {
+        case .setAlarms, .replan: run(schedule: true)
+        case .previewPlan: run(schedule: false)
+        case .nap: sheet = .nap
+        case .changeNap: sheet = .napChange
+        case .sleepLater: sheet = .sleepLater
+        case .editAlarms: sheet = .editAlarms
+        case .notReadyForBed, .notGoingToSleep: undoBedtime()
+        case .upEarly, .endAlarms:
+            Task {
+                await coordinator.endMorning(settings: store.settings)
+                refreshScheduled()
+            }
+        case .endNap:
+            Task {
+                await coordinator.endNap(settings: store.settings)
+                refreshScheduled()
+            }
+        case .wakeLater, .changeMorning:
+            let snoozing = barInputs.snoozing
+            sheet = .changeMorning(snoozing ? .snoozing : coordinator.stoppedThisWakeUp ? .up : .bedtime)
+        case .backToBed: sheet = .changeMorning(.up)
+        case .skip: if let morning = barMorning { skip(morning, then: .sleepIn) }
+        case .addTemporary: sheet = .temporary
+        case .settings: showSettings = true
+        }
     }
 
     /// This morning's bubbles with their rings (v0.4.2 item 5).
@@ -1399,5 +1464,172 @@ struct AlarmBubbleView: View {
             withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) { pulse = true }
         }
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// The bottom bar (v0.4.2 item 6): a top row and a row of two buttons plus ⋯, or, for a
+/// protected action, a caption with ✕ above the slide-and-hold, at the same height.
+private struct BottomBarView: View {
+    let bar: BottomBar
+    let day: String
+    let working: Bool
+    @Binding var slider: BarAction?
+    let perform: (BarAction) -> Void
+    let menu: () -> Void
+
+    private static let topHeight: CGFloat = 56
+    private static let rowHeight: CGFloat = 52
+    private static let spacing: CGFloat = 10
+
+    var body: some View {
+        Group {
+            if let action = slider {
+                VStack(spacing: Self.spacing) {
+                    HStack {
+                        Text(action.caption(day: day))
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(Theme.textSoft)
+                            .lineLimit(2)
+                        Spacer()
+                        Button { slider = nil } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundStyle(Theme.textMuted)
+                                .frame(width: 44, height: 44)
+                        }
+                        .accessibilityLabel("Back out")
+                    }
+                    .frame(height: Self.topHeight + Self.rowHeight + Self.spacing - 72 - Self.spacing)
+                    HoldSlider(
+                        label: "Slide and hold",
+                        holdLabel: { "Hold \($0)…" },
+                        knobSymbol: knobSymbol(action),
+                        tint: knobTint(action),
+                        onHold: { perform(action) },
+                        accessibilityHint: action.caption(day: day)
+                    )
+                    .frame(height: 72)
+                    .id(action)
+                }
+            } else {
+                VStack(spacing: Self.spacing) {
+                    top
+                        .frame(maxWidth: .infinity, minHeight: Self.topHeight, maxHeight: Self.topHeight)
+                    HStack(spacing: 10) {
+                        ForEach(bar.buttons) { action in button(action) }
+                        Button(action: menu) {
+                            Image(systemName: "ellipsis")
+                                .font(.system(size: 18, weight: .bold))
+                                .foregroundStyle(Theme.accentText)
+                                .frame(width: Self.rowHeight, height: Self.rowHeight)
+                                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Theme.border, lineWidth: 1))
+                        }
+                        .accessibilityLabel("More")
+                    }
+                    .frame(height: Self.rowHeight)
+                }
+            }
+        }
+        .frame(height: Self.topHeight + Self.rowHeight + Self.spacing)
+        .disabled(working)
+    }
+
+    @ViewBuilder private var top: some View {
+        switch bar.top {
+        case .main(let action, let title):
+            Button { tap(action) } label: {
+                HStack(spacing: 8) {
+                    if working { ProgressView().tint(.white) } else { Image(systemName: "alarm") }
+                    Text(title).lineLimit(1).minimumScaleFactor(0.8)
+                }
+                .font(.system(size: 17, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Theme.accent, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            }
+        case .status(let text, let tone):
+            Text(text)
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(color(tone))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+    }
+
+    private func button(_ action: BarAction) -> some View {
+        let tint = action.isProtected ? Theme.amber : Theme.accentText
+        return Button { tap(action) } label: {
+            Text(action.title(day: day))
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(tint)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+                .frame(maxWidth: .infinity, minHeight: Self.rowHeight)
+                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(action.isProtected ? Theme.amber.opacity(0.6) : Theme.border, lineWidth: 1))
+        }
+    }
+
+    private func tap(_ action: BarAction) {
+        if action.isProtected && !action.opensScreen { slider = action } else { perform(action) }
+    }
+
+    private func color(_ tone: BottomBar.Tone) -> Color {
+        switch tone {
+        case .good: Theme.good
+        case .muted: Theme.textMuted
+        case .snoozing: Theme.snoozing
+        case .accent: Theme.accentText
+        }
+    }
+
+    private func knobSymbol(_ action: BarAction) -> String {
+        switch action.knob {
+        case .stop: "stop.fill"
+        case .moon: "moon.fill"
+        case .clock: "clock.fill"
+        }
+    }
+
+    private func knobTint(_ action: BarAction) -> Color {
+        switch action.knob {
+        case .stop: Theme.danger
+        case .moon: Theme.amber
+        case .clock: Theme.accent
+        }
+    }
+}
+
+/// ⋯: one list in every state, hiding what doesn't apply; protected actions in amber.
+private struct BarMenu: View {
+    let items: [BarAction]
+    let day: String
+    let choose: (BarAction) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(items) { action in
+                Button { choose(action) } label: {
+                    HStack {
+                        Text(action.title(day: day))
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(action.isProtected ? Theme.amber : Theme.text)
+                        Spacer()
+                        if action.isProtected {
+                            Image(systemName: "hand.draw").foregroundStyle(Theme.amber.opacity(0.7))
+                        }
+                    }
+                    .frame(minHeight: 46)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                if action != items.last { Divider().overlay(Theme.divider) }
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 24)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .background(Theme.surface.ignoresSafeArea())
+        .presentationDetents([.height(CGFloat(items.count) * 47 + 60)])
+        .presentationDragIndicator(.visible)
     }
 }

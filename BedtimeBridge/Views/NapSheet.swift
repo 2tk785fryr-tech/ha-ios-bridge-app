@@ -5,8 +5,11 @@ import SwiftUI
 /// the longest nap that fits.
 struct NapSheet: View {
     let settings: BridgeSettings
+    /// Change nap (v0.4.2 item 6): the new length needs a slide-and-hold before it's set.
+    var protected = false
     /// Set the nap's alarms for this many minutes.
     let start: (Int) async -> Void
+    @State private var pending: Int?
     @State private var limit: NapLimit?
     @State private var loaded = false
     @State private var other = false
@@ -80,6 +83,22 @@ struct NapSheet: View {
                 .padding(20)
             }
             .background(Theme.ground.ignoresSafeArea())
+            .safeAreaInset(edge: .bottom) {
+                if let pending {
+                    VStack(spacing: 8) {
+                        Text("Nap \(NapPlanner.lengthName(pending)) · \(NapPlanner.timesText(times(pending)))")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(Theme.textSoft)
+                        HoldSlider(label: "Slide and hold to change the nap", holdLabel: { "Changing in \($0)…" },
+                                   knobSymbol: "clock.fill", tint: Theme.accent, onHold: { commit(pending) },
+                                   accessibilityHint: "Replaces the nap's alarms.")
+                            .frame(height: 72)
+                            .id(pending)
+                    }
+                    .padding(20)
+                    .background(Theme.ground)
+                }
+            }
             .disabled(working)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
@@ -137,6 +156,11 @@ struct NapSheet: View {
     }
 
     private func set(_ minutes: Int) {
+        guard fits(minutes) else { return }
+        if protected { pending = minutes } else { commit(minutes) }
+    }
+
+    private func commit(_ minutes: Int) {
         guard fits(minutes) else { return }
         working = true
         Task {
