@@ -1086,7 +1086,9 @@ class BedtimeBridge:
         self.state["alarm_times"] = [t.isoformat() for t in times]
         self.state["alarm_time"] = times[0].isoformat() if times else None
         self.state["series_start"] = times[0].isoformat() if times else None
-        self.state["routine_ran"] = False
+        if phase != "edit":
+            # A new series is a new wake-up; an edited one is the same (v0.4.1 item 13).
+            self.state["routine_ran"] = False
         self._check_alarms_set(data)
         if not times:
             self.state["alarm_cause"] = "noalarm"

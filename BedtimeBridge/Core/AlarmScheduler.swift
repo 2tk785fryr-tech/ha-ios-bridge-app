@@ -39,10 +39,13 @@ final class AlarmScheduler {
     /// wake-ups, the test alarm) are left alone. Returns the times AlarmKit actually holds
     /// afterwards (read back), which can be fewer than asked for.
     @discardableResult
-    func replaceAlarms(with times: [Date], title: String, cause: String, snoozeMinutes: Int, sound: AlarmSound, keeping: Set<UUID> = []) async throws -> [Date] {
+    func replaceAlarms(with times: [Date], title: String, cause: String, snoozeMinutes: Int, sound: AlarmSound,
+                       keeping: Set<UUID> = [], onlyFuture: Bool = false) async throws -> [Date] {
         try await ensureAccess()
         // Every alarm is cancelled even if one refuses, so none of the old series survives.
-        for alarm in (try? manager.alarms) ?? [] where !keeping.contains(alarm.id) {
+        // onlyFuture (an edit): alarms that already rang (snoozing) stay as they are.
+        let pastIDs = Set(scheduledAlarms().filter { $0.date <= .now }.map(\.id))
+        for alarm in (try? manager.alarms) ?? [] where !keeping.contains(alarm.id) && !(onlyFuture && pastIDs.contains(alarm.id)) {
             try? manager.cancel(id: alarm.id)
         }
 

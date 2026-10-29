@@ -135,6 +135,7 @@ struct ContentView: View {
                         } undoBedtime: {
                             undoBedtime()
                         }
+                        .editing(settings: store.settings, edited: refreshScheduled)
                     } else if skippedMorning == nil, scheduled.isEmpty, plan?.hasAlarm != true {
                         DayOffCard { sheet = .dayOff }
                     }
@@ -1065,6 +1066,15 @@ private struct GetReadyCard: View {
 }
 
 /// The alarm whose snooze the slide-to-stop screen ends.
+extension ScheduledAlarmsCard {
+    func editing(settings: BridgeSettings, edited: @escaping () -> Void) -> ScheduledAlarmsCard {
+        var copy = self
+        copy.settings = settings
+        copy.edited = edited
+        return copy
+    }
+}
+
 /// Item 8: end the rest of this morning's alarms without waiting for one to ring.
 private struct EndMorningCard: View {
     let status: MorningEnd
@@ -1110,6 +1120,10 @@ private struct ScheduledAlarmsCard: View {
     let undoBedtime: () -> Void
     @State private var confirming = false
     @State private var confirmingUndo = false
+    @State private var editing = false
+    /// Settings for editing single alarms (v0.4.1 item 13).
+    var settings = BridgeSettings()
+    var edited: () -> Void = {}
 
     private var day: String { morning.formatted(.dateTime.weekday(.wide)) }
 
@@ -1122,6 +1136,14 @@ private struct ScheduledAlarmsCard: View {
                 Text(times.map { $0.formatted(.dateTime.weekday(.abbreviated).hour().minute()) }.joined(separator: " · "))
                     .font(.system(size: 15))
                     .foregroundStyle(Theme.text)
+                if times.contains(where: { $0 > .now }) {
+                    Button { editing = true } label: {
+                        Label("Edit alarms", systemImage: "slider.horizontal.3")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(Theme.accentText)
+                            .frame(minHeight: 44)
+                    }
+                }
             }
             if !times.isEmpty {
                 Button { confirmingUndo = true } label: {
@@ -1152,6 +1174,7 @@ private struct ScheduledAlarmsCard: View {
             }
         }
         .nightfallCard()
+        .sheet(isPresented: $editing) { EditAlarmsSheet(settings: settings, done: edited) }
     }
 }
 

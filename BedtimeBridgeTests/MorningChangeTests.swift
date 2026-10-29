@@ -134,4 +134,13 @@ final class MorningChangeTests: XCTestCase {
         tooLate.scope = .alarms
         XCTAssertEqual(tooLate.limit(leaveBy: leaveBy, getReadyMinutes: 60), .afterLate(leaveBy.addingTimeInterval(-3600)))
     }
+
+    /// v0.4.1 item 13: an edited series is alarms only; none may be after the late backstop.
+    func testAnEditedSeriesCantPassTheLateBackstop() {
+        let edited = MorningChange(choice: .at(at(30)), scope: .alarms, alarmTimes: [at(0), at(30)], newWake: at(30), delayMinutes: 30)
+        XCTAssertEqual(edited.limit(backstops: ladder), .ok)
+        XCTAssertEqual(edited.backstops(ladder, earlyGap: 5)["early"], at(35))
+        let tooLate = MorningChange(choice: .at(at(60)), scope: .alarms, alarmTimes: [at(0), at(60)], newWake: at(60), delayMinutes: 60)
+        XCTAssertEqual(tooLate.limit(backstops: ladder), .afterLate(at(55)))
+    }
 }

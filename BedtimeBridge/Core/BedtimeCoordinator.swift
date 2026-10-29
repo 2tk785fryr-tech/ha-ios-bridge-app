@@ -741,6 +741,55 @@ final class BedtimeCoordinator {
         alarms.scheduledAlarms().filter { !keptAlarms.contains($0.id) }.map(\.date).sorted()
     }
 
+    // MARK: Edit single alarms (v0.4.1 item 13)
+
+    /// The series alarms still ahead, which Tonight lets you edit, add to or remove.
+    func editableAlarms(now: Date = .now) -> [Date] {
+        setAlarmTimes().filter { $0 > now }
+    }
+
+    /// Sets exactly these alarms in place of the ones still ahead (a snoozing one stays). Always
+    /// Shift alarms only: deadline and late never move, early follows the last alarm, and Home
+    /// Assistant refuses an alarm after the late backstop.
+    func editAlarms(_ times: [Date], settings phoneSettings: BridgeSettings) async throws {
+        let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
+        let future = times.filter { $0 > .now }.sorted()
+        let before = currentWake(settings: settings)
+        let added = try await alarms.replaceAlarms(
+            with: future,
+            title: lastAppliedPlan.map(alarmTitle(for:)) ?? "Wake up",
+            cause: lastCause == AlarmCause.none ? AlarmCause.manual : lastCause,
+            snoozeMinutes: settings.snoozeMinutes,
+            sound: settings.alarmSound,
+            keeping: keptAlarms,
+            onlyFuture: true
+        )
+        let all = setAlarmTimes()
+        alarmSeries = all
+        recordShortfall(planned: future, actual: added)
+        if morningChangeReason == nil { morningChangeReason = "Edited alarms" }
+        updateWidget { $0.alarmTimes = all }
+        let wake = MorningChange.currentWake(series: all, wakeIs: seriesPattern(settings: settings).wakeIs)
+        var data: [String: Any] = [
+            "alarm_times": all.map(Self.iso),
+            "alarms_planned": future.count + all.filter { $0 <= .now }.count,
+            "delay_minutes": wake.flatMap { new in before.map { Int((new.timeIntervalSince($0) / 60).rounded()) } } ?? 0,
+            "phase": MorningChangePhase.edit.rawValue,
+            "scope": "alarms",
+            "early_gap_minutes": settings.earlyBackstopGapMinutes,
+            "changed_by": "edit",
+            "reason": "Edited alarms",
+        ]
+        if all.isEmpty { data["sleep_in"] = true }
+        if let link = HomeAssistantLinks.current(settings) {
+            do {
+                try await link.report(.morningChanged, data: data, settings: settings)
+            } catch let BridgeError.homeAssistant(code, message) where code == 200 {
+                throw BridgeError.homeAssistant(code, message)
+            } catch {}
+        }
+    }
+
     // MARK: Sleep later (v0.4.1 item 12)
 
     private static let plannedKey = "plannedBeforeSleepLater.v1"
@@ -820,7 +869,7 @@ final class BedtimeCoordinator {
     /// then tells Home Assistant, which moves the backstops, sets Sleep In and puts the house
     /// back to bedtime. Temporary alarms stay.
     func changeMorning(_ change: MorningChange, phase requested: MorningChangePhase, sleepIn: Bool, reason: String?, note: String?,
-                       settings phoneSettings: BridgeSettings) async throws {
+                       changedBy: String = "app", settings phoneSettings: BridgeSettings) async throws {
         let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
         // Once an alarm was stopped this wake-up, the house has to go back to bed, even when
         // the change starts on the snooze screen (v0.4.1 item 2).
@@ -870,7 +919,7 @@ final class BedtimeCoordinator {
             "phase": phase.rawValue,
             "scope": change.scope == .alarms ? "alarms" : "wake_up",
             "early_gap_minutes": settings.earlyBackstopGapMinutes,
-            "changed_by": "app",
+            "changed_by": changedBy,
         ]
         if change.alarmTimes.isEmpty { data["sleep_in"] = sleepIn }
         if let reason { data["reason"] = reason }

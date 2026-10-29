@@ -238,3 +238,17 @@ async def test_sleep_later_before_bed_changes_nothing_in_the_house(hass, ladder,
     await send(hass_client_no_auth, change(local("04:20"), local("04:25"), local("04:30"), delay=-30, scope="alarms", phase="bedtime"))
     await hass.async_block_till_done()
     assert rungs(hass) == ["04:55", "05:10", "05:25"]
+
+
+async def test_an_edit_is_alarms_only_and_keeps_the_wake_routine_once(hass, ladder, hass_client_no_auth):
+    """v0.4.1 item 13: changed_by edit, nothing in the house, deadline/late never move."""
+    await helpers(hass)
+    notify = async_mock_service(hass, "notify", "mobile_app_test")
+    await ladder(bedtime_helper="input_boolean.bedtime_routine", **COMMANDS)
+    await send(hass_client_no_auth, {"type": "stopped", "data": {"alarm_times": [local("04:30").isoformat()]}})
+    await send(hass_client_no_auth, change(local("04:30"), local("05:00"), delay=30, scope="alarms", phase="edit", changed_by="edit"))
+    await send(hass_client_no_auth, {"type": "stopped", "data": {"alarm_times": [local("05:00").isoformat()]}})
+    await hass.async_block_till_done()
+    assert rungs(hass) == ["05:05", "05:10", "05:25"]
+    assert hass.states.get("input_boolean.bedtime_routine").state == "off"
+    assert [c.data["message"] for c in notify].count("RUN_GOOD_MORNING") == 1, "an edit is the same wake-up"
