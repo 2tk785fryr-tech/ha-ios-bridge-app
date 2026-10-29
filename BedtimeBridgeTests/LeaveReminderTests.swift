@@ -48,4 +48,13 @@ final class LeaveReminderTests: XCTestCase {
         XCTAssertFalse(BedtimeCoordinator.shouldRecheckOnOpen(leaveBy: leaveBy, lastCheck: nil, now: leaveBy.addingTimeInterval(-4 * 3600)))
         XCTAssertFalse(BedtimeCoordinator.shouldRecheckOnOpen(leaveBy: leaveBy, lastCheck: nil, now: leaveBy.addingTimeInterval(16 * 60)))
     }
+
+    // v0.4.2 item 1: with no alarms left, reminders stay while the calendar still shows the shift.
+    func testRemindersStayWhileTheShiftIsOnTheCalendar() {
+        let start = leaveBy.addingTimeInterval(45 * 60)
+        let trip = PendingTrip(title: "Days", location: "Work", start: start, arriveBy: start, plannedTravelSeconds: 1800)
+        XCTAssertTrue(BedtimeCoordinator.tripStillOnCalendar(trip, events: [("Days shift", start)]))
+        XCTAssertFalse(BedtimeCoordinator.tripStillOnCalendar(trip, events: []))
+        XCTAssertFalse(BedtimeCoordinator.tripStillOnCalendar(trip, events: [("Days shift", start.addingTimeInterval(86_400))]))
+    }
 }

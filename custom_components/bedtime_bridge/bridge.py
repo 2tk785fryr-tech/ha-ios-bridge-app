@@ -320,8 +320,9 @@ class BedtimeBridge:
             await self._recompute_ladder()
         if kind == MSG_PLANNED:
             self._schedule_leave_checks()
-        elif kind in (MSG_CANCELLED, MSG_SKIPPED, MSG_BEDTIME_UNDONE, MSG_MORNING_CHANGED):
-            # The morning changed or went: no more leave checks (item 17).
+        elif kind in (MSG_CANCELLED, MSG_SKIPPED, MSG_BEDTIME_UNDONE):
+            # The morning went: no more leave checks (item 17). A morning change keeps them
+            # (v0.4.2 item 1, in _morning_changed).
             self.state["leave_reminders"] = []
             self._cancel_leave_checks()
         return {"settings": self.settings_for_app(), **result}
@@ -1126,12 +1127,25 @@ class BedtimeBridge:
         now = dt_util.utcnow()
         if leave_by is None or now > leave_by + timedelta(minutes=LEAVE_CHECK_TAIL_MINUTES):
             return
-        if not self.is_home():
-            # Already left: no more checks.
+        if not self.is_home() or not self._leave_shift_still_on():
+            # Already left, or the shift came off the calendar: no more checks.
             self.state["leave_reminders"] = []
             self._cancel_leave_checks()
             return
         await self._command(CMD_LEAVE_CHECK)
+
+    def _leave_shift_still_on(self) -> bool:
+        """With no alarms left on a work morning, the checks run only while the calendar still
+        shows the shift (v0.4.2 item 1): the shift sensor's next start is the planned one."""
+        plan = self.state.get("ladder_plan") or {}
+        if self.state.get("alarm_times") or plan.get("type") != "shift":
+            return True
+        planned = _time(plan.get("shift_start"))
+        sensor = self.hass.states.get(self.options.get(CONF_SHIFT_SENSOR) or "")
+        if planned is None or sensor is None:
+            return True
+        start = _time(sensor.attributes.get("next_shift_start"))
+        return start is not None and abs((start - planned).total_seconds()) < 60
 
     # MARK: Change this morning (item 3)
 
@@ -1184,6 +1198,12 @@ class BedtimeBridge:
             self.ladder_early_floor(times[-1] + timedelta(minutes=gap), data.get("changed_by") or "app", reason)
         elif times and delay:
             self.change_morning_ladder(delay, data.get("changed_by") or "app", reason)
+        # Leave checks (v0.4.2 item 1): an entire wake-up moved takes leave-by and the checks
+        # with it; shifting the alarms only, or no alarms, keeps them as they are.
+        leave_by = _time(self.state.get("leave_by"))
+        if times and scope == "wake_up" and delay and leave_by is not None:
+            self.state["leave_by"] = (leave_by + timedelta(minutes=delay)).isoformat()
+            self._schedule_leave_checks()
         if phase not in ("bedtime", "edit"):
             await self._restart_wake_automations()
         # Blocking: Sleep In must be set before the bedtime routine can move the curtains.

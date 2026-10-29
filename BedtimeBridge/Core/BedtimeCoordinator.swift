@@ -745,7 +745,9 @@ final class BedtimeCoordinator {
         guard calendarObserver == nil else { return }
         calendarObserver = NotificationCenter.default.addObserver(forName: .EKEventStoreChanged, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self, !self.alarmSeries.isEmpty else { return }
+                guard let self else { return }
+                self.dropLeaveRemindersIfEventGone(settings: SettingsStore.shared.settings)
+                guard !self.alarmSeries.isEmpty else { return }
                 self.calendarChangedSinceSet = true
             }
         }
@@ -1107,6 +1109,20 @@ final class BedtimeCoordinator {
               Self.shouldRecheckOnOpen(leaveBy: trip.leaveBy, lastCheck: lastOpenCheck ?? trip.checkedAt) else { return }
         lastOpenCheck = .now
         await recheckDrive(settings: settings)
+    }
+
+    /// With no alarms left, the leave reminders stay only while the calendar still shows the
+    /// shift or appointment (v0.4.2 item 1, the same rule as Home Assistant's checks).
+    func dropLeaveRemindersIfEventGone(settings: BridgeSettings) {
+        guard let trip = leaveReminder.pendingTrip, setAlarmTimes().isEmpty else { return }
+        // An empty choice means every calendar.
+        let ids = settings.shiftCalendarIDs.isEmpty || settings.appointmentCalendarIDs.isEmpty ? [] : settings.shiftCalendarIDs.union(settings.appointmentCalendarIDs)
+        let found = calendar.events(from: trip.start.addingTimeInterval(-60), to: trip.start.addingTimeInterval(60), calendarIDs: ids)
+        if !Self.tripStillOnCalendar(trip, events: found.map { ($0.title ?? "", $0.startDate) }) { leaveReminder.clear() }
+    }
+
+    nonisolated static func tripStillOnCalendar(_ trip: PendingTrip, events: [(title: String, start: Date)]) -> Bool {
+        events.contains { abs($0.start.timeIntervalSince(trip.start)) < 60 && $0.title.localizedCaseInsensitiveContains(trip.title) }
     }
 
     nonisolated static func shouldRecheckOnOpen(leaveBy: Date, lastCheck: Date?, now: Date = .now) -> Bool {
