@@ -155,3 +155,18 @@ async def test_each_stop_records_how_it_was_decided(hass, ladder, hass_client_no
     await send(hass_client_no_auth, {"type": "stopped", "data": {"all": True, "alarm_times": []}})
     await hass.async_block_till_done()
     assert hass.states.get("sensor.bedtime_bridge_last_event").attributes["last_stop"]["all"] is True
+
+
+async def test_change_from_the_snooze_screen_after_a_stop_goes_back_to_bed(hass, ladder, hass_client_no_auth):
+    """v0.4.1 item 2 (28 Oct): stop, then snooze, then change from the snooze screen."""
+    await helpers(hass)
+    notify = async_mock_service(hass, "notify", "mobile_app_test")
+    await ladder(bedtime_helper="input_boolean.bedtime_routine", sleep_in_helper="input_boolean.sleep_in", **COMMANDS)
+    await send(hass_client_no_auth, {"type": "stopped", "data": {"alarm_times": [local("04:30").isoformat()]}})
+    await send(hass_client_no_auth, {"type": "snoozed", "data": {"rings_again": local("04:39").isoformat()}})
+    await send(hass_client_no_auth, change(local("04:50"), local("04:55"), local("05:00"), delay=30, phase="snoozing"))
+    await hass.async_block_till_done()
+    assert hass.states.get("input_boolean.bedtime_routine").state == "on"
+    assert "RUN_BACK_TO_BED" in [c.data["message"] for c in notify]
+    last = hass.states.get("sensor.bedtime_bridge_last_event").attributes["last_morning_change"]
+    assert last["phase"] == "up"

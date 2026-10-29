@@ -14,6 +14,37 @@ enum MorningChangePhase: String {
     case up
 }
 
+/// The shape of a morning's alarm series: how many, how far apart, and whether the wake-up is
+/// the first or last of them. Kept from the rule that built it (a shift's own pattern), so a
+/// change makes the same shape (v0.4.1 item 3).
+struct SeriesPattern: Codable, Equatable {
+    var count: Int
+    var spacingMinutes: Int
+    var wakeIs: WakeTimeAlarm
+
+    /// Read from a series as it was set: its count and spacing, and which end is the wake-up.
+    static func from(series: [Date], wake: Date?, fallback: BridgeSettings) -> SeriesPattern {
+        let sorted = series.sorted()
+        guard let first = sorted.first, let last = sorted.last else {
+            return SeriesPattern(count: fallback.alarmCount, spacingMinutes: fallback.alarmSpacingMinutes, wakeIs: fallback.wakeTimeIs)
+        }
+        let spacing = sorted.count > 1 ? Int((sorted[1].timeIntervalSince(first) / 60).rounded()) : fallback.alarmSpacingMinutes
+        let wakeIs: WakeTimeAlarm
+        if let wake, abs(wake.timeIntervalSince(first)) < 60, sorted.count > 1 {
+            wakeIs = .first
+        } else if let wake, abs(wake.timeIntervalSince(last)) < 60 {
+            wakeIs = .last
+        } else {
+            wakeIs = fallback.wakeTimeIs
+        }
+        return SeriesPattern(count: sorted.count, spacingMinutes: max(spacing, 1), wakeIs: wakeIs)
+    }
+
+    static func general(_ settings: BridgeSettings) -> SeriesPattern {
+        SeriesPattern(count: settings.alarmCount, spacingMinutes: settings.alarmSpacingMinutes, wakeIs: settings.wakeTimeIs)
+    }
+}
+
 struct MorningChange: Equatable {
     var choice: MorningChangeChoice
     /// The new series: the usual count, spacing and "wake time is the first/last alarm".
@@ -28,6 +59,11 @@ struct MorningChange: Equatable {
     }
 
     static func make(_ choice: MorningChangeChoice, currentWake: Date, settings: BridgeSettings) -> MorningChange {
+        make(choice, currentWake: currentWake, pattern: .general(settings))
+    }
+
+    /// The new series in this morning's own pattern.
+    static func make(_ choice: MorningChangeChoice, currentWake: Date, pattern: SeriesPattern) -> MorningChange {
         let wake: Date
         switch choice {
         case .noAlarms:
@@ -38,7 +74,7 @@ struct MorningChange: Equatable {
             wake = time
         }
         let times = WakePlanner.alarmTimes(
-            wakeTime: wake, count: settings.alarmCount, spacingMinutes: settings.alarmSpacingMinutes, wakeIs: settings.wakeTimeIs
+            wakeTime: wake, count: pattern.count, spacingMinutes: pattern.spacingMinutes, wakeIs: pattern.wakeIs
         )
         return MorningChange(choice: choice, alarmTimes: times, newWake: wake,
                              delayMinutes: Int((wake.timeIntervalSince(currentWake) / 60).rounded()))

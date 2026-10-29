@@ -57,4 +57,34 @@ final class MorningChangeTests: XCTestCase {
         XCTAssertEqual(MorningChange.currentWake(series: series, wakeIs: .last), series[1])
         XCTAssertEqual(MorningChange.currentWake(series: series, wakeIs: .first), series[0])
     }
+
+    /// v0.4.1 item 2: once an alarm was stopped, a change is "back to bed" even from the snooze screen.
+    func testPhaseIsUpOnceAnAlarmWasStopped() {
+        XCTAssertEqual(BedtimeCoordinator.changePhase(requested: .snoozing, stopped: false), .snoozing)
+        XCTAssertEqual(BedtimeCoordinator.changePhase(requested: .snoozing, stopped: true), .up)
+        XCTAssertEqual(BedtimeCoordinator.changePhase(requested: .up, stopped: false), .up)
+    }
+
+    /// v0.4.1 item 3 (28 Oct): Days is 3 alarms, 5 min apart, wake = last; +30 from 4:30 is
+    /// 4:50 / 4:55 / 5:00, not the general 4:40 / 4:50 / 5:00.
+    func testAChangeKeepsTheMorningsOwnPattern() {
+        let days = [0, 300, 600].map { wake.addingTimeInterval($0) }
+        var general = settings
+        general.alarmSpacingMinutes = 10
+        let pattern = SeriesPattern.from(series: days, wake: days[2], fallback: general)
+        XCTAssertEqual(pattern, SeriesPattern(count: 3, spacingMinutes: 5, wakeIs: .last))
+        let change = MorningChange.make(.later(minutes: 30), currentWake: days[2], pattern: pattern)
+        let newWake = days[2].addingTimeInterval(1800)
+        XCTAssertEqual(change.alarmTimes, [-600, -300, 0].map { newWake.addingTimeInterval($0) })
+
+        // Pick a time uses the same pattern.
+        let picked = MorningChange.make(.at(newWake), currentWake: days[2], pattern: pattern)
+        XCTAssertEqual(picked.alarmTimes, change.alarmTimes)
+    }
+
+    func testPatternWithTheWakeAsTheFirstAlarm() {
+        let swings = [0, 600, 1200].map { wake.addingTimeInterval($0) }
+        XCTAssertEqual(SeriesPattern.from(series: swings, wake: swings[0], fallback: settings),
+                       SeriesPattern(count: 3, spacingMinutes: 10, wakeIs: .first))
+    }
 }

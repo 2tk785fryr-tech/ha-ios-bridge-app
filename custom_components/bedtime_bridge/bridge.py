@@ -968,6 +968,10 @@ class BedtimeBridge:
         times = sorted(t for t in (_time(v) for v in data.get("alarm_times") or []) if t)
         delay = int(data.get("delay_minutes") or 0)
         phase = data.get("phase") or "up"
+        if phase == "snoozing" and (self.state.get("routine_ran") or self._state_of(CONF_AWAKE_HELPER) == "on"):
+            # Don't trust the phase alone (v0.4.1 item 2): once the wake routine ran or Awake For
+            # Day is on, the house has to go back to bed.
+            phase = "up"
         reason, note = data.get("reason"), data.get("note")
         self._end_morning()
         self.state["snoozed_until"] = None

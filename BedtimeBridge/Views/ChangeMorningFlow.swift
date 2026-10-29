@@ -17,8 +17,11 @@ struct ChangeMorningFlow: View {
     @State private var reason: String?
     @State private var note = ""
 
+    /// This morning's own pattern (a Days morning: 3 alarms, 5 min apart, wake = last).
+    private var pattern: SeriesPattern { BedtimeCoordinator.shared.seriesPattern(settings: settings) }
+
     private var change: MorningChange? {
-        choice.map { MorningChange.make($0, currentWake: currentWake, settings: settings) }
+        choice.map { MorningChange.make($0, currentWake: currentWake, pattern: pattern) }
     }
 
     var body: some View {
@@ -37,7 +40,7 @@ struct ChangeMorningFlow: View {
                 } header: {
                     Text(wakeKnown ? "Wake-up now \(WakePlanner.format(currentWake))" : "From now")
                 } footer: {
-                    Text("New alarms use your usual number, spacing and \"wake time is the \(settings.wakeTimeIs.displayName.lowercased())\".")
+                    Text("New alarms keep this morning's pattern: \(pattern.count) alarms, \(pattern.spacingMinutes) min apart, wake-up is the \(pattern.wakeIs.displayName.lowercased()).")
                 }
                 Section("Reason") {
                     Picker("Reason", selection: $reason) {
@@ -66,7 +69,7 @@ struct ChangeMorningFlow: View {
     }
 
     private func option(_ option: MorningChangeChoice, title: String) -> some View {
-        let preview = MorningChange.make(option, currentWake: currentWake, settings: settings)
+        let preview = MorningChange.make(option, currentWake: currentWake, pattern: pattern)
         let selected = choice.map { same($0, option) } ?? false
         return Button {
             choice = option
@@ -135,7 +138,7 @@ private struct ConfirmMorningChange: View {
                 }
             }
             Section {
-                Text(phase == .snoozing
+                Text(coordinator.changePhase(requested: phase) == .snoozing
                      ? "The snooze light fades back down."
                      : "The house goes back to bedtime: Home Assistant runs the bedtime routine, and your phone re-arms the house and turns Sleep Focus on.")
                     .font(.footnote).foregroundStyle(Theme.textMuted)

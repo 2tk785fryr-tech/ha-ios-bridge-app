@@ -88,6 +88,7 @@ final class BedtimeCoordinator {
         lastAppliedPlan = nil
         alarmSeries = []
         morningChangeReason = nil
+        storedPattern = nil
         updateWidget { $0 = NextAlarmSnapshot(alarmStyle: settings.alarmStyle.rawValue, temporaryAlarms: temporaryAlarms.map(\.time)) }
         lastCause = AlarmCause.none
         guard case .wakeAt(let time, let wakeIs) = choice else { return nil }
@@ -139,6 +140,7 @@ final class BedtimeCoordinator {
         lastAppliedPlan = nil
         alarmSeries = []
         morningChangeReason = nil
+        storedPattern = nil
         updateWidget { $0 = NextAlarmSnapshot(alarmStyle: settings.alarmStyle.rawValue, temporaryAlarms: temporaryAlarms.map(\.time)) }
         lastCause = AlarmCause.none
         await report(.bedtimeUndone, data: [:], settings: settings)
@@ -375,6 +377,7 @@ final class BedtimeCoordinator {
         lastAppliedPlan = nil
         alarmSeries = []
         morningChangeReason = nil
+        storedPattern = nil
         updateWidget { $0 = NextAlarmSnapshot(alarmStyle: settings.alarmStyle.rawValue, temporaryAlarms: temporaryAlarms.map(\.time)) }
         lastCause = AlarmCause.none
         await report(.cancelled, data: [:], settings: settings)
@@ -399,7 +402,9 @@ final class BedtimeCoordinator {
         }
         let planned = settings.alarmStyle == .app ? plan.alarmTimes.filter { $0 > .now } : []
         alarmSeries = settings.alarmStyle == .app ? actual : []
+        storedPattern = plan.hasAlarm ? SeriesPattern.from(series: plan.alarmTimes, wake: plan.wakeTime, fallback: settings) : nil
         morningChangeReason = nil
+        stoppedThisWakeUp = false
         recordShortfall(planned: planned, actual: actual)
 
         if settings.leaveReminderEnabled, let trip = Self.trip(for: plan, settings: settings) {
@@ -622,6 +627,7 @@ final class BedtimeCoordinator {
         }
         let cause = lastCause
         lastCause = AlarmCause.none
+        stoppedThisWakeUp = true
         await report(.stopped, data: ["all": true, "early": early, "alarm_times": [String](), "alarm_cause": cause], settings: settings)
     }
 
@@ -641,6 +647,24 @@ final class BedtimeCoordinator {
 
     private func recordShortfall(planned: [Date], actual: [Date]) {
         alarmShortfall = actual.count < planned.count ? (actual.count, planned.count) : nil
+    }
+
+    private static let stoppedKey = "stoppedThisWakeUp.v1"
+
+    /// An alarm of this wake-up was stopped (so Wake Mike and Good Morning ran): a change this
+    /// morning is then "back to bed", wherever it's started (v0.4.1 item 2). A new series resets it.
+    private(set) var stoppedThisWakeUp: Bool {
+        get { UserDefaults.standard.bool(forKey: Self.stoppedKey) }
+        set { UserDefaults.standard.set(newValue, forKey: Self.stoppedKey) }
+    }
+
+    /// The phase to send for a change started on a screen that thinks it's `requested`.
+    func changePhase(requested: MorningChangePhase) -> MorningChangePhase {
+        Self.changePhase(requested: requested, stopped: stoppedThisWakeUp)
+    }
+
+    nonisolated static func changePhase(requested: MorningChangePhase, stopped: Bool) -> MorningChangePhase {
+        stopped ? .up : requested
     }
 
     private static let morningChangeKey = "morningChangeReason.v1"
@@ -663,9 +687,21 @@ final class BedtimeCoordinator {
 
     // MARK: Change this morning (item 3)
 
+    private static let patternKey = "seriesPattern.v1"
+
+    /// This morning's own pattern, kept from the plan that set it (v0.4.1 item 3).
+    private(set) var storedPattern: SeriesPattern? {
+        get { UserDefaults.standard.data(forKey: Self.patternKey).flatMap { try? JSONDecoder().decode(SeriesPattern.self, from: $0) } }
+        set { UserDefaults.standard.set(newValue.flatMap { try? JSONEncoder().encode($0) }, forKey: Self.patternKey) }
+    }
+
+    func seriesPattern(settings: BridgeSettings) -> SeriesPattern {
+        storedPattern ?? SeriesPattern.from(series: alarmSeries, wake: NextAlarmSnapshot.load().wakeTime, fallback: settings)
+    }
+
     /// The wake-up this morning's series is built around.
     func currentWake(settings: BridgeSettings) -> Date? {
-        MorningChange.currentWake(series: alarmSeries, wakeIs: settings.wakeTimeIs) ?? NextAlarmSnapshot.load().wakeTime
+        MorningChange.currentWake(series: alarmSeries, wakeIs: seriesPattern(settings: settings).wakeIs) ?? NextAlarmSnapshot.load().wakeTime
     }
 
     /// Back to bed on Tonight: this morning's series is over (stopped, or ended early) and it's
@@ -685,9 +721,12 @@ final class BedtimeCoordinator {
     /// Moves this morning's alarms (the usual series around the new wake-up) or cancels them,
     /// then tells Home Assistant, which moves the backstops, sets Sleep In and puts the house
     /// back to bedtime. Temporary alarms stay.
-    func changeMorning(_ change: MorningChange, phase: MorningChangePhase, sleepIn: Bool, reason: String?, note: String?,
+    func changeMorning(_ change: MorningChange, phase requested: MorningChangePhase, sleepIn: Bool, reason: String?, note: String?,
                        settings phoneSettings: BridgeSettings) async throws {
         let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
+        // Once an alarm was stopped this wake-up, the house has to go back to bed, even when
+        // the change starts on the snooze screen (v0.4.1 item 2).
+        let phase = changePhase(requested: requested)
         for alarm in alarms.scheduledAlarms() where !keptAlarms.contains(alarm.id) {
             alarms.stop(alarm.id)
         }
@@ -707,6 +746,8 @@ final class BedtimeCoordinator {
         alarmSeries = actual
         recordShortfall(planned: change.alarmTimes.filter { $0 > .now }, actual: actual)
         morningChangeReason = reason ?? "Changed"
+        // The new series is a new wake-up.
+        stoppedThisWakeUp = false
         let shift = TimeInterval(change.delayMinutes * 60)
         if change.alarmTimes.isEmpty {
             lastCause = AlarmCause.none
@@ -785,6 +826,7 @@ final class BedtimeCoordinator {
                 alarms.cancelAll(except: id, keeping: keptAlarms)
             }
         }
+        stoppedThisWakeUp = true
         let remaining = scheduledAlarmTimes().filter { $0 > .now }
         updateWidget { snapshot in
             snapshot.snoozedUntil = nil
