@@ -252,3 +252,25 @@ async def test_an_edit_is_alarms_only_and_keeps_the_wake_routine_once(hass, ladd
     assert rungs(hass) == ["05:05", "05:10", "05:25"]
     assert hass.states.get("input_boolean.bedtime_routine").state == "off"
     assert [c.data["message"] for c in notify].count("RUN_GOOD_MORNING") == 1, "an edit is the same wake-up"
+
+
+async def test_an_edit_that_ends_the_snooze_fades_the_bedroom_down(hass, ladder, hass_client_no_auth):
+    """v0.4.1 item 13: moving the only snoozing alarm later ends its snooze."""
+    await helpers(hass)
+    await ladder()
+    await send(hass_client_no_auth, {"type": "snoozed", "data": {"rings_again": local("04:34").isoformat()}})
+    await hass.async_block_till_done()
+    assert hass.states.get("input_boolean.wake_fade").state == "on"
+    await send(hass_client_no_auth, change(local("04:50"), local("04:55"), local("05:00"), scope="alarms", phase="edit",
+                                           changed_by="edit", snooze_ended=True))
+    await hass.async_block_till_done()
+    assert hass.states.get("input_boolean.wake_fade").state == "off"
+
+
+async def test_an_edit_while_another_alarm_still_snoozes_leaves_the_fade(hass, ladder, hass_client_no_auth):
+    await helpers(hass)
+    await ladder()
+    await send(hass_client_no_auth, {"type": "snoozed", "data": {"rings_again": local("04:34").isoformat()}})
+    await send(hass_client_no_auth, change(local("04:34"), local("05:00"), scope="alarms", phase="edit", changed_by="edit"))
+    await hass.async_block_till_done()
+    assert hass.states.get("input_boolean.wake_fade").state == "on"

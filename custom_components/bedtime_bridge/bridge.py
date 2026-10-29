@@ -1140,8 +1140,11 @@ class BedtimeBridge:
             await self._set_sleep_in(bool(data.get("sleep_in", True)), blocking=True)
         at_home = self.is_home()
         if phase in ("bedtime", "edit"):
-            # Sleep later before bed (item 12) or an edited alarm (item 13): nothing in the house.
-            pass
+            # Sleep later before bed (item 12) or an edited alarm (item 13): nothing in the house,
+            # except that an edit ending the only snooze fades the bedroom back down.
+            helper = self.options.get(CONF_SNOOZE_HELPER)
+            if phase == "edit" and data.get("snooze_ended") and helper:
+                await self._turn_off(helper)
         elif phase == "snoozing":
             # Only the snooze ramp has started: fade the nightstands back down.
             helper = self.options.get(CONF_SNOOZE_HELPER)

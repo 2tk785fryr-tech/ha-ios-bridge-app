@@ -778,6 +778,9 @@ final class BedtimeCoordinator {
         let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
         // A snoozing alarm that was moved or removed ends now; one left as it was keeps snoozing.
         let keptSnoozing = Set(edited.filter { $0.snoozing && abs($0.time.timeIntervalSince($0.original)) < 30 }.map(\.id))
+        let wasSnoozing = alarms.scheduledAlarms().contains { $0.date <= .now && !keptAlarms.contains($0.id) }
+        // The edit ended every snooze: the bedroom goes back to before the wake fade.
+        let snoozeEnded = wasSnoozing && keptSnoozing.isEmpty
         for alarm in alarms.scheduledAlarms() where alarm.date <= .now && !keptAlarms.contains(alarm.id) && !keptSnoozing.contains(alarm.id) {
             alarms.stop(alarm.id)
             alarms.cancel(alarm.id)
@@ -797,7 +800,10 @@ final class BedtimeCoordinator {
         alarmSeries = all
         recordShortfall(planned: future, actual: added)
         if morningChangeReason == nil { morningChangeReason = "Edited alarms" }
-        updateWidget { $0.alarmTimes = all }
+        updateWidget { snapshot in
+            snapshot.alarmTimes = all
+            if snoozeEnded { snapshot.snoozedUntil = nil }
+        }
         let wake = MorningChange.currentWake(series: all, wakeIs: seriesPattern(settings: settings).wakeIs)
         var data: [String: Any] = [
             "alarm_times": all.map(Self.iso),
@@ -810,6 +816,7 @@ final class BedtimeCoordinator {
             "reason": "Edited alarms",
         ]
         if all.isEmpty { data["sleep_in"] = true }
+        if snoozeEnded { data["snooze_ended"] = true }
         if let link = HomeAssistantLinks.current(settings) {
             do {
                 try await link.report(.morningChanged, data: data, settings: settings)
