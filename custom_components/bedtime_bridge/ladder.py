@@ -64,6 +64,8 @@ class Morning:
     appointment_start: datetime | None = None
     weather_extra_minutes: int = 0
     condition: str | None = None
+    # A "wake up" appointment that replaced this shift for the morning (v0.4.1 item 11).
+    replaces_shift: str | None = None
     warnings: list[str] = field(default_factory=list)
 
     @property

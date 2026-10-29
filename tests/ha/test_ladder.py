@@ -386,3 +386,14 @@ async def test_after_a_shift_morning_with_nothing_ahead_the_status_says_so(hass,
     async_fire_time_changed(hass)
     await hass.async_block_till_done()
     assert status(hass) == "idle_no_shift"
+
+
+async def test_a_marked_appointment_replacing_the_shift_gets_the_ladder(hass, ladder, hass_client_no_auth):
+    """v0.4.1 item 11: going in late for a 7:00 ultrasound on a Days morning."""
+    await ladder()
+    await send(hass_client_no_auth, plan(local("06:35").isoformat(), kind="appointment", appointment="Ultrasound",
+                                         appointment_start=local("07:00").isoformat(), replaces_shift="Days"))
+    await hass.async_block_till_done()
+    assert rungs(hass) == ["05:45", "06:00", "06:15"], "the appointment's leave-by, not the shift's 05:45"
+    assert attrs(hass)["replaces_shift"] == "Days"
+    assert attrs(hass)["appointment"] == "Ultrasound"

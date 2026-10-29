@@ -16,13 +16,16 @@ struct BackstopInfo: Equatable {
     /// The times shown are the old template's, which the house backstop fires on until the cutover.
     var houseOldTimes = false
     var firstDayBackMinutes: Int?
+    /// Until the cutover: a marked appointment replaced this shift, but the house backstop still
+    /// uses the shift's times (v0.4.1 item 11).
+    var houseUsesShift: String?
 
     /// - Parameters:
     ///   - context: from Home Assistant, or nil when it couldn't be reached.
     ///   - leaveBy: this morning's leave-by, for an estimate without Home Assistant.
     ///   - offsets: minutes before leave-by (early, deadline, late) and the first-day-back extra.
     static func make(context: MorningContext?, leaveBy: Date?, offsets: (early: Int, deadline: Int, late: Int, firstDayBack: Int),
-                     firstDayBack: Bool) -> BackstopInfo? {
+                     firstDayBack: Bool, replacedShift: String? = nil) -> BackstopInfo? {
         guard let context else {
             guard let leaveBy else { return nil }
             let extra = firstDayBack ? offsets.firstDayBack : 0
@@ -49,6 +52,7 @@ struct BackstopInfo: Equatable {
             return BackstopInfo(rungs: [], status: status)
         }
         return BackstopInfo(rungs: rungs, status: status, isFault: fault, houseOldTimes: useHouse,
-                            firstDayBackMinutes: context.firstDayBack ? offsets.firstDayBack : nil)
+                            firstDayBackMinutes: context.firstDayBack ? offsets.firstDayBack : nil,
+                            houseUsesShift: useHouse ? replacedShift : nil)
     }
 }

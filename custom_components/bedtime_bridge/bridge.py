@@ -516,6 +516,7 @@ class BedtimeBridge:
             "shift_start": morning.shift_start.isoformat() if morning.shift_start else None,
             "appointment": morning.appointment,
             "appointment_start": morning.appointment_start.isoformat() if morning.appointment_start else None,
+            "replaces_shift": morning.replaces_shift,
             "delay_minutes": delay.get("minutes", 0),
             "changed_by": delay.get("changed_by"),
             "change_reason": delay.get("reason"),
@@ -570,6 +571,12 @@ class BedtimeBridge:
             late = ldr.rung_times(morning.leave_by, offsets, morning.first_day_back, delay)["late"]
             return late + ldr.LADDER_TAIL <= now
 
+        if appointment and shift_morning and plan.get("replaces_shift") and ldr.same_morning(
+            appointment.appointment_start or appointment.leave_by, shift_morning.shift_start
+        ):
+            # A "wake up" appointment replaces the shift for that morning (v0.4.1 item 11).
+            appointment.replaces_shift = plan.get("replaces_shift")
+            shift_morning = None
         if shift_morning and finished(shift_morning):
             # current_shift still shows the shift that just passed (it polls): read the next one
             # from the work calendar, so the status goes straight to the next state (item 19).

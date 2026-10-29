@@ -53,6 +53,7 @@ def _rung_attributes(s: dict[str, Any]) -> dict[str, Any]:
         "shift_start": ladder.get("shift_start"),
         "appointment": ladder.get("appointment"),
         "appointment_start": ladder.get("appointment_start"),
+        "replaces_shift": ladder.get("replaces_shift"),
         "delay_minutes": ladder.get("delay_minutes", 0),
         "changed_by": ladder.get("changed_by"),
         "reason": ladder.get("change_reason"),

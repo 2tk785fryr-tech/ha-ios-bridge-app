@@ -57,7 +57,7 @@ struct ContentView: View {
                             WarningBanner(text: "+\(weather.minutes) min for \(weather.reason)", systemImage: "cloud.rain")
                         }
                         if plan.source == .appointment, let appointment = plan.appointment, let wake = plan.wakeTime {
-                            MorningTimeline(appointment: appointment, weather: plan.weather, wake: wake, bufferMinutes: settings.arrivalBufferMinutes).with(backstopInfo(leaveBy: plan.leaveBy(settings: settings), firstDayBack: plan.firstDayBack ?? false))
+                            MorningTimeline(appointment: appointment, weather: plan.weather, wake: wake, bufferMinutes: settings.arrivalBufferMinutes).with(backstopInfo(leaveBy: plan.leaveBy(settings: settings), firstDayBack: plan.firstDayBack ?? false, replacedShift: plan.replacedShift))
                         }
                         if let short = plan.getReadyShortfall(settings: settings), short.earlierWake > .now {
                             GetReadyCard(minutes: short.minutes, wanted: settings.getReadyMinutes, leaveBy: short.leaveBy, earlierWake: short.earlierWake) {
@@ -65,7 +65,7 @@ struct ContentView: View {
                             }
                         }
                         if plan.source == .shift, let shift = plan.shift, let commute = plan.commute, let wake = plan.wakeTime {
-                            MorningTimeline(shift: shift, commute: commute, weather: plan.weather, wake: wake, bufferMinutes: settings.workArrivalBufferMinutes, getReadyGoal: settings.getReadyMinutes).with(backstopInfo(leaveBy: plan.leaveBy(settings: settings), firstDayBack: plan.firstDayBack ?? false))
+                            MorningTimeline(shift: shift, commute: commute, weather: plan.weather, wake: wake, bufferMinutes: settings.workArrivalBufferMinutes, getReadyGoal: settings.getReadyMinutes).with(backstopInfo(leaveBy: plan.leaveBy(settings: settings), firstDayBack: plan.firstDayBack ?? false, replacedShift: plan.replacedShift))
                         }
                         ForEach(plan.missingLocations, id: \.eventID) { appointment in
                             MissingLocationCard(appointment: appointment) { location in
@@ -329,7 +329,7 @@ struct ContentView: View {
 
     /// "Your morning"'s backstops: Home Assistant's, or an estimate from leave-by when it can't
     /// be reached (v0.4.1 item 8).
-    private func backstopInfo(leaveBy: Date?, firstDayBack: Bool) -> BackstopInfo? {
+    private func backstopInfo(leaveBy: Date?, firstDayBack: Bool, replacedShift: String? = nil) -> BackstopInfo? {
         guard morningContextLoaded else { return nil }
         let cached = HomeAssistantLinks.cachedSettings
         func minutes(_ key: String, _ fallback: Int) -> Int { cached[key] as? Int ?? fallback }
@@ -337,7 +337,7 @@ struct ContentView: View {
             context: morningContext, leaveBy: leaveBy,
             offsets: (minutes("rung_early_minutes", 50), minutes("rung_deadline_minutes", 35),
                       minutes("rung_late_minutes", 20), minutes("first_day_back_minutes", 15)),
-            firstDayBack: firstDayBack
+            firstDayBack: firstDayBack, replacedShift: replacedShift
         )
     }
 
@@ -631,7 +631,9 @@ private struct BackstopStatusLine: View {
             if let extra = info.firstDayBackMinutes {
                 Text("First day back +\(extra) min").foregroundStyle(Theme.textMuted)
             }
-            if info.houseOldTimes {
+            if let shift = info.houseUsesShift {
+                Text("House backstop still uses your \(shift) times until the cutover").foregroundStyle(Theme.warning.text)
+            } else if info.houseOldTimes {
                 Text("House backstop: old times until cutover").foregroundStyle(Theme.warning.text)
             }
         }

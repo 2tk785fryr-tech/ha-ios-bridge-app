@@ -271,6 +271,7 @@ final class BedtimeCoordinator {
                 guard let rule = WakePlanner.matchingRule(forTitle: event.title ?? "", rules: settings.shiftRules) else { return nil }
                 var (candidate, warning) = ShiftCandidate.make(title: event.title ?? rule.keyword, start: event.startDate, rule: rule)
                 candidate.location = event.location ?? ""
+                candidate.end = event.endDate
                 candidate.latitude = event.structuredLocation?.geoLocation?.coordinate.latitude
                 candidate.longitude = event.structuredLocation?.geoLocation?.coordinate.longitude
                 return (candidate, warning)
@@ -334,6 +335,10 @@ final class BedtimeCoordinator {
 
         if plan.source == .shift, let shift = plan.shift {
             plan.firstDayBack = firstDayBack(before: shift.start, settings: settings)
+            // An appointment that morning without the keyword doesn't move the alarms: say so.
+            if let note = unmarkedAppointmentNote(for: shift, settings: settings) {
+                plan.reason += ". \(note)"
+            }
         }
         plan.atHome = context?.atHome
         if context?.atHome == false {
@@ -445,6 +450,19 @@ final class BedtimeCoordinator {
             payload["alarms_planned"] = planned.count
         }
         await report(.planned, data: payload, settings: settings)
+    }
+
+    /// "Ultrasound at 10:00 AM isn't marked wake up, so your Days alarms are used." (v0.4.1 item 11)
+    private func unmarkedAppointmentNote(for shift: ShiftCandidate, settings: BridgeSettings) -> String? {
+        let day = Calendar.current.startOfDay(for: shift.start)
+        let end = shift.end ?? shift.start.addingTimeInterval(12 * 3600)
+        let keyword = settings.appointmentKeyword.lowercased()
+        let event = calendar.events(from: day, to: end, calendarIDs: settings.appointmentCalendarIDs).first { event in
+            WakePlanner.matchingRule(forTitle: event.title ?? "", rules: settings.shiftRules) == nil
+                && !(keyword.isEmpty == false && (event.notes ?? "").lowercased().contains(keyword))
+        }
+        guard let event else { return nil }
+        return "\(event.title ?? "An appointment") at \(WakePlanner.format(event.startDate)) isn't marked \(settings.appointmentKeyword), so your \(shift.cause) alarms are used"
     }
 
     /// No shift on the calendar the day before this one: a first day back (item 6).

@@ -376,6 +376,8 @@ extension WakePlan {
             block["leave_by"] = iso.string(from: leaveBy)
             block["appointment"] = appointment.title
             block["appointment_start"] = iso.string(from: appointment.start)
+            // It replaces this shift's alarms for the morning (v0.4.1 item 11).
+            if let replacedShift { block["replaces_shift"] = replacedShift }
         case .manual, .none:
             break
         }

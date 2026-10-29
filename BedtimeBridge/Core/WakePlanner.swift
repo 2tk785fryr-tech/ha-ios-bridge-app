@@ -13,6 +13,8 @@ struct ShiftCandidate: Equatable {
     var wakeIs: WakeTimeAlarm? = nil
     var alarmCount: Int? = nil
     var alarmSpacingMinutes: Int? = nil
+    /// When the shift's calendar event ends (v0.4.1 item 11); nil means 12 hours after the start.
+    var end: Date? = nil
     /// Where the shift is, from its calendar event, for the drive to work.
     var location = ""
     var latitude: Double? = nil
@@ -264,10 +266,21 @@ enum WakePlanner {
             }
         }
 
-        let earliestAppointment = appointments
+        // On a work morning, a "wake up" appointment before the shift ends replaces the shift's
+        // alarms, earlier or later (going in late); one after it ends doesn't (v0.4.1 item 11).
+        let shiftEnd = shift.map { $0.end ?? $0.start.addingTimeInterval(12 * 3600) }
+        var replacing = false
+        if let shift, let shiftEnd {
+            for appointment in appointments where appointment.start >= shiftEnd {
+                warnings.append("\(appointment.title) at \(format(appointment.start)) is marked wake up but is after your \(shift.cause) shift ends, so your \(shift.cause) alarms are used.")
+            }
+        }
+        let eligible = appointments.filter { appointment in shiftEnd.map { appointment.start < $0 } ?? true }
+        let earliestAppointment = eligible
             .map { ($0, $0.wakeTime(settings: settings)) }
             .filter { $0.1 > now }
             .min { $0.1 < $1.1 }
+        if shift != nil, earliestAppointment != nil { replacing = true }
 
         for appointment in appointments where appointment.wakeTime(settings: settings) <= now {
             warnings.append("\(appointment.title) needs you up before now; skipped.")
@@ -284,19 +297,24 @@ enum WakePlanner {
 
         let weatherNote = weather.map { " +\($0.minutes) min for \($0.reason)" } ?? ""
 
-        if let best = earliestAppointment, shiftWake.map({ best.1 < $0 }) ?? true {
+        if let best = earliestAppointment, replacing || (shiftWake.map({ best.1 < $0 }) ?? true) {
             let (appointment, wake) = best
             let minutes = Int((appointment.travelSeconds / 60).rounded())
             let leaveBy = appointment.leaveBy(bufferMinutes: settings.arrivalBufferMinutes)
-            let reason: String
-            if appointment.hasLocation {
+            var reason: String
+            if let shift, replacing {
+                reason = "Using \(appointment.title) at \(format(appointment.start)) for your alarms instead of your \(shift.cause) shift (\(format(shift.start))). You marked it wake up, so you're going in late."
+                if appointment.hasLocation {
+                    reason += " Leave by \(format(leaveBy)) (\(minutes) min drive)\(weatherNote)."
+                }
+            } else if appointment.hasLocation {
                 reason = "\(appointment.title) at \(format(appointment.start)). Leave by \(format(leaveBy)) (\(minutes) min drive, \(settings.arrivalBufferMinutes) min early)\(weatherNote)"
             } else if appointment.askAboutLocation {
                 reason = "\(appointment.title) at \(format(appointment.start)) has no location; planned with a \(minutes) min drive to be safe\(weatherNote)"
             } else {
                 reason = "\(appointment.title) at \(format(appointment.start)). Ready by \(format(leaveBy)) (no location needed)"
             }
-            return WakePlan(
+            var plan = WakePlan(
                 source: .appointment,
                 wakeTime: wake,
                 alarmTimes: makeTimes(wake),
@@ -307,6 +325,8 @@ enum WakePlanner {
                 warnings: warnings,
                 missingLocations: missing
             )
+            if replacing { plan.replacedShift = shift?.cause }
+            return plan
         }
 
         if let shift, let shiftWake {
