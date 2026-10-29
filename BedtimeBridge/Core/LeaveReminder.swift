@@ -67,14 +67,13 @@ final class LeaveReminder {
         if trip.bedtimeTravelSeconds == nil { trip.bedtimeTravelSeconds = trip.plannedTravelSeconds }
         pendingTrip = trip
         await removePending()
-        guard (try? await center.requestAuthorization(options: [.alert, .sound, .timeSensitive])) == true else { return }
+        guard (try? await center.requestAuthorization(options: [.alert, .sound])) == true else { return }
         let checked = trip.checkedAt.map { "Drive checked at \(WakePlanner.format($0)); not re-checked since." } ?? "Not re-checked."
         for (minutes, due) in Self.dueTimes(leaveBy: trip.leaveBy, offsets: offsets) {
             let content = UNMutableNotificationContent()
             content.title = Self.message(leaveBy: trip.leaveBy, travelSeconds: trip.plannedTravelSeconds, bedtimeSeconds: trip.bedtimeTravelSeconds, now: due)
             content.body = "\(trip.title) at \(WakePlanner.format(trip.start)). \(checked)"
             content.sound = .default
-            content.interruptionLevel = .timeSensitive
             let fireAt = max(due.addingTimeInterval(Self.fallbackDelay), Date.now.addingTimeInterval(5))
             let trigger = UNTimeIntervalNotificationTrigger(timeInterval: fireAt.timeIntervalSinceNow, repeats: false)
             try? await center.add(UNNotificationRequest(identifier: "\(Self.requestPrefix)-\(minutes)", content: content, trigger: trigger))
@@ -114,7 +113,6 @@ final class LeaveReminder {
             content.title = Self.message(leaveBy: trip.leaveBy, travelSeconds: trip.plannedTravelSeconds, bedtimeSeconds: trip.bedtimeTravelSeconds)
             content.body = "\(trip.title) at \(WakePlanner.format(trip.start))." + (trip.checkedAt == nil ? " Couldn't re-check the drive." : "")
             content.sound = .default
-            content.interruptionLevel = .timeSensitive
             try? await center.add(UNNotificationRequest(identifier: "leave-check-now", content: content, trigger: nil))
         }
         return trip
