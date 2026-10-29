@@ -227,6 +227,22 @@ scheduled, then shows what the phone really holds, read back from the system: **
 4:20 4:25 4:30**, or **Couldn't set 1 of 3 alarms** in red. The Lock Screen widget shows the same
 count ("3 alarms set · Leave by 6:26").
 
+**New in v0.4.2:**
+- **Bottom bar:** changes with the moment (evening, alarms set, up early, snoozing, up, napping,
+  plans changed). It has one ⋯ list for everything else. Protected actions (End alarms, Not
+  ready for bed, Back to bed, Skip, Sleep later and others) swap the bar for a slide-and-hold.
+- **Alarm card:** each alarm's bubble shows its real state. Green is set, yellow pulsing is
+  snoozing, red crossed-out is off, and red dashed is not set. The rings stay until the morning
+  is over.
+- **Nap** (Settings → Nap, off by default): tap a length and the alarms are set. Lengths that
+  would run into something later today are greyed out, with the reason and the longest nap that
+  fits. Home Assistant turns a napping helper on at home and runs your nap Focus shortcuts.
+- **When options show** (Settings → Alarms): one page for when I'm up early, Not ready for bed
+  and Back to bed appear. Back to bed now ends 3 h after the wake-up or the last stop.
+- **Start new alarms this far from now:** how far ahead Wake at a different time starts (default
+  6 h).
+- **Leave checks** keep going after a snow delay or a sleep-longer change.
+
 **New in v0.4.1:**
 - **Change this morning** asks the reason first, then whether to shift just the alarms or the
   entire wake-up (snow delay). The confirm screen shows the backstops before and after, and choices
