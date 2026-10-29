@@ -104,6 +104,10 @@ private struct OwnAlarmPreview: View {
     var body: some View {
         SettingsPage(title: "Your morning") {
             Section("Alarms") {
+                if let first = draft.times.first {
+                    Button("Add one before \(WakePlanner.format(first))", systemImage: "plus") { change(draft.adding(.before, spacingMinutes: spacing)) }
+                        .font(.footnote)
+                }
                 ForEach(Array(draft.times.enumerated()), id: \.offset) { index, time in
                     Button {
                         editTime = time
@@ -116,12 +120,20 @@ private struct OwnAlarmPreview: View {
                         }
                     }
                     if index + 1 < draft.times.count {
-                        Button("Add one between", systemImage: "plus") { change(draft.adding(.between(index), spacingMinutes: spacing)) }
-                            .font(.footnote)
+                        Button("Add one between \(WakePlanner.format(time)) and \(WakePlanner.format(draft.times[index + 1]))", systemImage: "plus") {
+                            change(draft.adding(.between(index), spacingMinutes: spacing))
+                        }
+                        .font(.footnote)
                     }
                 }
-                Button("Add one before", systemImage: "plus") { change(draft.adding(.before, spacingMinutes: spacing)) }
-                Button("Add one after", systemImage: "plus") { change(draft.adding(.after, spacingMinutes: spacing)) }
+                if let last = draft.times.last {
+                    Button("Add one after \(WakePlanner.format(last))", systemImage: "plus") { change(draft.adding(.after, spacingMinutes: spacing)) }
+                        .font(.footnote)
+                } else {
+                    Button("Add an alarm", systemImage: "plus") {
+                        change([OwnAlarmDraft.defaultTime(roundingMinutes: settings.ownAlarmRoundingMinutes)])
+                    }
+                }
                 if undoneNote {
                     Text("Changing the alarms updates the backstops and undoes changes you made to them.")
                         .font(.footnote).foregroundStyle(Theme.warning.text)
