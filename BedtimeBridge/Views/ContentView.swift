@@ -53,8 +53,9 @@ struct ContentView: View {
                         .buttonStyle(.plain)
                     }
 
-                    if let plan {
-                        PlanCard(plan: plan, isSet: isSet(plan), setCount: scheduled.filter { $0 > .now }.count)
+                    if let plan, !(morningRingsShowing && !sameMorning(plan)) {
+                        PlanCard(plan: plan, bubbles: isSet(plan) || sameMorning(plan) ? morningBubbles : AlarmBubble.preview(plan.alarmTimes, wake: plan.wakeTime),
+                                 header: isSet(plan) || sameMorning(plan) ? morningHeader : AlarmStatus(kind: .notSet, text: "Preview · not set"))
                         if let weather = plan.weather {
                             WarningBanner(text: "+\(weather.minutes) min for \(weather.reason)", systemImage: "cloud.rain")
                         }
@@ -77,9 +78,10 @@ struct ContentView: View {
                                 self.plan?.missingLocations.removeAll { $0.eventID == appointment.eventID }
                             }
                         }
-                    } else if !scheduled.isEmpty {
-                        // Set earlier (the bedtime shortcut, or before the app was closed).
-                        SetAlarmsCard(scheduled: scheduled, snapshot: NextAlarmSnapshot.load(), status: coordinator.alarmStatus())
+                    } else if !scheduled.isEmpty || morningRingsShowing {
+                        // Set earlier (the bedtime shortcut, or before the app was closed), or
+                        // this morning's, until the morning is over (v0.4.2 item 5).
+                        SetAlarmsCard(bubbles: morningBubbles, snapshot: NextAlarmSnapshot.load(), status: morningHeader)
                         if let info = backstopInfo(leaveBy: NextAlarmSnapshot.load().leaveBy, firstDayBack: false) {
                             BackstopsCard(info: info)
                         }
@@ -151,7 +153,7 @@ struct ContentView: View {
                     }
 
                     if store.settings.alarmStyle == .app {
-                        TemporaryAlarmsCard(alarms: temporaryAlarms) {
+                        TemporaryAlarmsCard(alarms: temporaryAlarms, ring: { coordinator.ring(forAlarm: $0.id, at: $0.time) }) {
                             sheet = .temporary
                         } remove: { id in
                             coordinator.cancelTemporaryAlarm(id)
@@ -343,6 +345,28 @@ struct ContentView: View {
     }
 
     /// Every alarm the plan still has to ring is set on this iPhone.
+    /// This morning's bubbles with their rings (v0.4.2 item 5).
+    private var morningBubbles: [AlarmBubble] {
+        _ = scheduled
+        return coordinator.alarmBubbles(wake: NextAlarmSnapshot.load().wakeTime)
+    }
+
+    private var morningHeader: AlarmStatus { AlarmBubble.header(morningBubbles, shortfall: coordinator.alarmShortfall) }
+
+    /// The rings stay after the last alarm is off until the morning is over.
+    private var morningRingsShowing: Bool {
+        let bubbles = morningBubbles
+        guard store.settings.alarmStyle == .app, !bubbles.isEmpty else { return false }
+        let late = backstopInfo(leaveBy: NextAlarmSnapshot.load().leaveBy, firstDayBack: false)?.rungs.map(\.time).max()
+        guard let over = AlarmBubble.morningOver(lateBackstop: late, lastAlarm: bubbles.map(\.time).max()) else { return false }
+        return Date.now < over
+    }
+
+    private func sameMorning(_ plan: WakePlan) -> Bool {
+        let morning = Set(morningBubbles.map(\.time))
+        return morningRingsShowing && plan.alarmTimes.contains { morning.contains($0) }
+    }
+
     private func isSet(_ plan: WakePlan) -> Bool {
         let upcoming = plan.alarmTimes.filter { $0 > .now }
         guard !upcoming.isEmpty, store.settings.alarmStyle == .app else { return false }
@@ -527,15 +551,15 @@ struct ContentView: View {
 
 private struct PlanCard: View {
     let plan: WakePlan
-    /// The plan's alarms are set on this iPhone (not just previewed).
-    let isSet: Bool
-    let setCount: Int
+    /// Plain bubbles for a preview; ringed ones once set (v0.4.2 item 5).
+    let bubbles: [AlarmBubble]
+    let header: AlarmStatus
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 if plan.hasAlarm {
-                    SetStatus(status: isSet ? BedtimeCoordinator.shared.alarmStatus() : AlarmStatus(kind: .notSet, text: "Preview, not set yet"))
+                    SetStatus(status: header)
                 } else {
                     Text("Tomorrow")
                         .font(.footnote.weight(.semibold))
@@ -557,18 +581,8 @@ private struct PlanCard: View {
                 .font(.subheadline)
                 .foregroundStyle(Theme.textSoft)
 
-            if plan.alarmTimes.count > 1 {
-                HStack(spacing: 8) {
-                    // The highlighted pill is the wake-up time: last by default, or first.
-                    ForEach(Array(plan.alarmTimes.enumerated()), id: \.offset) { _, time in
-                        let isWake = time == plan.wakeTime
-                        Text(time.formatted(.dateTime.hour(.defaultDigits(amPM: .omitted)).minute()))
-                            .font(.system(size: 15, weight: isWake ? .bold : .semibold))
-                            .foregroundStyle(isWake ? .white : Theme.textSoft)
-                            .frame(maxWidth: .infinity, minHeight: 40)
-                            .background(isWake ? Theme.accent : Theme.raised, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    }
-                }
+            if bubbles.count > 1 || bubbles.contains(where: { $0.ring != .none && $0.ring != .set }) {
+                AlarmBubbleRow(bubbles: bubbles)
             }
         }
         .nightfallCard(radius: 28, padding: 24)
@@ -634,7 +648,7 @@ private struct SetStatus: View {
         switch status.kind {
         case .set: Theme.good
         case .error: Theme.danger
-        case .notSet: Theme.warning.text
+        case .notSet: Theme.textMuted
         }
     }
 
@@ -689,15 +703,11 @@ private struct BackstopsCard: View {
 /// Alarms already set (by the bedtime shortcut, or before the app was last closed), shown
 /// the same way as a plan.
 private struct SetAlarmsCard: View {
-    let scheduled: [Date]
+    let bubbles: [AlarmBubble]
     let snapshot: NextAlarmSnapshot
     let status: AlarmStatus
 
-    private var upcoming: [Date] { scheduled.filter { $0 > .now } }
-    private var wake: Date? {
-        if let wake = snapshot.wakeTime, upcoming.contains(where: { abs($0.timeIntervalSince(wake)) < 60 }) { return wake }
-        return upcoming.last
-    }
+    private var wake: Date? { bubbles.first(where: \.isWake)?.time ?? bubbles.last?.time }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -724,17 +734,8 @@ private struct SetAlarmsCard: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Theme.leaveBy)
             }
-            if upcoming.count > 1 {
-                HStack(spacing: 8) {
-                    ForEach(upcoming, id: \.self) { time in
-                        let isWake = time == wake
-                        Text(time.formatted(.dateTime.hour(.defaultDigits(amPM: .omitted)).minute()))
-                            .font(.system(size: 15, weight: isWake ? .bold : .semibold))
-                            .foregroundStyle(isWake ? .white : Theme.textSoft)
-                            .frame(maxWidth: .infinity, minHeight: 40)
-                            .background(isWake ? Theme.accent : Theme.raised, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    }
-                }
+            if !bubbles.isEmpty {
+                AlarmBubbleRow(bubbles: bubbles)
             }
         }
         .nightfallCard(radius: 28, padding: 24)
@@ -1314,5 +1315,68 @@ private struct WarningBanner: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Theme.warning.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.warning.border, lineWidth: 1))
+    }
+}
+
+/// A row of alarm bubbles, each outlined by its real state (v0.4.2 item 5): green set, yellow
+/// pulsing snoozing, red off (crossed out), red dashed not set. The wake-up keeps its purple
+/// fill under the outline.
+struct AlarmBubbleRow: View {
+    let bubbles: [AlarmBubble]
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            ForEach(bubbles) { AlarmBubbleView(bubble: $0) }
+        }
+    }
+}
+
+struct AlarmBubbleView: View {
+    let bubble: AlarmBubble
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var pulse = false
+
+    private var outline: Color? {
+        switch bubble.ring {
+        case .none: nil
+        case .set: Theme.good
+        case .snoozing: Theme.snoozing
+        case .off, .notSet: Theme.danger
+        }
+    }
+
+    private var isOff: Bool { bubble.ring == .off }
+    private var isSnoozing: Bool { if case .snoozing = bubble.ring { true } else { false } }
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+        VStack(spacing: 4) {
+            Text(bubble.time.formatted(.dateTime.hour(.defaultDigits(amPM: .omitted)).minute()))
+                .font(.system(size: 15, weight: bubble.isWake ? .bold : .semibold))
+                .strikethrough(isOff)
+                .foregroundStyle(bubble.isWake ? .white : Theme.textSoft)
+                .opacity(isOff ? 0.45 : 1)
+                .frame(maxWidth: .infinity, minHeight: 40)
+                .background(bubble.isWake ? Theme.accent : Theme.raised, in: shape)
+                .overlay {
+                    if let outline {
+                        shape.strokeBorder(outline, style: StrokeStyle(lineWidth: 2, dash: bubble.ring == .notSet ? [5, 4] : []))
+                            .opacity(isSnoozing && !reduceMotion && pulse ? 0.35 : 1)
+                    }
+                }
+            if let label = bubble.label {
+                Text(label)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(outline ?? Theme.textMuted)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .onAppear {
+            guard isSnoozing, !reduceMotion else { return }
+            withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) { pulse = true }
+        }
+        .accessibilityElement(children: .combine)
     }
 }

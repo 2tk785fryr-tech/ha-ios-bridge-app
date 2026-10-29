@@ -212,6 +212,12 @@ final class BedtimeCoordinator {
         _ = try await setTemporaryAlarm(at: time, disarmHouse: alarm.disarmHouse, settings: settings)
     }
 
+    /// A temporary (or nap) alarm's ring, like the regular ones (v0.4.2 item 5).
+    func ring(forAlarm id: UUID, at time: Date, now: Date = .now) -> AlarmBubble.Ring {
+        guard alarms.scheduledAlarms().contains(where: { $0.id == id }) else { return .notSet }
+        return time <= now ? .snoozing(until: NextAlarmSnapshot.load().snoozedUntil) : .set
+    }
+
     func cancelTemporaryAlarm(_ id: UUID) {
         alarms.cancel(id)
         temporaryAlarms = temporaryAlarms.filter { $0.id != id }
@@ -698,8 +704,26 @@ final class BedtimeCoordinator {
         set { UserDefaults.standard.set(newValue.map { [$0.set, $0.planned] }, forKey: Self.shortfallKey) }
     }
 
-    private func recordShortfall(planned: [Date], actual: [Date]) {
+    private func recordShortfall(planned: [Date], actual: [Date], keepingPast: Bool = false) {
         alarmShortfall = actual.count < planned.count ? (actual.count, planned.count) : nil
+        // Every alarm this morning should have, for the bubbles' rings (v0.4.2 item 5). An edit
+        // keeps the ones that already rang.
+        let past = keepingPast ? morningAlarms.filter { $0 <= .now } : []
+        morningAlarms = Array(Set(past + planned + actual)).sorted()
+    }
+
+    private static let morningAlarmsKey = "morningAlarms.v1"
+
+    /// This morning's alarms as planned and set, kept after they ring or are turned off.
+    private(set) var morningAlarms: [Date] {
+        get { UserDefaults.standard.array(forKey: Self.morningAlarmsKey) as? [Date] ?? [] }
+        set { UserDefaults.standard.set(newValue, forKey: Self.morningAlarmsKey) }
+    }
+
+    /// The main card's bubbles for this morning, with their rings (v0.4.2 item 5).
+    func alarmBubbles(wake: Date?, now: Date = .now) -> [AlarmBubble] {
+        AlarmBubble.make(morning: morningAlarms, held: setAlarmTimes(), wake: wake,
+                         snoozedUntil: NextAlarmSnapshot.load().snoozedUntil, stopped: stoppedThisWakeUp, now: now)
     }
 
     private static let stoppedKey = "stoppedThisWakeUp.v1"
@@ -840,7 +864,7 @@ final class BedtimeCoordinator {
         )
         let all = setAlarmTimes()
         alarmSeries = all
-        recordShortfall(planned: future, actual: added)
+        recordShortfall(planned: future, actual: added, keepingPast: true)
         if morningChangeReason == nil { morningChangeReason = "Edited alarms" }
         updateWidget { snapshot in
             snapshot.alarmTimes = all

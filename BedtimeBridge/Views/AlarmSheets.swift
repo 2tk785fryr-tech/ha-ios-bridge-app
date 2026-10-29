@@ -92,6 +92,8 @@ struct TemporaryAlarmSheet: View {
 /// Temporary wake-ups beside the regular alarms, with the way to add or remove one.
 struct TemporaryAlarmsCard: View {
     let alarms: [TemporaryAlarm]
+    /// Each one's ring, like the regular alarms (v0.4.2 item 5).
+    var ring: (TemporaryAlarm) -> AlarmBubble.Ring = { _ in .set }
     let add: () -> Void
     let remove: (UUID) -> Void
     /// Change a temporary alarm's time (tap it).
@@ -105,7 +107,9 @@ struct TemporaryAlarmsCard: View {
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(Theme.textMuted)
             ForEach(alarms) { alarm in
-                HStack {
+                HStack(alignment: .top) {
+                    AlarmBubbleView(bubble: AlarmBubble(time: alarm.time, ring: ring(alarm), isWake: false))
+                        .frame(width: 84)
                     VStack(alignment: .leading, spacing: 2) {
                         Button {
                             newTime = alarm.time

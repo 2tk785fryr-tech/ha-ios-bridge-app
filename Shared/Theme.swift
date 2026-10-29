@@ -28,6 +28,8 @@ enum Theme {
     static let good = Color(hex: 0x7DE3C8)
     static let warning = (background: Color(hex: 0x2A1E12), border: Color(hex: 0x5B3B1A), text: Color(hex: 0xFCD9B0))
     static let danger = Color(hex: 0xFCA5A5)
+    /// A snoozing alarm's ring (v0.4.2 item 5).
+    static let snoozing = Color(hex: 0xFDE047)
 }
 
 /// Sora (SIL Open Font License, Shared/Fonts/OFL.txt) for times and titles; body text stays
