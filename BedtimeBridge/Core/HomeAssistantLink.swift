@@ -27,12 +27,24 @@ enum BridgeEvent: String {
 /// For item 3's confirm screen: the backstops now, and when the curtains open that morning.
 struct MorningContext {
     var ladderArmed: Bool
+    /// "armed", "idle_no_shift", "fault", …
+    var ladderStatus: String? = nil
+    /// Why the ladder isn't armed (or what's wrong).
+    var ladderReason: String? = nil
     /// "shift" or "appointment"
     var ladderKind: String?
     var backstops: [String: Date]
     var shiftStart: Date?
     var appointment: String?
     var curtainsOpenAt: Date?
+    var leaveBy: Date? = nil
+    var firstDayBack = false
+    /// What the house backstop fires on (v0.4.1 item 8): the old template's times until the
+    /// cutover ("old"), then this ladder ("bridge").
+    var houseSource = "old"
+    var houseTimes: [String: Date] = [:]
+
+    var houseUsesOldTimes: Bool { houseSource == "old" }
 }
 
 /// The two ways the app can talk to Home Assistant: the Bedtime Bridge integration
@@ -140,13 +152,20 @@ struct IntegrationLink: HomeAssistantLink {
         guard let reply = try? await send("context", data: data) else { return nil }
         let ladder = reply["ladder"] as? [String: Any] ?? [:]
         let times = (ladder["times"] as? [String: String] ?? [:]).compactMapValues(Self.parseDate)
+        let house = ladder["house_backstop"] as? [String: Any] ?? [:]
         return MorningContext(
             ladderArmed: ladder["status"] as? String == "armed",
+            ladderStatus: ladder["status"] as? String,
+            ladderReason: ladder["reason"] as? String,
             ladderKind: ladder["kind"] as? String,
             backstops: times,
             shiftStart: (ladder["shift_start"] as? String).flatMap(Self.parseDate),
             appointment: ladder["appointment"] as? String,
-            curtainsOpenAt: (reply["curtains_open_at"] as? String).flatMap(Self.parseDate)
+            curtainsOpenAt: (reply["curtains_open_at"] as? String).flatMap(Self.parseDate),
+            leaveBy: (ladder["leave_by"] as? String).flatMap(Self.parseDate),
+            firstDayBack: ladder["first_day_back"] as? Bool ?? false,
+            houseSource: house["source"] as? String ?? "old",
+            houseTimes: (house["times"] as? [String: String] ?? [:]).compactMapValues(Self.parseDate)
         )
     }
 

@@ -396,8 +396,8 @@ private struct AlarmSettingsSection: View {
                     ForEach(StopBehavior.allCases) { Text($0.displayName).tag($0) }
                 }
                 TestAlarmButton(settings: settings)
-                NavigationLink("Reasons for changing a morning") {
-                    MorningReasonsEditor(reasons: $settings.morningChangeReasons)
+                NavigationLink("Change this morning") {
+                    MorningChangeSettings(settings: $settings)
                 }
             }
             Stepper("Look ahead \(settings.lookAheadHours) h", value: $settings.lookAheadHours, in: 6...72)
@@ -414,35 +414,51 @@ private struct AlarmSettingsSection: View {
     }
 }
 
-/// Item 3's reason list: picked when moving or cancelling a morning's alarms, logged in Home
-/// Assistant.
-private struct MorningReasonsEditor: View {
-    @Binding var reasons: [String]
+/// Settings → Change this morning (v0.4.1 item 7): the reasons, what each moves, and the gap
+/// the early backstop keeps after the new last alarm.
+private struct MorningChangeSettings: View {
+    @Binding var settings: BridgeSettings
     @State private var newReason = ""
 
     var body: some View {
-        SettingsPage(title: "Reasons") {
+        SettingsPage(title: "Change this morning") {
             Section {
-                ForEach(reasons, id: \.self) { Text($0) }
-                    .onDelete { reasons.remove(atOffsets: $0) }
-                    .onMove { reasons.move(fromOffsets: $0, toOffset: $1) }
+                ForEach($settings.morningReasons) { $reason in
+                    VStack(alignment: .leading, spacing: 6) {
+                        TextField("Reason", text: $reason.name)
+                            .foregroundStyle(Theme.text)
+                        Picker("Moves", selection: $reason.scope) {
+                            ForEach(MorningChangeScope.allCases) { Text($0.displayName).tag($0) }
+                        }
+                        .font(.footnote)
+                    }
+                }
+                .onDelete { settings.morningReasons.remove(atOffsets: $0) }
+                .onMove { settings.morningReasons.move(fromOffsets: $0, toOffset: $1) }
                 HStack {
                     TextField("Add a reason", text: $newReason)
                         .onSubmit(add)
                     Button("Add", action: add)
                         .disabled(newReason.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
+            } header: {
+                Text("Reasons")
             } footer: {
-                Text("Picked when you change a morning's alarms, and logged in Home Assistant with the change.")
+                Text("Picked when you change a morning's alarms, and logged in Home Assistant. Shift alarms only: you sleep longer and the start stays (leave-by and the deadline and late backstops stay). Shift entire wake-up: the start is later, and everything moves. Ask: choose each time.")
+            }
+            Section {
+                Stepper("Early backstop: \(settings.earlyBackstopGapMinutes) min after the last alarm", value: $settings.earlyBackstopGapMinutes, in: 0...30)
+            } footer: {
+                Text("With Shift alarms only, the early backstop moves to this long after the new last alarm if it would otherwise come before it.")
             }
         }
         .toolbar { EditButton() }
     }
 
     private func add() {
-        let reason = newReason.trimmingCharacters(in: .whitespaces)
-        guard !reason.isEmpty, !reasons.contains(reason) else { return }
-        reasons.append(reason)
+        let name = newReason.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty, !settings.morningReasons.contains(where: { $0.name == name }) else { return }
+        settings.morningReasons.append(MorningReason(name: name, scope: .ask))
         newReason = ""
     }
 }

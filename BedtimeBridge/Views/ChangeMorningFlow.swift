@@ -2,8 +2,9 @@ import LocalAuthentication
 import SwiftUI
 
 /// Item 3: move this morning's alarms later (or earlier) or cancel them. Opened with a
-/// slide-and-hold; you pick the change and a reason, see everything it will change, then confirm
-/// with a second 5-second hold and Face ID (passcode if Face ID fails).
+/// slide-and-hold; you pick a reason (which says whether only the alarms move or the whole
+/// wake-up, v0.4.1 item 7) and the change, see everything it will change, then confirm with a
+/// second 5-second hold and Face ID (passcode if Face ID fails).
 struct ChangeMorningFlow: View {
     let phase: MorningChangePhase
     let currentWake: Date
@@ -14,70 +15,139 @@ struct ChangeMorningFlow: View {
     @Environment(\.dismiss) private var dismiss
     @State private var choice: MorningChangeChoice?
     @State private var pickedTime = Date.now.addingTimeInterval(2 * 3600)
-    @State private var reason: String?
+    @State private var reasonID: UUID?
+    /// Shift alarms only or the entire wake-up, when the reason says "Ask".
+    @State private var askedScope: MorningChangeScope?
     @State private var note = ""
+    @State private var context: MorningContext?
 
     /// This morning's own pattern (a Days morning: 3 alarms, 5 min apart, wake = last).
     private var pattern: SeriesPattern { BedtimeCoordinator.shared.seriesPattern(settings: settings) }
+    private var reason: MorningReason? { settings.morningReasons.first { $0.id == reasonID } }
+    private var scope: MorningChangeScope? {
+        guard let reason else { return nil }
+        return reason.scope == .ask ? askedScope : reason.scope
+    }
+    private var backstops: [String: Date] { context?.ladderArmed == true ? context?.backstops ?? [:] : [:] }
 
-    private var change: MorningChange? {
-        choice.map { MorningChange.make($0, currentWake: currentWake, pattern: pattern) }
+    private func make(_ choice: MorningChangeChoice) -> MorningChange {
+        var change = MorningChange.make(choice, currentWake: currentWake, pattern: pattern)
+        change.scope = scope == .alarms ? .alarms : .wakeUp
+        return change
+    }
+
+    private var change: MorningChange? { choice.map(make) }
+
+    /// Shift alarms only: the latest wake-up whose last alarm isn't after the late backstop.
+    private var latestWake: Date? {
+        guard scope == .alarms, let late = backstops["late"] else { return nil }
+        return MorningChange.latestWake(notAfter: late, pattern: pattern)
     }
 
     var body: some View {
         NavigationStack {
             SettingsPage(title: "Change this morning") {
-                Section {
-                    ForEach([30, 60, 120], id: \.self) { minutes in
-                        option(.later(minutes: minutes), title: minutes < 60 ? "+\(minutes) min" : "+\(minutes / 60) hr")
-                    }
-                    option(.at(BedtimeCoordinator.nextOccurrence(ofTimeIn: pickedTime)), title: "Pick a time")
-                    if case .at = choice {
-                        DatePicker("Wake up at", selection: $pickedTime, displayedComponents: .hourAndMinute)
-                            .onChange(of: pickedTime) { choice = .at(BedtimeCoordinator.nextOccurrence(ofTimeIn: pickedTime)) }
-                    }
-                    option(.noAlarms, title: "No alarms")
-                } header: {
-                    Text(wakeKnown ? "Wake-up now \(WakePlanner.format(currentWake))" : "From now")
-                } footer: {
-                    Text("New alarms keep this morning's pattern: \(pattern.count) alarms, \(pattern.spacingMinutes) min apart, wake-up is the \(pattern.wakeIs.displayName.lowercased()).")
-                }
                 Section("Reason") {
-                    Picker("Reason", selection: $reason) {
-                        Text("Choose…").tag(String?.none)
-                        ForEach(settings.morningChangeReasons, id: \.self) { Text($0).tag(String?.some($0)) }
+                    Picker("Reason", selection: $reasonID) {
+                        Text("Choose…").tag(UUID?.none)
+                        ForEach(settings.morningReasons) { Text($0.name).tag(UUID?.some($0.id)) }
+                    }
+                    if reason?.scope == .ask {
+                        Picker("What moves", selection: $askedScope) {
+                            Text("Choose…").tag(MorningChangeScope?.none)
+                            Text(MorningChangeScope.alarms.displayName).tag(MorningChangeScope?.some(.alarms))
+                            Text(MorningChangeScope.wakeUp.displayName).tag(MorningChangeScope?.some(.wakeUp))
+                        }
+                    } else if let reason {
+                        Text(reason.scope.displayName).foregroundStyle(Theme.textMuted)
                     }
                     TextField("Note (optional)", text: $note)
                 }
+                if let scope {
+                    Section {
+                        ForEach([30, 60, 120], id: \.self) { minutes in
+                            option(.later(minutes: minutes), title: minutes < 60 ? "+\(minutes) min" : "+\(minutes / 60) hr")
+                        }
+                        option(.at(BedtimeCoordinator.nextOccurrence(ofTimeIn: pickedTime)), title: "Pick a time")
+                        if case .at = choice {
+                            DatePicker("Wake up at", selection: $pickedTime, in: ...(latestWake ?? .distantFuture), displayedComponents: .hourAndMinute)
+                                .onChange(of: pickedTime) { choice = .at(BedtimeCoordinator.nextOccurrence(ofTimeIn: pickedTime)) }
+                        }
+                        option(.noAlarms, title: "No alarms")
+                        if let change, case .afterDeadline(let deadline) = change.limit(backstops: backstops) {
+                            Label("The last alarm is after the deadline backstop (\(WakePlanner.format(deadline))).", systemImage: "exclamationmark.triangle")
+                                .font(.footnote).foregroundStyle(Theme.warning.text)
+                        }
+                    } header: {
+                        Text(wakeKnown ? "Wake-up now \(WakePlanner.format(currentWake))" : "From now")
+                    } footer: {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(scope == .alarms
+                                 ? "Shift alarms only: you sleep longer, the start stays. Leave-by and the deadline and late backstops stay; the early backstop moves after the new last alarm."
+                                 : "Shift entire wake-up: the start is later. The alarms, leave-by and all three backstops move by the same amount.")
+                            Text("New alarms keep this morning's pattern: \(pattern.count) alarms, \(pattern.spacingMinutes) min apart, wake-up is the \(pattern.wakeIs.displayName.lowercased()).")
+                            if scope == .alarms, let late = backstops["late"], blockedChoices {
+                                Text("Later than that would put the last alarm after the late backstop (\(WakePlanner.format(late))).")
+                                Button("Shift the entire wake-up instead") {
+                                    if reason?.scope == .ask { askedScope = .wakeUp }
+                                }
+                                .disabled(reason?.scope != .ask)
+                                if reason?.scope != .ask {
+                                    Text("This reason is set to shift alarms only; pick a reason that shifts the wake-up, or change it in Settings.")
+                                }
+                            }
+                        }
+                    }
+                }
             }
             .navigationBarTitleDisplayMode(.inline)
+            .task { context = await BedtimeCoordinator.shared.morningContext(firstAlarm: nil, settings: settings) }
+            .onChange(of: scope) { choice = nil }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     NavigationLink("Next") {
                         if let change {
-                            ConfirmMorningChange(change: change, phase: phase, reason: reason, note: note, settings: settings) {
+                            ConfirmMorningChange(change: change, phase: phase, reason: reason?.name, note: note, settings: settings) {
                                 done()
                                 dismiss()
                             }
                         }
                     }
-                    .disabled(change == nil || reason == nil || change?.isPossible(now: .now) == false)
+                    .disabled(!canContinue)
                 }
             }
         }
     }
 
+    private var canContinue: Bool {
+        guard let change, scope != nil, change.isPossible(now: .now) else { return false }
+        if case .afterLate = change.limit(backstops: backstops) { return false }
+        return true
+    }
+
+    /// Some choice is disabled because it would pass the late backstop.
+    private var blockedChoices: Bool {
+        [MorningChangeChoice.later(minutes: 30), .later(minutes: 60), .later(minutes: 120)].contains { option in
+            if case .afterLate = make(option).limit(backstops: backstops) { return true }
+            return false
+        }
+    }
+
     private func option(_ option: MorningChangeChoice, title: String) -> some View {
-        let preview = MorningChange.make(option, currentWake: currentWake, pattern: pattern)
+        let preview = make(option)
         let selected = choice.map { same($0, option) } ?? false
+        let blocked: Bool = {
+            if case .afterLate = preview.limit(backstops: backstops) { return true }
+            return false
+        }()
         return Button {
             choice = option
         } label: {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).foregroundStyle(Theme.text)
-                    Text(preview.alarmTimes.isEmpty ? "Alarms off for this morning" : "Alarms " + preview.alarmTimes.map(WakePlanner.format).joined(separator: ", "))
+                    Text(title).foregroundStyle(blocked ? Theme.textFaint : Theme.text)
+                    Text(blocked ? "Past the late backstop" : preview.alarmTimes.isEmpty ? "Alarms off for this morning" : "Alarms " + preview.alarmTimes.map(WakePlanner.format).joined(separator: ", "))
                         .font(.footnote)
                         .foregroundStyle(Theme.textMuted)
                 }
@@ -85,7 +155,12 @@ struct ChangeMorningFlow: View {
                 if selected { Image(systemName: "checkmark").foregroundStyle(Theme.accentText) }
             }
         }
-        .disabled(!preview.isPossible(now: .now))
+        .disabled(!preview.isPossible(now: .now) || (blocked && !isPickATime(option)))
+    }
+
+    private func isPickATime(_ option: MorningChangeChoice) -> Bool {
+        if case .at = option { return true }
+        return false
     }
 
     private func same(_ a: MorningChangeChoice, _ b: MorningChangeChoice) -> Bool {
@@ -121,6 +196,12 @@ private struct ConfirmMorningChange: View {
                     Text(change.alarmTimes.map(WakePlanner.format).joined(separator: " · ")).foregroundStyle(Theme.text)
                     Text(change.delayMinutes >= 0 ? "\(change.delayMinutes) min later" : "\(-change.delayMinutes) min earlier")
                         .font(.footnote).foregroundStyle(Theme.textMuted)
+                }
+                if !change.alarmTimes.isEmpty {
+                    Text(change.scope == .alarms
+                         ? "Shift alarms only: the start, leave-by and leave reminder stay."
+                         : "Shift entire wake-up: leave-by and the leave reminder move \(change.delayMinutes) min too.")
+                        .font(.footnote).foregroundStyle(Theme.accentText)
                 }
             }
             Section("Backstops") {
@@ -167,14 +248,28 @@ private struct ConfirmMorningChange: View {
         if !loaded {
             Text("Checking…").foregroundStyle(Theme.textMuted)
         } else if let context, context.ladderArmed {
-            let moved = change.backstops(context.backstops)
-            Text(["early", "deadline", "late"].compactMap { rung in moved[rung].map { "\(rung.capitalized) \(WakePlanner.format($0))" } }.joined(separator: " · "))
+            let moved = change.backstops(context.backstops, earlyGap: settings.earlyBackstopGapMinutes)
+            Text(["early", "deadline", "late"].compactMap { rung in
+                moved[rung].map { time in
+                    let same = context.backstops[rung].map { abs($0.timeIntervalSince(time)) < 30 } ?? true
+                    return "\(rung.capitalized) \(WakePlanner.format(time))\(same ? "" : " (was \(WakePlanner.format(context.backstops[rung]!)))")"
+                }
+            }.joined(separator: " · "))
                 .foregroundStyle(Theme.text)
+            if context.houseUsesOldTimes, !context.houseTimes.isEmpty {
+                // Until the cutover the house backstop reads the old template (v0.4.1 item 6).
+                Text("Until the cutover, your house backstop still fires at its old times: "
+                     + ["early", "deadline", "late"].compactMap { rung in context.houseTimes[rung].map { "\(rung) \(WakePlanner.format($0))" } }.joined(separator: ", ")
+                     + ". Only Bedtime Bridge's ladder above moves.")
+                    .font(.footnote).foregroundStyle(Theme.warning.text)
+            }
             if change.alarmTimes.isEmpty, context.ladderKind == "shift", let start = context.shiftStart {
                 Text("Your calendar still shows the shift at \(WakePlanner.format(start)), so the backstops stay on. Delete the shift if you're not working.")
                     .font(.footnote).foregroundStyle(Theme.warning.text)
             } else if change.alarmTimes.isEmpty {
                 Text("The backstops stay on.").font(.footnote).foregroundStyle(Theme.textMuted)
+            } else if change.scope == .alarms {
+                Text("Deadline and late stay; early follows the new last alarm.").font(.footnote).foregroundStyle(Theme.textMuted)
             } else {
                 Text("They move with the wake-up.").font(.footnote).foregroundStyle(Theme.textMuted)
             }

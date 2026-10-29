@@ -748,7 +748,8 @@ final class BedtimeCoordinator {
         morningChangeReason = reason ?? "Changed"
         // The new series is a new wake-up.
         stoppedThisWakeUp = false
-        let shift = TimeInterval(change.delayMinutes * 60)
+        // Only an entire wake-up moves leave-by and its reminder (v0.4.1 item 7).
+        let shift = change.scope == .wakeUp ? TimeInterval(change.delayMinutes * 60) : 0
         if change.alarmTimes.isEmpty {
             lastCause = AlarmCause.none
         } else if shift != 0, var trip = leaveReminder.pendingTrip {
@@ -769,12 +770,22 @@ final class BedtimeCoordinator {
             "alarms_planned": change.alarmTimes.filter { $0 > .now }.count,
             "delay_minutes": change.delayMinutes,
             "phase": phase.rawValue,
+            "scope": change.scope == .alarms ? "alarms" : "wake_up",
+            "early_gap_minutes": settings.earlyBackstopGapMinutes,
             "changed_by": "app",
         ]
         if change.alarmTimes.isEmpty { data["sleep_in"] = sleepIn }
         if let reason { data["reason"] = reason }
         if let note, !note.isEmpty { data["note"] = note }
-        await report(.morningChanged, data: data, settings: settings)
+        // Home Assistant can refuse (shift alarms only past the late backstop): say so. If it
+        // can't be reached, the change on the phone stands.
+        if let link = HomeAssistantLinks.current(settings) {
+            do {
+                try await link.report(.morningChanged, data: data, settings: settings)
+            } catch let BridgeError.homeAssistant(code, message) where code == 200 {
+                throw BridgeError.homeAssistant(code, message)
+            } catch {}
+        }
     }
 
     /// What the Stop screen says about this alarm (item 1).

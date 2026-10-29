@@ -87,4 +87,39 @@ final class MorningChangeTests: XCTestCase {
         XCTAssertEqual(SeriesPattern.from(series: swings, wake: swings[0], fallback: settings),
                        SeriesPattern(count: 3, spacingMinutes: 10, wakeIs: .first))
     }
+
+    // MARK: v0.4.1 item 7
+
+    private var days: SeriesPattern { SeriesPattern(count: 3, spacingMinutes: 5, wakeIs: .last) }
+    private func at(_ minutes: Double) -> Date { wake.addingTimeInterval(minutes * 60) }
+    /// 4:30 wake; backstops early 4:55, deadline 5:10, late 5:25 (minutes from wake: 25 / 40 / 55).
+    private var ladder: [String: Date] { ["early": at(25), "deadline": at(40), "late": at(55)] }
+
+    func testShiftAlarmsOnlyMovesOnlyEarlyPastTheLastAlarm() {
+        var change = MorningChange.make(.later(minutes: 30), currentWake: wake, pattern: days)
+        change.scope = .alarms
+        let moved = change.backstops(ladder, earlyGap: 5)
+        XCTAssertEqual(moved["early"], at(35), "5 min after the new last alarm (+30)")
+        XCTAssertEqual(moved["deadline"], at(40))
+        XCTAssertEqual(moved["late"], at(55))
+        XCTAssertEqual(change.limit(backstops: ladder), .ok)
+    }
+
+    func testShiftEntireWakeUpMovesAllThree() {
+        var change = MorningChange.make(.later(minutes: 120), currentWake: wake, pattern: days)
+        change.scope = .wakeUp
+        XCTAssertEqual(change.backstops(ladder), ladder.mapValues { $0.addingTimeInterval(7200) })
+        XCTAssertEqual(change.limit(backstops: ladder), .ok, "no limit for the entire wake-up")
+    }
+
+    func testShiftAlarmsOnlyLimits() {
+        var deadline = MorningChange.make(.later(minutes: 45), currentWake: wake, pattern: days)
+        deadline.scope = .alarms
+        XCTAssertEqual(deadline.limit(backstops: ladder), .afterDeadline(at(40)), "allowed with a warning")
+        var late = MorningChange.make(.later(minutes: 60), currentWake: wake, pattern: days)
+        late.scope = .alarms
+        XCTAssertEqual(late.limit(backstops: ladder), .afterLate(at(55)), "never after the late backstop")
+        XCTAssertEqual(MorningChange.latestWake(notAfter: at(55), pattern: days), at(55), "wake = last alarm")
+        XCTAssertEqual(MorningChange.latestWake(notAfter: at(55), pattern: SeriesPattern(count: 3, spacingMinutes: 10, wakeIs: .first)), at(35))
+    }
 }
