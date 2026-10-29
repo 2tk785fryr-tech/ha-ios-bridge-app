@@ -132,6 +132,19 @@ struct BridgeSettings: Codable, Equatable {
     /// Wake at a different time starts this many hours from now, then rounds (v0.4.2 item 2).
     var newAlarmHoursAhead = 6
 
+    // MARK: Nap (v0.4.2 item 3)
+
+    /// Off by default; the Nap button only shows when on.
+    var napEnabled = false
+    var napAlarmCount = 2
+    var napSpacingMinutes = 10
+    /// Get-ready before events with an address (shifts too).
+    var napReadyWithAddressMinutes = 30
+    /// Before events without an address: no get-ready, you may just get up and stay home.
+    var napReadyNoAddressMinutes = 0
+    /// The quick choices, in minutes.
+    var napLengths = [20, 30, 45, 60, 90, 120]
+
     // MARK: Your own alarm's backstops (v0.4.1 item 14)
 
     /// Whether your own alarm on a day off, or on leave, starts with backstops on.

@@ -57,6 +57,9 @@ struct SettingsView: View {
                 SettingsLink(title: "Alarms", icon: "alarm", value: "\(settings.alarmCount) alarms, \(settings.alarmSpacingMinutes) min apart") {
                     SettingsPage(title: "Alarms") { AlarmSettingsSection(settings: $store.settings) }
                 }
+                SettingsLink(title: "Nap", icon: "powersleep", value: settings.napEnabled ? "\(settings.napAlarmCount) alarms, \(settings.napSpacingMinutes) min apart" : "Off") {
+                    NapSettings(settings: $store.settings)
+                }
                 SettingsLink(title: "Appointments", icon: "calendar.badge.clock",
                              value: settings.appointmentKeyword.isEmpty ? "Wake-up keyword: none" : "Wake-up keyword: \(settings.appointmentKeyword)") {
                     SettingsPage(title: "Appointments") { AppointmentsSection(settings: $store.settings) }
@@ -474,6 +477,57 @@ private struct AlarmSettingsSection: View {
                 Text("Rings through Silent and Focus. Snooze and Stop tell Home Assistant directly (set it up below), because the Shortcuts \"alarm snoozed/stopped\" automations only see Clock app alarms. \"Keep the rest until I'm up\" cancels the later alarms only once Home Assistant sees the bedroom door opened or the bed empty for over a minute, so stopping the first alarm and dozing off still leaves the others. A new sound is used from the next time alarms are set.")
             case .clock:
                 Text("The app works out the times and your shortcut creates Clock alarms from Wake Plan › Alarm Dates. Your snooze/stop automations keep working, but Apple fixes Clock snooze at 9 minutes.")
+            }
+        }
+    }
+}
+
+/// Settings → Nap (v0.4.2 item 3).
+private struct NapSettings: View {
+    @Binding var settings: BridgeSettings
+    @State private var newLength = 15
+
+    var body: some View {
+        SettingsPage(title: "Nap") {
+            Section {
+                Toggle("Nap", isOn: $settings.napEnabled)
+            } footer: {
+                Text("Shows the Nap button. A nap's alarms behave like temporary alarms: no wake routines, Good Morning or backstops, and your other alarms stay.")
+            }
+            if settings.napEnabled {
+                Section {
+                    Stepper("\(settings.napAlarmCount) alarm\(settings.napAlarmCount == 1 ? "" : "s")", value: $settings.napAlarmCount, in: 1...5)
+                    Stepper("\(settings.napSpacingMinutes) min apart", value: $settings.napSpacingMinutes, in: 1...30)
+                } header: {
+                    Text("Alarms")
+                }
+                Section {
+                    Stepper("Events with an address: \(settings.napReadyWithAddressMinutes) min", value: $settings.napReadyWithAddressMinutes, in: 0...120, step: 5)
+                    Stepper("Events without an address: \(settings.napReadyNoAddressMinutes) min", value: $settings.napReadyNoAddressMinutes, in: 0...120, step: 5)
+                } header: {
+                    Text("Get-ready buffer")
+                } footer: {
+                    Text("Your last nap alarm must leave this long before you leave for a shift or an event with an address (after the drive time now and arriving early), or before an event without one, where you may just get up and stay home.")
+                }
+                Section {
+                    ForEach(settings.napLengths, id: \.self) { minutes in
+                        Text(NapPlanner.lengthName(minutes))
+                    }
+                    .onDelete { settings.napLengths.remove(atOffsets: $0) }
+                    HStack {
+                        Stepper(NapPlanner.lengthName(newLength), value: $newLength, in: 5...600, step: 5)
+                        Button("Add") {
+                            if !settings.napLengths.contains(newLength) {
+                                settings.napLengths.append(newLength)
+                                settings.napLengths.sort()
+                            }
+                        }
+                    }
+                } header: {
+                    Text("Quick choices")
+                } footer: {
+                    Text("Swipe to remove one. Other… on the nap screen picks any length.")
+                }
             }
         }
     }

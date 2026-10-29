@@ -265,6 +265,8 @@ enum PhoneCommand: String, AppEnum {
     case bedtime = "RUN_BEDTIME"
     case backToBed = "RUN_BACK_TO_BED"
     case leaveCheck = "RUN_LEAVE_CHECK"
+    case napStart = "RUN_NAP_START"
+    case napEnd = "RUN_NAP_END"
 
     static var typeDisplayRepresentation: TypeDisplayRepresentation = "Phone Command"
     static var caseDisplayRepresentations: [PhoneCommand: DisplayRepresentation] = [
@@ -274,6 +276,8 @@ enum PhoneCommand: String, AppEnum {
         .bedtime: "Bedtime (RUN_BEDTIME)",
         .backToBed: "Back to bed (RUN_BACK_TO_BED)",
         .leaveCheck: "Leave check (RUN_LEAVE_CHECK)",
+        .napStart: "Nap start (RUN_NAP_START)",
+        .napEnd: "Nap end (RUN_NAP_END)",
     ]
 }
 

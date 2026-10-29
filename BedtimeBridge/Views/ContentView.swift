@@ -25,7 +25,7 @@ struct ContentView: View {
     @State private var sheet: Sheet?
 
     private enum Sheet: String, Identifiable {
-        case temporary, dayOff, skipToTime
+        case temporary, dayOff, skipToTime, nap
         var id: String { rawValue }
     }
 
@@ -39,6 +39,18 @@ struct ContentView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     header
+
+                    if coordinator.isNapping {
+                        NappingCard(alarms: coordinator.napAlarms, status: coordinator.napStatus,
+                                    ring: { coordinator.ring(forAlarm: $0.id, at: $0.time) }) {
+                            Task {
+                                await coordinator.endNap(settings: store.settings)
+                                refreshScheduled()
+                            }
+                        } change: {
+                            sheet = .nap
+                        }
+                    }
 
                     if let skippedMorning {
                         SkippedMorningCard(morning: skippedMorning, replacement: skipReplacement, undo: unskip)
@@ -212,6 +224,15 @@ struct ContentView: View {
                 switch which {
                 case .temporary:
                     TemporaryAlarmSheet { time, disarm in setTemporary(time, disarmHouse: disarm) }
+                case .nap:
+                    NapSheet(settings: settings) { minutes in
+                        do {
+                            try await coordinator.startNap(minutes: minutes, settings: store.settings)
+                        } catch {
+                            errorMessage = "Couldn't set the nap: \(error.localizedDescription)"
+                        }
+                        refreshScheduled()
+                    }
                 case .dayOff:
                     OwnAlarmSheet(
                         title: "Day off alarm",
@@ -344,7 +365,6 @@ struct ContentView: View {
         .background(Theme.ground)
     }
 
-    /// Every alarm the plan still has to ring is set on this iPhone.
     /// This morning's bubbles with their rings (v0.4.2 item 5).
     private var morningBubbles: [AlarmBubble] {
         _ = scheduled
@@ -367,6 +387,7 @@ struct ContentView: View {
         return morningRingsShowing && plan.alarmTimes.contains { morning.contains($0) }
     }
 
+    /// Every alarm the plan still has to ring is set on this iPhone.
     private func isSet(_ plan: WakePlan) -> Bool {
         let upcoming = plan.alarmTimes.filter { $0 > .now }
         guard !upcoming.isEmpty, store.settings.alarmStyle == .app else { return false }

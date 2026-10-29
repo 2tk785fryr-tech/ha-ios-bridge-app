@@ -22,6 +22,8 @@ enum BridgeEvent: String {
     case bedtimeUndone = "bedtime_undone"
     case commandRan = "command_ran"
     case morningChanged = "morning_changed"
+    case napStarted = "nap_started"
+    case napEnded = "nap_ended"
 }
 
 /// For item 3's confirm screen: the backstops now, and when the curtains open that morning.
@@ -217,6 +219,11 @@ struct IntegrationLink: HomeAssistantLink {
     /// Tries each address in turn. A connection or HTTP failure moves on to the next one (off
     /// home Wi-Fi the local address can't work; with the internet down at home the Nabu Casa
     /// one can't). An error Home Assistant itself reports is final.
+    /// A message whose reply the app uses (nap_started: whether the helper and nap Focus went on).
+    func reply(_ event: BridgeEvent, data: [String: Any]) async throws -> [String: Any] {
+        try await send(event.rawValue, data: data)
+    }
+
     private func send(_ type: String, data: [String: Any] = [:]) async throws -> [String: Any] {
         var lastError: Error = URLError(.badURL)
         for url in webhookURLs {

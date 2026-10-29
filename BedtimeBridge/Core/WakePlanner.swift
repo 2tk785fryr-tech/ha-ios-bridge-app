@@ -112,6 +112,8 @@ enum AlarmCause {
     static let none = "noalarm"
     /// A temporary wake-up beside the regular alarms (never sent as a plan's cause).
     static let temporary = "temporary"
+    /// A nap's alarm (v0.4.2 item 3), never sent as a plan's cause.
+    static let nap = "nap"
 }
 
 struct WakePlan: Equatable {
