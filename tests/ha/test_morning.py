@@ -111,3 +111,30 @@ async def test_ending_early_without_an_early_helper_uses_the_stop_helper(hass, h
     await send(hass_client_no_auth, {"type": "stopped", "data": {"all": True, "early": True, "alarm_times": []}})
     await hass.async_block_till_done()
     assert hass.states.get("input_boolean.wake_mike").state == "on"
+
+
+async def test_the_morning_total_counts_across_a_change(hass, hass_client_no_auth):
+    """v0.4.1 item 5 (28 Oct): 4 snoozes, a change, 1 more snooze, stop → 5, not 1."""
+    await setup(hass)
+    await send(hass_client_no_auth, PLAN)
+    for _ in range(4):
+        await send(hass_client_no_auth, SNOOZE)
+    await send(hass_client_no_auth, {"type": "morning_changed", "data": {
+        "alarm_times": ["2026-10-26T09:40:00+00:00", "2026-10-26T09:45:00+00:00"], "delay_minutes": 30, "phase": "snoozing",
+    }})
+    await send(hass_client_no_auth, SNOOZE)
+    await send(hass_client_no_auth, {"type": "stopped", "data": {"alarm_times": []}})
+    await hass.async_block_till_done()
+    assert state(hass, "snoozes_last_morning") == "5"
+    assert state(hass, "snooze_count") == "0"
+
+
+async def test_the_next_plan_closes_an_unfinished_morning(hass, hass_client_no_auth):
+    await setup(hass)
+    await send(hass_client_no_auth, PLAN)
+    await send(hass_client_no_auth, SNOOZE)
+    await send(hass_client_no_auth, SNOOZE)
+    await send(hass_client_no_auth, PLAN)
+    await hass.async_block_till_done()
+    assert state(hass, "snoozes_last_morning") == "2"
+    assert state(hass, "snooze_count") == "0"

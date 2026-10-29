@@ -337,3 +337,52 @@ async def test_no_shift_sensor_at_all_is_a_fault(hass, ladder):
     await ladder()
     assert status(hass) == "fault"
     assert rungs(hass) is None
+
+
+async def test_after_an_appointment_morning_with_no_covered_shift_the_status_is_idle_not_done(hass, ladder, hass_client_no_auth, freezer):
+    """v0.4.1 item 19: a day off before Swings must not read "done" all day."""
+    shift_sensor(hass, start="2026-10-30T14:00:00-04:00", shift="Swings")
+    await ladder()
+    await send(hass_client_no_auth, plan(local("09:00").isoformat(), kind="appointment", appointment="Dentist",
+                                         appointment_start=local("09:40").isoformat()))
+    await hass.async_block_till_done()
+    assert status(hass) == "armed"
+    freezer.move_to(local("09:41"))  # late 08:40 + 60 min
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert status(hass) == "idle_uncovered"
+    assert rungs(hass) is None
+
+
+async def test_after_a_shift_morning_the_next_shift_arms_without_waiting_for_current_shift(hass, ladder, freezer):
+    """v0.4.1 item 19: current_shift still shows today's shift after late + 60."""
+    async def get_events(call):
+        start = dt_util.parse_datetime(str(call.data["start_date_time"]))
+        if start.date().isoformat() >= "2026-10-28":
+            return {CALENDAR: {"events": [{"summary": "Days", "start": "2026-10-29T06:30:00-04:00", "end": "2026-10-29T19:00:00-04:00"}]}}
+        return {CALENDAR: {"events": [{"summary": "Days", "start": "x", "end": "y"}]}}
+
+    hass.services.async_register("calendar", "get_events", get_events, supports_response=SupportsResponse.ONLY)
+    await ladder()
+    assert rungs(hass) == ["04:55", "05:10", "05:25"]
+    freezer.move_to(local("06:26"))  # late 05:25 + 60 min; current_shift unchanged
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert status(hass) == "armed"
+    assert dt_util.as_local(dt_util.parse_datetime(attrs(hass)["shift_start"])).day == 29
+    assert rungs(hass) == ["04:55", "05:10", "05:25"]
+
+
+async def test_after_a_shift_morning_with_nothing_ahead_the_status_says_so(hass, ladder, freezer):
+    async def get_events(call):
+        start = dt_util.parse_datetime(str(call.data["start_date_time"]))
+        if start.date().isoformat() >= "2026-10-28":
+            return {CALENDAR: {"events": []}}
+        return {CALENDAR: {"events": [{"summary": "Days", "start": "x", "end": "y"}]}}
+
+    hass.services.async_register("calendar", "get_events", get_events, supports_response=SupportsResponse.ONLY)
+    await ladder()
+    freezer.move_to(local("06:26"))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert status(hass) == "idle_no_shift"

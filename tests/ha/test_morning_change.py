@@ -100,8 +100,7 @@ async def test_while_snoozing_only_the_ramp_is_undone(hass, ladder, hass_client_
     assert hass.states.get("input_boolean.wake_fade").state == "off"
     assert hass.states.get("input_boolean.bedtime_routine").state == "off"
     assert "RUN_BACK_TO_BED" not in [c.data["message"] for c in notify]
-    assert hass.states.get("sensor.bedtime_bridge_snooze_count").state == "0", "old series' count cleared"
-    assert hass.states.get("sensor.bedtime_bridge_snoozes_last_morning").state == "1"
+    assert hass.states.get("sensor.bedtime_bridge_snooze_count").state == "1", "still the same morning (v0.4.1 item 5)"
     assert rungs(hass) == ["05:25", "05:40", "05:55"]
 
 

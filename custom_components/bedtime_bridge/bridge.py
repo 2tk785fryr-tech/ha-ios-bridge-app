@@ -366,6 +366,9 @@ class BedtimeBridge:
 
     async def _planned(self, data: dict[str, Any]) -> None:
         self._adopt_app_settings(data.get("app_settings") or {})
+        if self.state.get("snooze_count"):
+            # A morning that never got its last stop: the next plan closes it (item 5).
+            self._end_morning()
         self.state.update(empty_state())
         self.state.update({key: data.get(key) for key in PLAN_FIELDS if key in data})
         self.state["last_plan"] = dt_util.utcnow().isoformat()
@@ -524,21 +527,7 @@ class BedtimeBridge:
             elif str(shift_type or "").lower() not in covered:
                 status, reason = ldr.STATUS_UNCOVERED, f"{shift_type or 'This shift'} mornings have no ladder"
             else:
-                buffer = int(self.state.get("work_buffer_minutes") or DEFAULT_WORK_BUFFER)
-                calendar = ldr.calendar_leave_by(next_start, int(self.setting_value("fallback_drive_minutes")), buffer)
-                planned = plan.get("type") == "shift" and ldr.same_morning(_time(plan.get("shift_start")), next_start)
-                leave_by, source, warning = ldr.pick_leave_by(_time(plan.get("leave_by")) if planned else None, calendar)
-                if warning:
-                    _LOGGER.warning("Bedtime Bridge ladder: %s", warning)
-                if planned and plan.get("first_day_back") is not None:
-                    first_day_back = bool(plan["first_day_back"])
-                else:
-                    first_day_back = await self._first_day_back(next_start)
-                shift_morning = ldr.Morning(
-                    "shift", leave_by, source, first_day_back, shift_start=next_start,
-                    weather_extra_minutes=int(plan.get("weather_extra_minutes") or 0) if planned else 0,
-                    condition=plan.get("condition") if planned else None,
-                )
+                shift_morning = await self._shift_morning(next_start, plan)
         appointment: ldr.Morning | None = None
         if plan.get("type") == "appointment" and _time(plan.get("leave_by")):
             appointment = ldr.Morning(
@@ -552,12 +541,67 @@ class BedtimeBridge:
             late = ldr.rung_times(morning.leave_by, offsets, morning.first_day_back, delay)["late"]
             return late + ldr.LADDER_TAIL <= now
 
+        if shift_morning and finished(shift_morning):
+            # current_shift still shows the shift that just passed (it polls): read the next one
+            # from the work calendar, so the status goes straight to the next state (item 19).
+            shift_morning, status, reason = await self._next_shift_morning(shift_morning.shift_start, plan, finished)
         open_mornings = [m for m in (shift_morning, appointment) if m and not finished(m)]
         if open_mornings:
             return min(open_mornings, key=lambda m: m.leave_by), None, None
-        if shift_morning or appointment:
-            return None, ldr.STATUS_DONE, "This morning's ladder is over"
+        # A finished appointment morning falls through to the shift branch's own status: never a
+        # standing "done" (item 19).
         return None, status, reason
+
+    async def _shift_morning(self, start: datetime, plan: dict[str, Any]) -> ldr.Morning:
+        """A covered shift's morning: the plan's leave-by when it's for that morning, else the
+        calendar's."""
+        buffer = int(self.state.get("work_buffer_minutes") or DEFAULT_WORK_BUFFER)
+        calendar = ldr.calendar_leave_by(start, int(self.setting_value("fallback_drive_minutes")), buffer)
+        planned = plan.get("type") == "shift" and ldr.same_morning(_time(plan.get("shift_start")), start)
+        leave_by, source, warning = ldr.pick_leave_by(_time(plan.get("leave_by")) if planned else None, calendar)
+        if warning:
+            _LOGGER.warning("Bedtime Bridge ladder: %s", warning)
+        if planned and plan.get("first_day_back") is not None:
+            first_day_back = bool(plan["first_day_back"])
+        else:
+            first_day_back = await self._first_day_back(start)
+        return ldr.Morning(
+            "shift", leave_by, source, first_day_back, shift_start=start,
+            weather_extra_minutes=int(plan.get("weather_extra_minutes") or 0) if planned else 0,
+            condition=plan.get("condition") if planned else None,
+        )
+
+    async def _next_shift_morning(
+        self, after: datetime | None, plan: dict[str, Any], finished: Callable[[ldr.Morning], bool]
+    ) -> tuple[ldr.Morning | None, str, str]:
+        """The next shift after one that's over, from the work calendar."""
+        calendar = self.options.get(CONF_CALENDAR)
+        if after is None or not calendar or self.hass.states.get(calendar) is None:
+            return None, ldr.STATUS_NO_SHIFT, "No shift on the calendar yet"
+        try:
+            response = await self.hass.services.async_call(
+                "calendar", "get_events",
+                {"entity_id": calendar, "start_date_time": (after + timedelta(minutes=1)).isoformat(),
+                 "end_date_time": (after + timedelta(days=8)).isoformat()},
+                blocking=True, return_response=True,
+            )
+        except Exception as err:  # noqa: BLE001 - reported as a fault, not a silent "done"
+            return None, ldr.STATUS_FAULT, f"Couldn't read the next shift from {calendar}: {err}"
+        names = shift_types(self.options.get(CONF_SHIFT_TYPES))
+        covered = [t.lower() for t in (self.options.get(CONF_LADDER_SHIFT_TYPES) or DEFAULT_LADDER_SHIFT_TYPES)]
+        events = ((response or {}).get(calendar) or {}).get("events") or []
+        for event in sorted(events, key=lambda e: str(e.get("start"))):
+            title = str(event.get("summary") or "").lower()
+            name = next((n for n in names if n.lower() in title), None)
+            start = _time(event.get("start"))
+            if name is None or start is None or start <= after:
+                continue
+            if name.lower() not in covered:
+                return None, ldr.STATUS_UNCOVERED, f"{name} mornings have no ladder"
+            morning = await self._shift_morning(start, plan)
+            if not finished(morning):
+                return morning, ldr.STATUS_ARMED, ""
+        return None, ldr.STATUS_NO_SHIFT, "No shift on the calendar"
 
     async def _first_day_back(self, shift_start: datetime) -> bool:
         """No shift the day before (a day off, or leave). Read from the work calendar when the app
@@ -615,8 +659,7 @@ class BedtimeBridge:
     def _ladder_rollover(self, _now: datetime) -> None:
         self._ladder_unsub = None
         self.state["ladder_delay"] = None
-        if self.state.get("ladder"):
-            self.state["ladder"]["status"] = ldr.STATUS_DONE
+        # Straight to the next state (armed for the next morning, or why not); no "done" (item 19).
         self.hass.async_create_task(self._recompute_ladder())
 
     def _move_ladder(self, minutes: int, *, rungs_ahead_only: bool) -> None:
@@ -973,7 +1016,7 @@ class BedtimeBridge:
             # Day is on, the house has to go back to bed.
             phase = "up"
         reason, note = data.get("reason"), data.get("note")
-        self._end_morning()
+        # The snooze count keeps going across a change (v0.4.1 item 5): it's one morning.
         self.state["snoozed_until"] = None
         self.state["alarm_times"] = [t.isoformat() for t in times]
         self.state["alarm_time"] = times[0].isoformat() if times else None
