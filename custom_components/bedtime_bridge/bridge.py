@@ -499,7 +499,11 @@ class BedtimeBridge:
             return
         delay = self._ladder_delay_for(morning.key)
         earlier = ladder.get("earlier_minutes", 0) if ladder.get("morning") == morning.key else 0
-        base = ldr.rung_times(morning.leave_by, offsets, morning.first_day_back, delay.get("minutes", 0) - earlier)
+        if morning.fixed_times:
+            shift_by = timedelta(minutes=delay.get("minutes", 0) - earlier)
+            base = {rung: when + shift_by for rung, when in morning.fixed_times.items()}
+        else:
+            base = ldr.rung_times(morning.leave_by, offsets, morning.first_day_back, delay.get("minutes", 0) - earlier)
         floor = self.state.get("ladder_early_floor") or {}
         if floor.get("morning") == morning.key and _time(floor.get("at")):
             base["early"] = max(base["early"], _time(floor["at"]))
@@ -517,6 +521,7 @@ class BedtimeBridge:
             "appointment": morning.appointment,
             "appointment_start": morning.appointment_start.isoformat() if morning.appointment_start else None,
             "replaces_shift": morning.replaces_shift,
+            "firing": morning.firing,
             "delay_minutes": delay.get("minutes", 0),
             "changed_by": delay.get("changed_by"),
             "change_reason": delay.get("reason"),
@@ -558,6 +563,19 @@ class BedtimeBridge:
                 status, reason = ldr.STATUS_UNCOVERED, f"{shift_type or 'This shift'} mornings have no ladder"
             else:
                 shift_morning = await self._shift_morning(next_start, plan)
+        own: ldr.Morning | None = None
+        own_off = False
+        last_alarm = _time(plan.get("last_alarm"))
+        if plan.get("type") == "own" and last_alarm:
+            # Your own alarm on a day off or leave (item 14): off unless switched on.
+            if plan.get("on"):
+                own = ldr.Morning(
+                    "own", last_alarm, "plan", False,
+                    fixed_times=ldr.own_times(last_alarm, plan.get("offsets")),
+                    firing=plan.get("firing") or "gentle",
+                )
+            elif last_alarm + timedelta(minutes=int((plan.get("offsets") or {}).get("late") or 45)) + ldr.LADDER_TAIL > now:
+                own_off = True
         appointment: ldr.Morning | None = None
         if plan.get("type") == "appointment" and _time(plan.get("leave_by")):
             appointment = ldr.Morning(
@@ -568,7 +586,10 @@ class BedtimeBridge:
 
         def finished(morning: ldr.Morning) -> bool:
             delay = self._ladder_delay_for(morning.key).get("minutes", 0)
-            late = ldr.rung_times(morning.leave_by, offsets, morning.first_day_back, delay)["late"]
+            if morning.fixed_times:
+                late = morning.fixed_times["late"] + timedelta(minutes=delay)
+            else:
+                late = ldr.rung_times(morning.leave_by, offsets, morning.first_day_back, delay)["late"]
             return late + ldr.LADDER_TAIL <= now
 
         if appointment and shift_morning and plan.get("replaces_shift") and ldr.same_morning(
@@ -581,9 +602,11 @@ class BedtimeBridge:
             # current_shift still shows the shift that just passed (it polls): read the next one
             # from the work calendar, so the status goes straight to the next state (item 19).
             shift_morning, status, reason = await self._next_shift_morning(shift_morning.shift_start, plan, finished)
-        open_mornings = [m for m in (shift_morning, appointment) if m and not finished(m)]
+        open_mornings = [m for m in (shift_morning, appointment, own) if m and not finished(m)]
         if open_mornings:
             return min(open_mornings, key=lambda m: m.leave_by), None, None
+        if own_off:
+            return None, ldr.STATUS_OWN_OFF, "Backstops are off for your own alarm"
         # A finished appointment morning falls through to the shift branch's own status: never a
         # standing "done" (item 19).
         return None, status, reason

@@ -35,7 +35,7 @@ class BridgeSensorDescription(SensorEntityDescription):
 
 
 LADDER_STATUSES = [
-    "armed", "done", "idle_override_off", "idle_leave", "idle_uncovered", "idle_no_shift", "fault",
+    "armed", "done", "idle_override_off", "idle_leave", "idle_uncovered", "idle_no_shift", "idle_own_off", "fault",
 ]
 
 
@@ -54,6 +54,8 @@ def _rung_attributes(s: dict[str, Any]) -> dict[str, Any]:
         "appointment": ladder.get("appointment"),
         "appointment_start": ladder.get("appointment_start"),
         "replaces_shift": ladder.get("replaces_shift"),
+        # Your own alarm (item 14): how the backstop should fire, gentle or full.
+        "firing": ladder.get("firing"),
         "delay_minutes": ladder.get("delay_minutes", 0),
         "changed_by": ladder.get("changed_by"),
         "reason": ladder.get("change_reason"),

@@ -24,6 +24,10 @@ STATUS_OVERRIDE_OFF = "idle_override_off"
 STATUS_LEAVE = "idle_leave"
 STATUS_UNCOVERED = "idle_uncovered"
 STATUS_NO_SHIFT = "idle_no_shift"
+# Your own alarm on a day off or leave, with its backstops switched off (v0.4.1 item 14).
+STATUS_OWN_OFF = "idle_own_off"
+# Your own alarm's backstops, minutes after its LAST alarm.
+DEFAULT_OWN_OFFSETS = {"early": 15, "deadline": 30, "late": 45}
 STATUS_FAULT = "fault"
 
 # Home Assistant's own bad-weather conditions, for a ladder no plan has described.
@@ -66,6 +70,10 @@ class Morning:
     condition: str | None = None
     # A "wake up" appointment that replaced this shift for the morning (v0.4.1 item 11).
     replaces_shift: str | None = None
+    # Your own alarm (item 14): the rungs are fixed times after its last alarm, not before a
+    # leave-by; firing "gentle" (push and light ramp) or "full".
+    fixed_times: dict[str, datetime] | None = None
+    firing: str | None = None
     warnings: list[str] = field(default_factory=list)
 
     @property
@@ -101,6 +109,17 @@ def rung_times(leave_by: datetime, offsets: Offsets, first_day_back: bool, shift
         "deadline": leave_by - timedelta(minutes=offsets.deadline) + move,
         "late": leave_by - timedelta(minutes=offsets.late) + move,
     }
+
+
+def own_times(last_alarm: datetime, offsets: dict[str, Any] | None) -> dict[str, datetime]:
+    """Your own alarm's rungs: minutes after the last alarm, early < deadline < late, or the defaults."""
+    try:
+        minutes = {rung: int((offsets or {})[rung]) for rung in RUNGS}
+    except (KeyError, TypeError, ValueError):
+        minutes = DEFAULT_OWN_OFFSETS
+    if not 0 <= minutes["early"] < minutes["deadline"] < minutes["late"]:
+        minutes = DEFAULT_OWN_OFFSETS
+    return {rung: last_alarm + timedelta(minutes=minutes[rung]) for rung in RUNGS}
 
 
 def not_in_past(times: dict[str, datetime], now: datetime) -> dict[str, datetime]:

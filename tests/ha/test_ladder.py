@@ -397,3 +397,32 @@ async def test_a_marked_appointment_replacing_the_shift_gets_the_ladder(hass, la
     assert rungs(hass) == ["05:45", "06:00", "06:15"], "the appointment's leave-by, not the shift's 05:45"
     assert attrs(hass)["replaces_shift"] == "Days"
     assert attrs(hass)["appointment"] == "Ultrasound"
+
+
+def own_plan(last: str, on: bool, **extra) -> dict:
+    ladder = {"type": "own", "last_alarm": local(last).isoformat(), "on": on,
+              "offsets": {"early": 15, "deadline": 30, "late": 45}, "firing": "gentle", **extra}
+    return {"type": "planned", "data": {"alarm_cause": "automade", "alarm_times": [], "has_alarm": True, "ladder": ladder}}
+
+
+async def test_own_alarm_backstops_are_off_unless_switched_on(hass, ladder, hass_client_no_auth):
+    """v0.4.1 item 14: a day off, your own alarm at 8:00."""
+    shift_sensor(hass, start=None)
+    await ladder()
+    await send(hass_client_no_auth, own_plan("08:00", on=False))
+    await hass.async_block_till_done()
+    assert status(hass) == "idle_own_off"
+    assert rungs(hass) is None
+
+    await send(hass_client_no_auth, own_plan("08:00", on=True))
+    await hass.async_block_till_done()
+    assert rungs(hass) == ["08:15", "08:30", "08:45"], "after the last alarm"
+    assert attrs(hass)["firing"] == "gentle"
+
+
+async def test_own_alarm_offsets_that_cross_fall_back_to_the_defaults(hass, ladder, hass_client_no_auth):
+    shift_sensor(hass, start=None)
+    await ladder()
+    await send(hass_client_no_auth, own_plan("08:00", on=True, offsets={"early": 30, "deadline": 20, "late": 45}))
+    await hass.async_block_till_done()
+    assert rungs(hass) == ["08:15", "08:30", "08:45"]
