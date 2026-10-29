@@ -399,6 +399,9 @@ private struct AlarmSettingsSection: View {
                 NavigationLink("Change this morning") {
                     MorningChangeSettings(settings: $settings)
                 }
+                NavigationLink("Backstops for your own alarm") {
+                    OwnBackstopsSettings(settings: $settings)
+                }
             }
             Stepper("Look ahead \(settings.lookAheadHours) h", value: $settings.lookAheadHours, in: 6...72)
         } header: {
@@ -409,6 +412,38 @@ private struct AlarmSettingsSection: View {
                 Text("Rings through Silent and Focus. Snooze and Stop tell Home Assistant directly (set it up below), because the Shortcuts \"alarm snoozed/stopped\" automations only see Clock app alarms. \"Keep the rest until I'm up\" cancels the later alarms only once Home Assistant sees the bedroom door opened or the bed empty for over a minute, so stopping the first alarm and dozing off still leaves the others. A new sound is used from the next time alarms are set.")
             case .clock:
                 Text("The app works out the times and your shortcut creates Clock alarms from Wake Plan › Alarm Dates. Your snooze/stop automations keep working, but Apple fixes Clock snooze at 9 minutes.")
+            }
+        }
+    }
+}
+
+/// Your own alarm on a day off or leave (v0.4.1 item 14): backstops off by default.
+private struct OwnBackstopsSettings: View {
+    @Binding var settings: BridgeSettings
+
+    var body: some View {
+        SettingsPage(title: "Own alarm backstops") {
+            Section {
+                Toggle("On by default on a day off", isOn: $settings.ownBackstopsDayOff)
+                Toggle("On by default on leave", isOn: $settings.ownBackstopsLeave)
+            } footer: {
+                Text("Where you set the alarm there's a switch for that morning. Off: no backstops.")
+            }
+            Section {
+                Stepper("Early: \(settings.ownEarlyMinutes) min after the last alarm", value: $settings.ownEarlyMinutes, in: 0...120, step: 5)
+                Stepper("Deadline: \(settings.ownDeadlineMinutes) min after", value: $settings.ownDeadlineMinutes, in: 5...180, step: 5)
+                Stepper("Late: \(settings.ownLateMinutes) min after", value: $settings.ownLateMinutes, in: 10...240, step: 5)
+                if !settings.ownOffsetsValid {
+                    Text("Early must come before deadline, and deadline before late; until then Home Assistant uses 15, 30 and 45.")
+                        .font(.footnote).foregroundStyle(Theme.danger)
+                }
+            } header: {
+                Text("Times")
+            }
+            Section {
+                Toggle("Use the full backstop actions", isOn: $settings.ownBackstopsFull)
+            } footer: {
+                Text("Off: gentle (a push and the early light ramp; no critical sound, no speakers). Takes effect after the backstop cutover; until then the house backstop fires on shifts only.")
             }
         }
     }

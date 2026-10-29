@@ -135,6 +135,8 @@ struct WakePlan: Equatable {
     var firstDayBack: Bool? = nil
     /// The temperature that counts as freezing in the forecast's unit, when that rule is on.
     var freezingAt: Double? = nil
+    /// Your own alarm's backstops on or off (v0.4.1 item 14); nil for shifts and appointments.
+    var ownBackstops: Bool? = nil
     /// A "wake up" appointment replaced this shift's alarms for the morning (v0.4.1 item 11):
     /// the shift's cause, e.g. "Days".
     var replacedShift: String? = nil

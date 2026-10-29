@@ -125,6 +125,20 @@ struct BridgeSettings: Codable, Equatable {
     /// Shift alarms only: the early backstop moves to this long after the new last alarm when
     /// it would otherwise come before it.
     var earlyBackstopGapMinutes = 5
+
+    // MARK: Your own alarm's backstops (v0.4.1 item 14)
+
+    /// Whether your own alarm on a day off, or on leave, starts with backstops on.
+    var ownBackstopsDayOff = false
+    var ownBackstopsLeave = false
+    /// Minutes after the LAST alarm.
+    var ownEarlyMinutes = 15
+    var ownDeadlineMinutes = 30
+    var ownLateMinutes = 45
+    /// Full backstop actions instead of the gentle ones (push and early light ramp).
+    var ownBackstopsFull = false
+
+    var ownOffsetsValid: Bool { 0 <= ownEarlyMinutes && ownEarlyMinutes < ownDeadlineMinutes && ownDeadlineMinutes < ownLateMinutes }
     /// App alarms only: what Stop does to the rest of the series. Default keeps them until
     /// Home Assistant confirms you're up: stopping the first alarm and falling back asleep is
     /// exactly how Wake Deadline Backstop came to exist.

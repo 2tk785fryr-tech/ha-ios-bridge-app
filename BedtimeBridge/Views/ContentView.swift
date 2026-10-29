@@ -114,6 +114,15 @@ struct ContentView: View {
                         .nightfallCard()
                     }
 
+                    if coordinator.ownAlarmSet {
+                        OwnBackstopsToggle(on: coordinator.ownBackstopsOn, cutoverPending: morningContext?.houseUsesOldTimes ?? true) { on in
+                            Task {
+                                await coordinator.setOwnBackstops(on, settings: store.settings)
+                                refreshScheduled()
+                            }
+                        }
+                    }
+
                     if sleepLater {
                         SleepLaterCard(settings: store.settings, canGoBack: coordinator.backToPlannedAvailable(), changed: refreshScheduled)
                     }
@@ -1077,6 +1086,27 @@ extension ScheduledAlarmsCard {
         copy.settings = settings
         copy.edited = edited
         return copy
+    }
+}
+
+/// Your own alarm's backstops for this morning (v0.4.1 item 14).
+private struct OwnBackstopsToggle: View {
+    let on: Bool
+    let cutoverPending: Bool
+    let change: (Bool) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Toggle("Backstops for this alarm", isOn: Binding(get: { on }, set: change))
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Theme.text)
+            Text(cutoverPending
+                 ? "Takes effect after the backstop cutover; until then the house backstop fires on shifts only."
+                 : "Early, deadline and late after your last alarm.")
+                .font(.footnote)
+                .foregroundStyle(Theme.textMuted)
+        }
+        .nightfallCard()
     }
 }
 

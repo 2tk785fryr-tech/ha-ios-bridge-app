@@ -370,11 +370,13 @@ final class BedtimeCoordinator {
     /// For the day-off path: you pick the time, the app sets the usual alarm series.
     /// For the day-off path: you pick the time, the app sets the usual alarm series. The
     /// time is the first or last alarm (`wakeIs`, or Settings' choice when nil).
-    func scheduleManual(wakeTime: Date, wakeIs: WakeTimeAlarm? = nil, settings phoneSettings: BridgeSettings) async throws -> WakePlan {
+    func scheduleManual(wakeTime: Date, wakeIs: WakeTimeAlarm? = nil, ownBackstops: Bool? = nil,
+                        settings phoneSettings: BridgeSettings) async throws -> WakePlan {
         let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
         let wake = Self.nextOccurrence(ofTimeIn: wakeTime)
         let replacement = SkipReplacement(wake: wake, wakeIs: wakeIs ?? settings.wakeTimeIs)
         var plan = manualPlan(replacement, settings: settings)
+        plan.ownBackstops = ownBackstops ?? settings.ownBackstopsDayOff
         if let skipped = skippedMorning, Calendar.current.isDate(skipped, inSameDayAs: wake) {
             // Your own time for a skipped morning: the skip (and its failsafe-off) stands.
             skipReplacement = replacement
@@ -824,6 +826,24 @@ final class BedtimeCoordinator {
                 throw BridgeError.homeAssistant(code, message)
             } catch {}
         }
+    }
+
+    // MARK: Your own alarm's backstops (v0.4.1 item 14)
+
+    /// Your own alarm is set (a day off or leave): Tonight shows its backstops switch.
+    var ownAlarmSet: Bool { lastAppliedPlan?.source == .manual && !alarmSeries.isEmpty }
+    var ownBackstopsOn: Bool { lastAppliedPlan?.ownBackstops ?? false }
+
+    /// Turns your own alarm's backstops on or off, and tells Home Assistant.
+    func setOwnBackstops(_ on: Bool, settings phoneSettings: BridgeSettings) async {
+        guard var plan = lastAppliedPlan, plan.source == .manual else { return }
+        let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
+        plan.ownBackstops = on
+        lastAppliedPlan = plan
+        var payload = plan.homeAssistantPayload(settings: settings)
+        payload["alarm_times"] = alarmSeries.map(Self.iso)
+        payload["alarm_time"] = alarmSeries.min().map(Self.iso)
+        await report(.planned, data: payload, settings: settings)
     }
 
     // MARK: Sleep later (v0.4.1 item 12)

@@ -378,7 +378,15 @@ extension WakePlan {
             block["appointment_start"] = iso.string(from: appointment.start)
             // It replaces this shift's alarms for the morning (v0.4.1 item 11).
             if let replacedShift { block["replaces_shift"] = replacedShift }
-        case .manual, .none:
+        case .manual:
+            // Your own alarm (item 14): backstops after its last alarm, off unless switched on.
+            guard let last = alarmTimes.max() else { break }
+            block["type"] = "own"
+            block["on"] = ownBackstops ?? false
+            block["last_alarm"] = iso.string(from: last)
+            block["offsets"] = ["early": settings.ownEarlyMinutes, "deadline": settings.ownDeadlineMinutes, "late": settings.ownLateMinutes]
+            block["firing"] = settings.ownBackstopsFull ? "full" : "gentle"
+        case .none:
             break
         }
         return block
