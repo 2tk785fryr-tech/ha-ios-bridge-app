@@ -17,6 +17,9 @@ struct ContentView: View {
     @State private var temporaryAlarms: [TemporaryAlarm] = []
     @State private var morningEnd: MorningEnd?
     @State private var backToBed = false
+    /// From Home Assistant for "Your morning" (v0.4.1 item 8); nil when it couldn't be reached.
+    @State private var morningContext: MorningContext?
+    @State private var morningContextLoaded = false
     @State private var sheet: Sheet?
 
     private enum Sheet: String, Identifiable {
@@ -54,7 +57,7 @@ struct ContentView: View {
                             WarningBanner(text: "+\(weather.minutes) min for \(weather.reason)", systemImage: "cloud.rain")
                         }
                         if plan.source == .appointment, let appointment = plan.appointment, let wake = plan.wakeTime {
-                            MorningTimeline(appointment: appointment, weather: plan.weather, wake: wake, bufferMinutes: settings.arrivalBufferMinutes)
+                            MorningTimeline(appointment: appointment, weather: plan.weather, wake: wake, bufferMinutes: settings.arrivalBufferMinutes).with(backstopInfo(leaveBy: plan.leaveBy(settings: settings), firstDayBack: plan.firstDayBack ?? false))
                         }
                         if let short = plan.getReadyShortfall(settings: settings), short.earlierWake > .now {
                             GetReadyCard(minutes: short.minutes, wanted: settings.getReadyMinutes, leaveBy: short.leaveBy, earlierWake: short.earlierWake) {
@@ -62,7 +65,7 @@ struct ContentView: View {
                             }
                         }
                         if plan.source == .shift, let shift = plan.shift, let commute = plan.commute, let wake = plan.wakeTime {
-                            MorningTimeline(shift: shift, commute: commute, weather: plan.weather, wake: wake, bufferMinutes: settings.workArrivalBufferMinutes, getReadyGoal: settings.getReadyMinutes)
+                            MorningTimeline(shift: shift, commute: commute, weather: plan.weather, wake: wake, bufferMinutes: settings.workArrivalBufferMinutes, getReadyGoal: settings.getReadyMinutes).with(backstopInfo(leaveBy: plan.leaveBy(settings: settings), firstDayBack: plan.firstDayBack ?? false))
                         }
                         ForEach(plan.missingLocations, id: \.eventID) { appointment in
                             MissingLocationCard(appointment: appointment) { location in
@@ -75,6 +78,9 @@ struct ContentView: View {
                     } else if !scheduled.isEmpty {
                         // Set earlier (the bedtime shortcut, or before the app was closed).
                         SetAlarmsCard(scheduled: scheduled, snapshot: NextAlarmSnapshot.load(), status: coordinator.alarmStatus())
+                        if let info = backstopInfo(leaveBy: NextAlarmSnapshot.load().leaveBy, firstDayBack: false) {
+                            BackstopsCard(info: info)
+                        }
                     } else {
                         EmptyPlanCard()
                     }
@@ -297,6 +303,20 @@ struct ContentView: View {
         return upcoming.allSatisfy { time in scheduled.contains { abs($0.timeIntervalSince(time)) < 60 } }
     }
 
+    /// "Your morning"'s backstops: Home Assistant's, or an estimate from leave-by when it can't
+    /// be reached (v0.4.1 item 8).
+    private func backstopInfo(leaveBy: Date?, firstDayBack: Bool) -> BackstopInfo? {
+        guard morningContextLoaded else { return nil }
+        let cached = HomeAssistantLinks.cachedSettings
+        func minutes(_ key: String, _ fallback: Int) -> Int { cached[key] as? Int ?? fallback }
+        return BackstopInfo.make(
+            context: morningContext, leaveBy: leaveBy,
+            offsets: (minutes("rung_early_minutes", 50), minutes("rung_deadline_minutes", 35),
+                      minutes("rung_late_minutes", 20), minutes("first_day_back_minutes", 15)),
+            firstDayBack: firstDayBack
+        )
+    }
+
     private var primaryTitle: String {
         if let wake = plan?.wakeTime, plan?.hasAlarm == true {
             return "Set \(plan?.alarmTimes.count ?? settings.alarmCount) alarms, up by \(WakePlanner.format(wake))"
@@ -330,6 +350,10 @@ struct ContentView: View {
         // After a change this morning, the old plan's times are no longer what's set: show the
         // alarms AlarmKit holds instead (v0.4.1 items 4 and 10).
         if coordinator.morningChangeReason != nil { plan = nil }
+        Task {
+            morningContext = await coordinator.morningContext(firstAlarm: nil, settings: store.settings)
+            morningContextLoaded = true
+        }
         refreshUpcoming()
     }
 
@@ -564,6 +588,45 @@ private struct SetStatus: View {
     }
 }
 
+/// "Backstops armed", why they're off, or a fault; and which times fire (v0.4.1 item 8).
+private struct BackstopStatusLine: View {
+    let info: BackstopInfo
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Label(info.status, systemImage: info.isFault ? "exclamationmark.shield" : "shield")
+                .foregroundStyle(info.isFault ? Theme.danger : Theme.textMuted)
+            if let extra = info.firstDayBackMinutes {
+                Text("First day back +\(extra) min").foregroundStyle(Theme.textMuted)
+            }
+            if info.houseOldTimes {
+                Text("House backstop: old times until cutover").foregroundStyle(Theme.warning.text)
+            }
+        }
+        .font(.caption)
+    }
+}
+
+/// The backstops on their own, when the alarms are set and no plan is on screen.
+private struct BackstopsCard: View {
+    let info: BackstopInfo
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Backstops")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(Theme.textMuted)
+            BackstopStatusLine(info: info)
+            ForEach(info.rungs, id: \.name) { rung in
+                TimelineStep(title: rung.name, value: WakePlanner.format(rung.time), detail: info.estimate ? "estimate" : nil,
+                             dot: .shield(Theme.textMuted), isLast: rung == info.rungs.last, small: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .nightfallCard()
+    }
+}
+
 /// Alarms already set (by the bedtime shortcut, or before the app was last closed), shown
 /// the same way as a plan.
 private struct SetAlarmsCard: View {
@@ -654,6 +717,14 @@ private struct MorningTimeline: View {
     let bufferMinutes: Int
     /// The get-ready time from Settings; less than this is flagged.
     var getReadyGoal = 0
+    /// The three backstops, in time order with the rest (v0.4.1 item 8).
+    var backstops: BackstopInfo?
+
+    func with(_ backstops: BackstopInfo?) -> MorningTimeline {
+        var copy = self
+        copy.backstops = backstops
+        return copy
+    }
 
     init(appointment: AppointmentCandidate, weather: WeatherAdjustment?, wake: Date, bufferMinutes: Int) {
         title = appointment.title
@@ -692,7 +763,10 @@ private struct MorningTimeline: View {
             Text("Your morning")
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(Theme.textMuted)
-                .padding(.bottom, 12)
+                .padding(.bottom, backstops == nil ? 12 : 4)
+            if let backstops {
+                BackstopStatusLine(info: backstops).padding(.bottom, 12)
+            }
             TimelineStep(title: "Wake up", value: WakePlanner.format(wake), dot: .filled(Theme.accent), bold: true)
             if !hasLocation {
                 TimelineStep(title: "Get ready", value: "\(Int(arrive.timeIntervalSince(wake) / 60)) min", dot: .ring(Theme.accent))
@@ -705,6 +779,10 @@ private struct MorningTimeline: View {
                     dot: .ring(readyMinutes >= getReadyGoal ? Theme.accent : Theme.danger),
                     highlight: readyMinutes >= getReadyGoal ? nil : Theme.warning.text
                 )
+                ForEach(backstops?.rungs ?? [], id: \.name) { rung in
+                    TimelineStep(title: rung.name, value: WakePlanner.format(rung.time),
+                                 detail: backstops?.estimate == true ? "estimate" : nil, dot: .shield(Theme.textMuted), small: true)
+                }
                 TimelineStep(
                     title: "Leave by",
                     value: WakePlanner.format(leaveBy),
@@ -739,6 +817,8 @@ private struct TimelineStep: View {
     enum Dot {
         case filled(Color)
         case ring(Color)
+        /// A backstop (v0.4.1 item 8).
+        case shield(Color)
     }
 
     let title: String
@@ -748,6 +828,8 @@ private struct TimelineStep: View {
     var bold = false
     var highlight: Color? = nil
     var isLast = false
+    /// Smaller, for backstop steps.
+    var small = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
@@ -756,6 +838,7 @@ private struct TimelineStep: View {
                     switch dot {
                     case .filled(let color): Circle().fill(color)
                     case .ring(let color): Circle().strokeBorder(color, lineWidth: 2)
+                    case .shield(let color): Image(systemName: "shield.fill").font(.system(size: 10)).foregroundStyle(color)
                     }
                 }
                 .frame(width: 12, height: 12)
@@ -772,8 +855,8 @@ private struct TimelineStep: View {
                     Spacer()
                     Text(value).foregroundStyle(highlight ?? (bold ? Theme.textSoft : Theme.textMuted))
                 }
-                .font(.system(size: 15))
-                .foregroundStyle(highlight ?? Theme.text)
+                .font(.system(size: small ? 13 : 15))
+                .foregroundStyle(highlight ?? (small ? Theme.textSoft : Theme.text))
                 if let detail, !detail.isEmpty {
                     Text(detail).font(.footnote).foregroundStyle(Theme.textMuted)
                 }
