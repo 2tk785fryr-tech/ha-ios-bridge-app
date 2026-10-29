@@ -30,6 +30,8 @@ from .const import (
     CONF_RERUN_MINUTES,
     CONF_CALENDAR,
     CONF_COMPLETE_MINUTES,
+    CONF_HOUSE_BACKSTOP,
+    CONF_OLD_RUNGS,
     CONF_EARLY_HELPER,
     CONF_RESTART_AUTOMATIONS,
     CONF_LADDER_SHIFT_TYPES,
@@ -46,6 +48,9 @@ from .const import (
     DEFAULT_REARM_MINUTES,
     DEFAULT_RERUN_MINUTES,
     DEFAULT_COMPLETE_MINUTES,
+    DEFAULT_OLD_RUNGS,
+    HOUSE_BRIDGE,
+    HOUSE_OLD,
     DEFAULT_LADDER_SHIFT_TYPES,
     DEFAULT_RESTART_AUTOMATIONS,
     DEFAULT_SHIFT_TYPES,
@@ -72,6 +77,8 @@ OPTION_KEYS = [
     CONF_LADDER_SHIFT_TYPES,
     CONF_CALENDAR,
     CONF_RESTART_AUTOMATIONS,
+    CONF_HOUSE_BACKSTOP,
+    CONF_OLD_RUNGS,
     CONF_NOTIFY,
     CONF_REPLAN_ALERT,
     CONF_BED_SENSOR,
@@ -166,6 +173,12 @@ def _schema(hass: HomeAssistant, current: dict[str, Any]) -> vol.Schema:
             vol.Optional(CONF_CALENDAR, description=suggested(CONF_CALENDAR)): entity(["calendar"]),
             vol.Optional(CONF_RESTART_AUTOMATIONS, description=restart_suggestion()): selector.EntitySelector(
                 selector.EntitySelectorConfig(domain=["automation"], multiple=True)
+            ),
+            vol.Required(CONF_HOUSE_BACKSTOP, default=current.get(CONF_HOUSE_BACKSTOP) or HOUSE_OLD): selector.SelectSelector(
+                selector.SelectSelectorConfig(options=[HOUSE_OLD, HOUSE_BRIDGE], translation_key=CONF_HOUSE_BACKSTOP)
+            ),
+            vol.Optional(CONF_OLD_RUNGS, default=current.get(CONF_OLD_RUNGS) or DEFAULT_OLD_RUNGS): selector.EntitySelector(
+                selector.EntitySelectorConfig(domain=["sensor"], multiple=True)
             ),
             vol.Optional(CONF_NOTIFY, description=notify_suggestion()): selector.TextSelector(),
             vol.Optional(CONF_BED_SENSOR, description=suggested(CONF_BED_SENSOR)): entity(["binary_sensor"]),

@@ -31,6 +31,7 @@ class BridgeSensorDescription(SensorEntityDescription):
     value: Callable[[dict[str, Any]], Any]
     attributes: Callable[[dict[str, Any]], dict[str, Any]] | None = None
     available: Callable[[dict[str, Any]], bool] | None = None
+    bridge_attributes: Callable[[Any], dict[str, Any]] | None = None
 
 
 LADDER_STATUSES = [
@@ -165,6 +166,8 @@ SENSORS = (
             "morning": _ladder(s).get("shift_start") or _ladder(s).get("appointment_start"),
             "next_rung": _next_rung(s),
         },
+        # The house backstop's own times (old template until the cutover) come from the bridge.
+        bridge_attributes=lambda bridge: {"house_backstop": bridge.house_backstop()},
     ),
     BridgeSensorDescription(
         key="last_event",
@@ -213,4 +216,7 @@ class BridgeSensor(BedtimeBridgeEntity, SensorEntity):
     def extra_state_attributes(self) -> dict[str, Any] | None:
         if self.entity_description.attributes is None:
             return None
-        return self.entity_description.attributes(self.bridge.state)
+        attributes = self.entity_description.attributes(self.bridge.state)
+        if self.entity_description.bridge_attributes:
+            attributes |= self.entity_description.bridge_attributes(self.bridge)
+        return attributes

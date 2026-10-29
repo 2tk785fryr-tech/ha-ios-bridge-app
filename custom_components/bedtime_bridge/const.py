@@ -83,6 +83,13 @@ COMMANDS = (CMD_DISARM, CMD_ARM, CMD_MORNING, CMD_BEDTIME, CMD_BACK_TO_BED)
 # are turned off (cancelling running actions) and straight back on, and these notification tags
 # cleared.
 CONF_RESTART_AUTOMATIONS = "restart_automations"
+# Item 8 (v0.4.1): what the house backstop reads until the cutover, and the old template's rungs.
+CONF_HOUSE_BACKSTOP = "house_backstop_source"
+HOUSE_OLD = "old"
+HOUSE_BRIDGE = "bridge"
+CONF_OLD_RUNGS = "old_rung_sensors"
+DEFAULT_OLD_RUNGS = ["sensor.wake_rung_early", "sensor.wake_rung_deadline", "sensor.wake_rung_late"]
+EVENT_CHANGE_REFUSED = "morning_change_refused"
 # A phone shortcut that reports Started but not Completed within this long is flagged.
 CONF_COMPLETE_MINUTES = "command_complete_minutes"
 DEFAULT_COMPLETE_MINUTES = 5

@@ -19,6 +19,8 @@
           "ladder_shift_types": "Backstop ladder for these shift types",
           "calendar_entity": "Work calendar",
           "restart_automations": "Restart when a morning changes",
+          "house_backstop_source": "House backstop reads",
+          "old_rung_sensors": "Old template's rung sensors",
           "notify_service": "Notify action for your phone",
           "replan_alert": "Tell me when my plan goes out of date",
           "bed_sensor": "Bed sensor (your side)",
@@ -40,6 +42,8 @@
           "ladder_shift_types": "Shift mornings that get the leave-by backstop ladder (early, deadline, late before leave-by). Appointments with a location always get one.",
           "calendar_entity": "Read to tell a first day back (no shift the day before) when the phone hasn't planned.",
           "restart_automations": "When you move or cancel a morning's alarms, these are turned off and back on, which stops anything they're running (Wake Confirm's nudges, a Backstop loop). Until the integration fires the ladder itself.",
+          "house_backstop_source": "What the Wake Deadline Backstop fires on. Leave on the old template until the cutover; the app then shows those times.",
+          "old_rung_sensors": "Early, deadline and late from current_shift.yaml, in that order (sensor.wake_rung_*).",
           "notify_service": "e.g. notify.mobile_app_mikes_iphone. Used for the re-plan notification and phone commands.",
           "replan_alert": "If the shift override or your next shift changes after you planned (and before you wake), send a notification with a Re-plan button.",
           "bed_sensor": "With the helper below, tells the app whether you're really up when you stop an alarm, so it keeps the later alarms if you're still in bed. Empty only counts after a minute (the sensor drops out briefly).",
@@ -83,6 +87,8 @@
           "ladder_shift_types": "Backstop ladder for these shift types",
           "calendar_entity": "Work calendar",
           "restart_automations": "Restart when a morning changes",
+          "house_backstop_source": "House backstop reads",
+          "old_rung_sensors": "Old template's rung sensors",
           "notify_service": "Notify action for your phone",
           "replan_alert": "Tell me when my plan goes out of date",
           "bed_sensor": "Bed sensor (your side)",
@@ -104,6 +110,8 @@
           "ladder_shift_types": "Shift mornings that get the leave-by backstop ladder (early, deadline, late before leave-by). Appointments with a location always get one.",
           "calendar_entity": "Read to tell a first day back (no shift the day before) when the phone hasn't planned.",
           "restart_automations": "When you move or cancel a morning's alarms, these are turned off and back on, which stops anything they're running (Wake Confirm's nudges, a Backstop loop). Until the integration fires the ladder itself.",
+          "house_backstop_source": "What the Wake Deadline Backstop fires on. Leave on the old template until the cutover; the app then shows those times.",
+          "old_rung_sensors": "Early, deadline and late from current_shift.yaml, in that order (sensor.wake_rung_*).",
           "notify_service": "e.g. notify.mobile_app_mikes_iphone. Used for the re-plan notification and phone commands.",
           "replan_alert": "If the shift override or your next shift changes after you planned (and before you wake), send a notification with a Re-plan button.",
           "bed_sensor": "With the helper below, tells the app whether you're really up when you stop an alarm, so it keeps the later alarms if you're still in bed. Empty only counts after a minute (the sensor drops out briefly).",
@@ -126,6 +134,12 @@
         "both": "Turn on helpers and fire events",
         "helpers": "Turn on helpers only",
         "events": "Fire events only"
+      }
+    },
+    "house_backstop_source": {
+      "options": {
+        "old": "Old template (sensor.wake_rung_*)",
+        "bridge": "Bedtime Bridge ladder"
       }
     }
   },

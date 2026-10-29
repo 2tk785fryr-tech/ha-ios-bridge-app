@@ -169,3 +169,45 @@ async def test_change_from_the_snooze_screen_after_a_stop_goes_back_to_bed(hass,
     assert "RUN_BACK_TO_BED" in [c.data["message"] for c in notify]
     last = hass.states.get("sensor.bedtime_bridge_last_event").attributes["last_morning_change"]
     assert last["phase"] == "up"
+
+
+async def test_shift_alarms_only_keeps_deadline_and_late_and_moves_early_past_the_last_alarm(hass, ladder, hass_client_no_auth):
+    """v0.4.1 item 7 (28 Oct): Tired, +30 → 4:50/4:55/5:00; early 4:55 → 5:05, deadline/late stay."""
+    await ladder()
+    await send(hass_client_no_auth, change(local("04:50"), local("04:55"), local("05:00"), delay=30, scope="alarms"))
+    await hass.async_block_till_done()
+    assert rungs(hass) == ["05:05", "05:10", "05:25"]
+    assert hass.states.get("sensor.bedtime_bridge_last_event").attributes["last_morning_change"]["scope"] == "alarms"
+
+
+async def test_shift_alarms_only_past_the_late_backstop_is_refused(hass, ladder, hass_client_no_auth):
+    await ladder()
+    events = async_capture_events(hass, "bedtime_bridge")
+    client = await hass_client_no_auth()
+    response = await client.post("/api/webhook/test_webhook", json=change(local("05:20"), local("05:30"), delay=60, scope="alarms"))
+    reply = await response.json()
+    await hass.async_block_till_done()
+    assert "after the late backstop" in reply["error"]
+    assert rungs(hass) == ["04:55", "05:10", "05:25"], "nothing moves"
+    assert hass.states.get("sensor.bedtime_bridge_next_alarm").state == "unknown"
+    assert events[-1].data["type"] == "morning_change_refused"
+
+
+async def test_shift_entire_wake_up_moves_all_three(hass, ladder, hass_client_no_auth):
+    await ladder()
+    await send(hass_client_no_auth, change(local("06:20"), local("06:25"), local("06:30"), delay=120, scope="wake_up"))
+    await hass.async_block_till_done()
+    assert rungs(hass) == ["06:55", "07:10", "07:25"]
+
+
+async def test_context_reports_what_the_house_backstop_reads(hass, ladder, hass_client_no_auth):
+    """v0.4.1 item 8: until the cutover the house backstop fires on sensor.wake_rung_*."""
+    for rung, hhmm in (("early", "04:55"), ("deadline", "05:10"), ("late", "05:25")):
+        hass.states.async_set(f"sensor.wake_rung_{rung}", local(hhmm).astimezone(dt_util.UTC).isoformat())
+    await ladder()
+    reply = await send(hass_client_no_auth, {"type": "context", "data": {}})
+    house = reply["ladder"]["house_backstop"]
+    assert house["source"] == "old"
+    assert dt_util.as_local(dt_util.parse_datetime(house["times"]["deadline"])).strftime("%H:%M") == "05:10"
+    status = hass.states.get("sensor.bedtime_bridge_ladder_status").attributes["house_backstop"]
+    assert status["source"] == "old"

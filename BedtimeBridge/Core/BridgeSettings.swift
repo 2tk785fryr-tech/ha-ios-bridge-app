@@ -113,8 +113,18 @@ struct BridgeSettings: Codable, Equatable {
     var alarmSound: AlarmSound = .standard
     /// Tonight offers "Up before the alarms?" from this many hours before the first one.
     var endAlarmsEarlyHours = 2
-    /// Item 3: why a morning changed, picked when moving or cancelling its alarms.
-    var morningChangeReasons = ["Snow delay", "Canceled", "Postponed", "Not feeling well", "Tired", "Other"]
+    /// Why a morning changed, each with what it moves (v0.4.1 item 7). New reasons ask.
+    var morningReasons: [MorningReason] = [
+        MorningReason(name: "Snow delay", scope: .wakeUp),
+        MorningReason(name: "Canceled", scope: .ask),
+        MorningReason(name: "Postponed", scope: .wakeUp),
+        MorningReason(name: "Not feeling well", scope: .ask),
+        MorningReason(name: "Tired", scope: .alarms),
+        MorningReason(name: "Other", scope: .ask),
+    ]
+    /// Shift alarms only: the early backstop moves to this long after the new last alarm when
+    /// it would otherwise come before it.
+    var earlyBackstopGapMinutes = 5
     /// App alarms only: what Stop does to the rest of the series. Default keeps them until
     /// Home Assistant confirms you're up: stopping the first alarm and falling back asleep is
     /// exactly how Wake Deadline Backstop came to exist.
@@ -241,6 +251,32 @@ enum AlarmSound: String, Codable, CaseIterable, Identifiable {
 
     /// The bundled file, or nil for the system sound.
     var fileName: String? { self == .standard ? nil : "\(rawValue).caf" }
+}
+
+/// What a change this morning moves (v0.4.1 item 7).
+enum MorningChangeScope: String, Codable, CaseIterable, Identifiable {
+    /// Sleep longer, same start: only the alarms (the early backstop follows them).
+    case alarms
+    /// The start is later (a snow delay): alarms, leave-by and all three backstops.
+    case wakeUp = "wake_up"
+    /// Ask each time.
+    case ask
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .alarms: "Shift alarms only"
+        case .wakeUp: "Shift entire wake-up"
+        case .ask: "Ask"
+        }
+    }
+}
+
+struct MorningReason: Codable, Equatable, Hashable, Identifiable {
+    var id = UUID()
+    var name: String
+    var scope: MorningChangeScope = .ask
 }
 
 enum AlarmStyle: String, Codable, CaseIterable, Identifiable {

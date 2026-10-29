@@ -47,6 +47,8 @@ struct SeriesPattern: Codable, Equatable {
 
 struct MorningChange: Equatable {
     var choice: MorningChangeChoice
+    /// Shift alarms only, or the entire wake-up (v0.4.1 item 7).
+    var scope: MorningChangeScope = .wakeUp
     /// The new series: the usual count, spacing and "wake time is the first/last alarm".
     var alarmTimes: [Date]
     var newWake: Date?
@@ -85,10 +87,41 @@ struct MorningChange: Equatable {
         alarmTimes.isEmpty || (alarmTimes.min() ?? now) > now.addingTimeInterval(60)
     }
 
-    /// The backstop times after this change: moved by the delay, or unchanged with no alarms.
-    func backstops(_ current: [String: Date]) -> [String: Date] {
+    /// The backstop times after this change. Entire wake-up: all three move by the delay.
+    /// Alarms only: deadline and late stay, and early moves to `earlyGap` minutes after the new
+    /// last alarm if it would otherwise come before it. No alarms: unchanged.
+    func backstops(_ current: [String: Date], earlyGap: Int = 5) -> [String: Date] {
         guard !alarmTimes.isEmpty else { return current }
+        if scope == .alarms {
+            var moved = current
+            if let early = current["early"], let last = alarmTimes.max() {
+                moved["early"] = max(early, last.addingTimeInterval(Double(earlyGap) * 60))
+            }
+            return moved
+        }
         return current.mapValues { $0.addingTimeInterval(Double(delayMinutes) * 60) }
+    }
+
+    enum Limit: Equatable {
+        case ok
+        /// The last alarm is after the deadline backstop (allowed, with a warning).
+        case afterDeadline(Date)
+        /// The last alarm would be after the late backstop: not allowed for alarms only.
+        case afterLate(Date)
+    }
+
+    /// Shift alarms only may never put the last alarm after the late backstop.
+    func limit(backstops current: [String: Date]) -> Limit {
+        guard scope == .alarms, let last = alarmTimes.max() else { return .ok }
+        if let late = current["late"], last > late { return .afterLate(late) }
+        if let deadline = current["deadline"], last > deadline { return .afterDeadline(deadline) }
+        return .ok
+    }
+
+    /// The latest wake-up whose last alarm still isn't after `late`, in this pattern.
+    static func latestWake(notAfter late: Date, pattern: SeriesPattern) -> Date {
+        let span = Double((pattern.count - 1) * pattern.spacingMinutes) * 60
+        return pattern.wakeIs == .last ? late : late.addingTimeInterval(-span)
     }
 
     /// Sleep In after this change, by Home Assistant's rule: on when the first alarm is after the
