@@ -472,14 +472,24 @@ final class BedtimeCoordinator {
         await report(.planned, data: payload, settings: settings)
     }
 
+    /// How many events in the next week carry the wake-up keyword (v0.4.1 item 16); nil without
+    /// calendar access or a keyword.
+    func markedUpcomingCount(settings: BridgeSettings, now: Date = .now) -> Int? {
+        let keyword = settings.appointmentKeyword.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !keyword.isEmpty, EKEventStore.authorizationStatus(for: .event) == .fullAccess else { return nil }
+        return calendar.events(from: now, to: now.addingTimeInterval(7 * 86400), calendarIDs: settings.appointmentCalendarIDs)
+            .filter { WakePlanner.matchingRule(forTitle: $0.title ?? "", rules: settings.shiftRules) == nil }
+            .filter { WakePlanner.notesRequestWakeUp($0.notes, keyword: settings.appointmentKeyword) }
+            .count
+    }
+
     /// "Ultrasound at 10:00 AM isn't marked wake up, so your Days alarms are used." (v0.4.1 item 11)
     private func unmarkedAppointmentNote(for shift: ShiftCandidate, settings: BridgeSettings) -> String? {
         let day = Calendar.current.startOfDay(for: shift.start)
         let end = shift.end ?? shift.start.addingTimeInterval(12 * 3600)
-        let keyword = settings.appointmentKeyword.lowercased()
         let event = calendar.events(from: day, to: end, calendarIDs: settings.appointmentCalendarIDs).first { event in
             WakePlanner.matchingRule(forTitle: event.title ?? "", rules: settings.shiftRules) == nil
-                && !(keyword.isEmpty == false && (event.notes ?? "").lowercased().contains(keyword))
+                && !WakePlanner.notesRequestWakeUp(event.notes, keyword: settings.appointmentKeyword)
         }
         guard let event else { return nil }
         return "\(event.title ?? "An appointment") at \(WakePlanner.format(event.startDate)) isn't marked \(settings.appointmentKeyword), so your \(shift.cause) alarms are used"

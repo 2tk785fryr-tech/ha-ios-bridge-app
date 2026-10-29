@@ -57,7 +57,8 @@ struct SettingsView: View {
                 SettingsLink(title: "Alarms", icon: "alarm", value: "\(settings.alarmCount) alarms, \(settings.alarmSpacingMinutes) min apart") {
                     SettingsPage(title: "Alarms") { AlarmSettingsSection(settings: $store.settings) }
                 }
-                SettingsLink(title: "Appointments", icon: "calendar.badge.clock", value: "Notes say \"\(settings.appointmentKeyword)\"") {
+                SettingsLink(title: "Appointments", icon: "calendar.badge.clock",
+                             value: settings.appointmentKeyword.isEmpty ? "Wake-up keyword: none" : "Wake-up keyword: \(settings.appointmentKeyword)") {
                     SettingsPage(title: "Appointments") { AppointmentsSection(settings: $store.settings) }
                 }
                 SettingsLink(title: "Drive time", icon: "car", value: settings.driveTimeSource.displayName) {
@@ -136,17 +137,38 @@ private struct SettingsLink<Destination: View>: View {
 
 private struct AppointmentsSection: View {
     @Binding var settings: BridgeSettings
+    @State private var markedCount: Int?
 
     var body: some View {
         Section {
-            TextField("Notes contain", text: $settings.appointmentKeyword)
+            LabeledContent("Wake-up keyword") {
+                TextField("wake up", text: $settings.appointmentKeyword)
+                    .multilineTextAlignment(.trailing)
+                    .textInputAutocapitalization(.never)
+            }
+            if settings.appointmentKeyword.trimmingCharacters(in: .whitespaces).isEmpty {
+                Label("With no keyword, no appointment gets an alarm; only shifts do.", systemImage: "exclamationmark.triangle")
+                    .font(.footnote).foregroundStyle(Theme.warning.text)
+            }
+            if let markedCount {
+                Text(markedCount == 1 ? "1 upcoming event is marked \(settings.appointmentKeyword)" : "\(markedCount) upcoming events are marked \(settings.appointmentKeyword)")
+                    .foregroundStyle(Theme.textMuted)
+            }
+            NavigationLink("Mark events in Upcoming events") { UpcomingEventsView() }
+        } header: {
+            Text("Wake-up keyword")
+        } footer: {
+            Text("Put this word or phrase in an event's notes and the app will wake you for that event. Events without it are ignored for alarms. Work shifts don't need it: they're found by their title (Days, Swings). Example: \"Notes: wake up · bring insurance card\". It matches anywhere in the notes, in any case. You can also set it for each event from Upcoming events.")
+        }
+        Section {
             Stepper("Arrive early: \(settings.arrivalBufferMinutes) min", value: $settings.arrivalBufferMinutes, in: 0...60, step: 5)
             Toggle("Ask about missing locations", isOn: $settings.askAboutMissingLocations)
         } header: {
             Text("Appointments")
         } footer: {
-            Text("Wake time = start − arrive-early buffer − drive time − get-ready time (on the main Settings page). Only used when it's earlier than your shift alarm. A \"wake up\" appointment without a location is planned with the fallback drive until you answer the notification about it.")
+            Text("Wake time = start − arrive-early buffer − drive time − get-ready time (on the main Settings page). On a work morning, a marked appointment that starts before your shift ends is used instead of the shift (you're going in late); one after the shift ends isn't. A marked appointment without a location is planned with the fallback drive until you answer the notification about it.")
         }
+        .task(id: settings.appointmentKeyword) { markedCount = BedtimeCoordinator.shared.markedUpcomingCount(settings: settings) }
     }
 }
 

@@ -168,4 +168,12 @@ final class WakePlannerTests: XCTestCase {
         XCTAssertEqual(allow, 25 * 60)
         XCTAssertLessThanOrEqual(requests, 2)
     }
+
+    /// v0.4.1 item 16: the keyword matches anywhere in the notes, in any case.
+    func testWakeUpKeywordMatchesAnywhereInAnyCase() {
+        XCTAssertTrue(WakePlanner.notesRequestWakeUp("Notes: Wake Up · bring insurance card", keyword: "wake up"))
+        XCTAssertTrue(WakePlanner.notesRequestWakeUp("bring card\nWAKE UP", keyword: "wake up"))
+        XCTAssertFalse(WakePlanner.notesRequestWakeUp("bring insurance card", keyword: "wake up"))
+        XCTAssertFalse(WakePlanner.notesRequestWakeUp(nil, keyword: "wake up"))
+    }
 }
