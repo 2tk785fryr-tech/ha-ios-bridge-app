@@ -218,3 +218,23 @@ async def test_context_says_when_the_plan_is_out_of_date(hass, ladder, hass_clie
     await ladder()
     reply = await send(hass_client_no_auth, {"type": "context", "data": {}})
     assert reply["plan_outdated"] is False
+
+
+async def test_sleep_later_before_bed_changes_nothing_in_the_house(hass, ladder, hass_client_no_auth):
+    """v0.4.1 item 12: phase bedtime, scope alarms."""
+    await helpers(hass)
+    notify = async_mock_service(hass, "notify", "mobile_app_test")
+    hass.states.async_set("automation.wake_deadline_backstop", "on")
+    restarts = async_mock_service(hass, "automation", "turn_off")
+    await ladder(bedtime_helper="input_boolean.bedtime_routine", **COMMANDS)
+    await send(hass_client_no_auth, change(local("04:50"), local("04:55"), local("05:00"), delay=30, scope="alarms", phase="bedtime"))
+    await hass.async_block_till_done()
+    assert hass.states.get("input_boolean.bedtime_routine").state == "off"
+    assert not [c for c in notify if c.data["message"] == "RUN_BACK_TO_BED"]
+    assert not restarts, "nothing running to stop"
+    assert rungs(hass) == ["05:05", "05:10", "05:25"]
+
+    # Back to planned alarms: the early backstop goes back too.
+    await send(hass_client_no_auth, change(local("04:20"), local("04:25"), local("04:30"), delay=-30, scope="alarms", phase="bedtime"))
+    await hass.async_block_till_done()
+    assert rungs(hass) == ["04:55", "05:10", "05:25"]

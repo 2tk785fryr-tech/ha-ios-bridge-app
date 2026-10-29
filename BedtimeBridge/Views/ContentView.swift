@@ -17,6 +17,7 @@ struct ContentView: View {
     @State private var temporaryAlarms: [TemporaryAlarm] = []
     @State private var morningEnd: MorningEnd?
     @State private var backToBed = false
+    @State private var sleepLater = false
     /// From Home Assistant for "Your morning" (v0.4.1 item 8); nil when it couldn't be reached.
     @State private var morningContext: MorningContext?
     @State private var morningContextLoaded = false
@@ -111,6 +112,10 @@ struct ContentView: View {
                             done: refreshScheduled
                         )
                         .nightfallCard()
+                    }
+
+                    if sleepLater {
+                        SleepLaterCard(settings: store.settings, canGoBack: coordinator.backToPlannedAvailable(), changed: refreshScheduled)
                     }
 
                     if let morningEnd {
@@ -379,6 +384,7 @@ struct ContentView: View {
         temporaryAlarms = coordinator.temporaryAlarms
         morningEnd = coordinator.morningEnd(settings: store.settings)
         backToBed = coordinator.backToBedAvailable(settings: store.settings)
+        sleepLater = coordinator.sleepLaterAvailable(settings: store.settings)
         // After a change this morning, the old plan's times are no longer what's set: show the
         // alarms AlarmKit holds instead (v0.4.1 items 4 and 10).
         if coordinator.morningChangeReason != nil { plan = nil }

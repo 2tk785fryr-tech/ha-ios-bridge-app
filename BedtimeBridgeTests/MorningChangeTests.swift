@@ -122,4 +122,16 @@ final class MorningChangeTests: XCTestCase {
         XCTAssertEqual(MorningChange.latestWake(notAfter: at(55), pattern: days), at(55), "wake = last alarm")
         XCTAssertEqual(MorningChange.latestWake(notAfter: at(55), pattern: SeriesPattern(count: 3, spacingMinutes: 10, wakeIs: .first)), at(35))
     }
+
+    /// v0.4.1 item 12: a morning with no backstops (Swings) stops at leave-by minus get-ready.
+    func testSleepLaterWithoutBackstopsStopsAtLeaveByMinusGetReady() {
+        let swings = SeriesPattern(count: 3, spacingMinutes: 10, wakeIs: .first)
+        let leaveBy = wake.addingTimeInterval(4 * 3600)
+        var fine = MorningChange.make(.later(minutes: 120), currentWake: wake, pattern: swings)
+        fine.scope = .alarms
+        XCTAssertEqual(fine.limit(leaveBy: leaveBy, getReadyMinutes: 60), .ok)
+        var tooLate = MorningChange.make(.later(minutes: 180), currentWake: wake, pattern: swings)
+        tooLate.scope = .alarms
+        XCTAssertEqual(tooLate.limit(leaveBy: leaveBy, getReadyMinutes: 60), .afterLate(leaveBy.addingTimeInterval(-3600)))
+    }
 }

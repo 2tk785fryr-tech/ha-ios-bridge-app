@@ -12,6 +12,10 @@ enum MorningChangeChoice: Equatable, Hashable {
 enum MorningChangePhase: String {
     case snoozing
     case up
+    /// Sleep later from Tonight before bed (v0.4.1 item 12): nothing in the house changes.
+    case bedtime
+    /// A single alarm edited, added or removed (v0.4.1 item 13): nothing in the house changes.
+    case edit
 }
 
 /// The shape of a morning's alarm series: how many, how far apart, and whether the wake-up is
@@ -108,6 +112,14 @@ struct MorningChange: Equatable {
         case afterDeadline(Date)
         /// The last alarm would be after the late backstop: not allowed for alarms only.
         case afterLate(Date)
+    }
+
+    /// Sleep later (item 12) on a morning with no backstops (Swings): the last alarm may not be
+    /// after leave-by minus the get-ready time.
+    func limit(leaveBy: Date?, getReadyMinutes: Int) -> Limit {
+        guard let last = alarmTimes.max(), let leaveBy else { return .ok }
+        let latest = leaveBy.addingTimeInterval(-Double(getReadyMinutes) * 60)
+        return last > latest ? .afterLate(latest) : .ok
     }
 
     /// Shift alarms only may never put the last alarm after the late backstop.

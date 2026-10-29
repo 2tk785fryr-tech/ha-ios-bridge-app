@@ -88,6 +88,7 @@ final class BedtimeCoordinator {
         lastAppliedPlan = nil
         alarmSeries = []
         morningChangeReason = nil
+        plannedBeforeSleepLater = nil
         storedPattern = nil
         updateWidget { $0 = NextAlarmSnapshot(alarmStyle: settings.alarmStyle.rawValue, temporaryAlarms: temporaryAlarms.map(\.time)) }
         lastCause = AlarmCause.none
@@ -140,6 +141,7 @@ final class BedtimeCoordinator {
         lastAppliedPlan = nil
         alarmSeries = []
         morningChangeReason = nil
+        plannedBeforeSleepLater = nil
         storedPattern = nil
         updateWidget { $0 = NextAlarmSnapshot(alarmStyle: settings.alarmStyle.rawValue, temporaryAlarms: temporaryAlarms.map(\.time)) }
         lastCause = AlarmCause.none
@@ -382,6 +384,7 @@ final class BedtimeCoordinator {
         lastAppliedPlan = nil
         alarmSeries = []
         morningChangeReason = nil
+        plannedBeforeSleepLater = nil
         storedPattern = nil
         updateWidget { $0 = NextAlarmSnapshot(alarmStyle: settings.alarmStyle.rawValue, temporaryAlarms: temporaryAlarms.map(\.time)) }
         lastCause = AlarmCause.none
@@ -407,6 +410,7 @@ final class BedtimeCoordinator {
         }
         let planned = settings.alarmStyle == .app ? plan.alarmTimes.filter { $0 > .now } : []
         alarmSeries = settings.alarmStyle == .app ? actual : []
+        plannedBeforeSleepLater = nil
         storedPattern = plan.hasAlarm ? SeriesPattern.from(series: plan.alarmTimes, wake: plan.wakeTime, fallback: settings) : nil
         morningChangeReason = nil
         calendarChangedSinceSet = false
@@ -735,6 +739,48 @@ final class BedtimeCoordinator {
     /// The series alarms AlarmKit holds now (snoozing ones included), earliest first.
     func setAlarmTimes() -> [Date] {
         alarms.scheduledAlarms().filter { !keptAlarms.contains($0.id) }.map(\.date).sorted()
+    }
+
+    // MARK: Sleep later (v0.4.1 item 12)
+
+    private static let plannedKey = "plannedBeforeSleepLater.v1"
+
+    /// The alarms as planned, before Sleep later moved them, for "Back to planned alarms".
+    private(set) var plannedBeforeSleepLater: [Date]? {
+        get { UserDefaults.standard.array(forKey: Self.plannedKey) as? [Date] }
+        set { UserDefaults.standard.set(newValue, forKey: Self.plannedKey) }
+    }
+
+    /// Sleep later is offered while the alarms are set and none has rung yet.
+    func sleepLaterAvailable(settings: BridgeSettings, now: Date = .now) -> Bool {
+        guard settings.alarmStyle == .app, let first = setAlarmTimes().first else { return false }
+        return first > now && !stoppedThisWakeUp
+    }
+
+    /// Back to planned alarms, until the first alarm rings.
+    func backToPlannedAvailable(now: Date = .now) -> Bool {
+        guard let planned = plannedBeforeSleepLater, let first = setAlarmTimes().first, first > now else { return false }
+        return planned.contains { $0 > now }
+    }
+
+    /// Moves tonight's alarms later, like Shift alarms only: one slide-and-hold, no Face ID,
+    /// nothing in the house changes.
+    func sleepLater(_ change: MorningChange, reason: String?, settings: BridgeSettings) async throws {
+        if plannedBeforeSleepLater == nil { plannedBeforeSleepLater = alarmSeries }
+        var change = change
+        change.scope = .alarms
+        try await changeMorning(change, phase: .bedtime, sleepIn: true, reason: reason ?? "Sleep later", note: nil, settings: settings)
+    }
+
+    func backToPlannedAlarms(settings: BridgeSettings) async throws {
+        guard let planned = plannedBeforeSleepLater?.filter({ $0 > .now }), !planned.isEmpty else { return }
+        let current = currentWake(settings: settings) ?? planned.max()!
+        let wake = MorningChange.currentWake(series: planned, wakeIs: seriesPattern(settings: settings).wakeIs) ?? planned.max()!
+        let change = MorningChange(choice: .at(wake), scope: .alarms, alarmTimes: planned, newWake: wake,
+                                   delayMinutes: Int((wake.timeIntervalSince(current) / 60).rounded()))
+        try await changeMorning(change, phase: .bedtime, sleepIn: true, reason: "Back to planned alarms", note: nil, settings: settings)
+        plannedBeforeSleepLater = nil
+        morningChangeReason = nil
     }
 
     // MARK: Change this morning (item 3)

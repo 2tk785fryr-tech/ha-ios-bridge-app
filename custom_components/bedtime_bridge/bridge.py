@@ -738,9 +738,11 @@ class BedtimeBridge:
         if ladder.get("status") != ldr.STATUS_ARMED:
             return
         self.state["ladder_early_floor"] = {"morning": ladder["morning"], "at": floor.isoformat()}
-        early = _time((ladder.get("times") or {}).get("early"))
-        if early is not None and floor > early:
-            ladder["times"]["early"] = floor.isoformat()
+        # From the early rung before any floor, so moving the alarms back puts it back.
+        base = _time(ladder.get("early_base")) or _time((ladder.get("times") or {}).get("early"))
+        if base is not None:
+            ladder["early_base"] = base.isoformat()
+            ladder["times"]["early"] = max(base, floor).isoformat()
             self._schedule_ladder_rollover()
         ladder.update(changed_by=changed_by, change_reason=reason)
         self._changed()
@@ -1104,14 +1106,18 @@ class BedtimeBridge:
             self.ladder_early_floor(times[-1] + timedelta(minutes=gap), data.get("changed_by") or "app", reason)
         elif times and delay:
             self.change_morning_ladder(delay, data.get("changed_by") or "app", reason)
-        await self._restart_wake_automations()
+        if phase not in ("bedtime", "edit"):
+            await self._restart_wake_automations()
         # Blocking: Sleep In must be set before the bedtime routine can move the curtains.
         if times:
             await self._sync_sleep_in(blocking=True)
         else:
             await self._set_sleep_in(bool(data.get("sleep_in", True)), blocking=True)
         at_home = self.is_home()
-        if phase == "snoozing":
+        if phase in ("bedtime", "edit"):
+            # Sleep later before bed (item 12) or an edited alarm (item 13): nothing in the house.
+            pass
+        elif phase == "snoozing":
             # Only the snooze ramp has started: fade the nightstands back down.
             helper = self.options.get(CONF_SNOOZE_HELPER)
             if helper:
