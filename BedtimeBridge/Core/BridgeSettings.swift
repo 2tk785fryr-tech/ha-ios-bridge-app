@@ -138,6 +138,16 @@ struct BridgeSettings: Codable, Equatable {
     /// Full backstop actions instead of the gentle ones (push and early light ramp).
     var ownBackstopsFull = false
 
+    // MARK: Wake at a different time (v0.4.1 item 18)
+
+    /// The default time (6 hours from now) rounds UP to this many minutes; 0 is exact.
+    var ownAlarmRoundingMinutes = 15
+    /// The time picker only offers that interval (otherwise any minute).
+    var ownAlarmPickerSnaps = true
+    var ownAlarmCount = 3
+    var ownAlarmSpacingMinutes = 10
+    var ownAlarmWakeIs: WakeTimeAlarm = .first
+
     var ownOffsetsValid: Bool { 0 <= ownEarlyMinutes && ownEarlyMinutes < ownDeadlineMinutes && ownDeadlineMinutes < ownLateMinutes }
     /// App alarms only: what Stop does to the rest of the series. Default keeps them until
     /// Home Assistant confirms you're up: stopping the first alarm and falling back asleep is

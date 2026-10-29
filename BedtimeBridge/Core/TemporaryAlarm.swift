@@ -19,6 +19,8 @@ enum SkipChoice: Equatable {
     case sleepIn
     /// Your own time, as the first or last alarm of the usual series.
     case wakeAt(Date, WakeTimeAlarm)
+    /// Exactly the alarms (and backstops) set in Wake at a different time (v0.4.1 item 18).
+    case exactly(SkipReplacement)
 }
 
 /// "Set alarms for a different time" in place of a skipped morning's alarms, so later plans
@@ -26,4 +28,9 @@ enum SkipChoice: Equatable {
 struct SkipReplacement: Codable, Equatable {
     var wake: Date
     var wakeIs: WakeTimeAlarm
+    /// Exactly these alarms, as set in Wake at a different time's preview (v0.4.1 item 18).
+    var times: [Date]? = nil
+    /// Backstops for your own alarm (item 14), and any times edited in the preview.
+    var backstops: Bool? = nil
+    var customBackstops: [String: Date]? = nil
 }

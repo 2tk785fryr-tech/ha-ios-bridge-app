@@ -111,8 +111,15 @@ def rung_times(leave_by: datetime, offsets: Offsets, first_day_back: bool, shift
     }
 
 
-def own_times(last_alarm: datetime, offsets: dict[str, Any] | None) -> dict[str, datetime]:
-    """Your own alarm's rungs: minutes after the last alarm, early < deadline < late, or the defaults."""
+def own_times(last_alarm: datetime, offsets: dict[str, Any] | None, custom: dict[str, Any] | None = None) -> dict[str, datetime]:
+    """Your own alarm's rungs: the times edited in the app's preview (item 18, any removed rung left
+    out, the rest in order), else minutes after the last alarm, early < deadline < late, or the
+    defaults."""
+    if custom:
+        times = {rung: when for rung in RUNGS if (when := dt_util.parse_datetime(str(custom.get(rung) or "")))}
+        ordered = [times[rung] for rung in RUNGS if rung in times]
+        if times and ordered == sorted(ordered):
+            return times
     try:
         minutes = {rung: int((offsets or {})[rung]) for rung in RUNGS}
     except (KeyError, TypeError, ValueError):

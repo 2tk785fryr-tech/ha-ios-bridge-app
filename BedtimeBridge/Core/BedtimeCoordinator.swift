@@ -92,8 +92,12 @@ final class BedtimeCoordinator {
         storedPattern = nil
         updateWidget { $0 = NextAlarmSnapshot(alarmStyle: settings.alarmStyle.rawValue, temporaryAlarms: temporaryAlarms.map(\.time)) }
         lastCause = AlarmCause.none
-        guard case .wakeAt(let time, let wakeIs) = choice else { return nil }
-        let replacement = SkipReplacement(wake: Self.nextOccurrence(ofTimeIn: time), wakeIs: wakeIs)
+        let replacement: SkipReplacement
+        switch choice {
+        case .sleepIn: return nil
+        case .wakeAt(let time, let wakeIs): replacement = SkipReplacement(wake: Self.nextOccurrence(ofTimeIn: time), wakeIs: wakeIs)
+        case .exactly(let chosen): replacement = chosen
+        }
         skipReplacement = replacement
         let manual = manualPlan(replacement, settings: settings)
         try await apply(manual, settings: settings)
@@ -116,13 +120,15 @@ final class BedtimeCoordinator {
     }
 
     private func manualPlan(_ replacement: SkipReplacement, settings: BridgeSettings) -> WakePlan {
-        let times = WakePlanner.alarmTimes(
+        let times = replacement.times.flatMap { $0.isEmpty ? nil : $0.sorted() } ?? WakePlanner.alarmTimes(
             wakeTime: replacement.wake,
             count: settings.alarmCount,
             spacingMinutes: settings.alarmSpacingMinutes,
             wakeIs: replacement.wakeIs
         )
         var plan = WakePlan(source: .manual, wakeTime: replacement.wake, alarmTimes: times, reason: "Your own time")
+        plan.ownBackstops = replacement.backstops
+        plan.customBackstops = replacement.customBackstops
         if skippedMorning != nil {
             plan.reason = "Your own time; the planned wake-up was skipped"
         }
@@ -371,12 +377,12 @@ final class BedtimeCoordinator {
     /// For the day-off path: you pick the time, the app sets the usual alarm series. The
     /// time is the first or last alarm (`wakeIs`, or Settings' choice when nil).
     func scheduleManual(wakeTime: Date, wakeIs: WakeTimeAlarm? = nil, ownBackstops: Bool? = nil,
-                        settings phoneSettings: BridgeSettings) async throws -> WakePlan {
+                        exactly chosen: SkipReplacement? = nil, settings phoneSettings: BridgeSettings) async throws -> WakePlan {
         let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
         let wake = Self.nextOccurrence(ofTimeIn: wakeTime)
-        let replacement = SkipReplacement(wake: wake, wakeIs: wakeIs ?? settings.wakeTimeIs)
+        let replacement = chosen ?? SkipReplacement(wake: wake, wakeIs: wakeIs ?? settings.wakeTimeIs)
         var plan = manualPlan(replacement, settings: settings)
-        plan.ownBackstops = ownBackstops ?? settings.ownBackstopsDayOff
+        plan.ownBackstops = ownBackstops ?? plan.ownBackstops ?? settings.ownBackstopsDayOff
         if let skipped = skippedMorning, Calendar.current.isDate(skipped, inSameDayAs: wake) {
             // Your own time for a skipped morning: the skip (and its failsafe-off) stands.
             skipReplacement = replacement

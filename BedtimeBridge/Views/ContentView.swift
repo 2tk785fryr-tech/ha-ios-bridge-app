@@ -209,20 +209,20 @@ struct ContentView: View {
                 case .temporary:
                     TemporaryAlarmSheet { time, disarm in setTemporary(time, disarmHouse: disarm) }
                 case .dayOff:
-                    WakeTimeSheet(
+                    OwnAlarmSheet(
                         title: "Day off alarm",
-                        note: "Uses your usual number of alarms and spacing.",
-                        confirm: "Set",
-                        settings: settings
-                    ) { time, wakeIs in setDayOff(time, wakeIs: wakeIs) }
+                        note: "Next shows your morning, where you can change single alarms and the backstops before setting them.",
+                        settings: settings,
+                        backstopsDefault: morningContext?.ladderStatus == "idle_leave" ? settings.ownBackstopsLeave : settings.ownBackstopsDayOff
+                    ) { replacement in setDayOff(replacement) }
                 case .skipToTime:
-                    WakeTimeSheet(
+                    OwnAlarmSheet(
                         title: "Wake at a different time",
                         note: "Replaces the planned wake-up. For a shift, the wake failsafe is off for that morning.",
-                        confirm: "Set",
-                        settings: settings
-                    ) { time, wakeIs in
-                        if let morning = scheduled.first ?? plan?.firstAlarm { skip(morning, then: .wakeAt(time, wakeIs)) }
+                        settings: settings,
+                        backstopsDefault: settings.ownBackstopsDayOff
+                    ) { replacement in
+                        if let morning = scheduled.first ?? plan?.firstAlarm { skip(morning, then: .exactly(replacement)) }
                     }
                 }
             }
@@ -442,13 +442,14 @@ struct ContentView: View {
         }
     }
 
-    private func setDayOff(_ time: Date, wakeIs: WakeTimeAlarm) {
+    private func setDayOff(_ chosen: SkipReplacement) {
         isWorking = true
         errorMessage = nil
         Task {
             defer { isWorking = false }
             do {
-                plan = try await coordinator.scheduleManual(wakeTime: time, wakeIs: wakeIs, settings: store.settings)
+                plan = try await coordinator.scheduleManual(wakeTime: chosen.wake, wakeIs: chosen.wakeIs, ownBackstops: chosen.backstops,
+                                                            exactly: chosen, settings: store.settings)
             } catch {
                 errorMessage = error.localizedDescription
             }

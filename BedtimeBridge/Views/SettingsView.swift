@@ -402,6 +402,9 @@ private struct AlarmSettingsSection: View {
                 NavigationLink("Backstops for your own alarm") {
                     OwnBackstopsSettings(settings: $settings)
                 }
+                NavigationLink("Wake at a different time") {
+                    OwnAlarmSettings(settings: $settings)
+                }
             }
             Stepper("Look ahead \(settings.lookAheadHours) h", value: $settings.lookAheadHours, in: 6...72)
         } header: {
@@ -412,6 +415,38 @@ private struct AlarmSettingsSection: View {
                 Text("Rings through Silent and Focus. Snooze and Stop tell Home Assistant directly (set it up below), because the Shortcuts \"alarm snoozed/stopped\" automations only see Clock app alarms. \"Keep the rest until I'm up\" cancels the later alarms only once Home Assistant sees the bedroom door opened or the bed empty for over a minute, so stopping the first alarm and dozing off still leaves the others. A new sound is used from the next time alarms are set.")
             case .clock:
                 Text("The app works out the times and your shortcut creates Clock alarms from Wake Plan › Alarm Dates. Your snooze/stop automations keep working, but Apple fixes Clock snooze at 9 minutes.")
+            }
+        }
+    }
+}
+
+/// Wake at a different time's defaults (v0.4.1 item 18).
+private struct OwnAlarmSettings: View {
+    @Binding var settings: BridgeSettings
+
+    var body: some View {
+        SettingsPage(title: "Wake at a different time") {
+            Section {
+                Picker("Round the time to", selection: $settings.ownAlarmRoundingMinutes) {
+                    Text("Exact").tag(0)
+                    ForEach([5, 10, 15, 30], id: \.self) { Text("\($0) min").tag($0) }
+                }
+                if settings.ownAlarmRoundingMinutes > 0 {
+                    Toggle("Picker shows only those times", isOn: $settings.ownAlarmPickerSnaps)
+                }
+            } footer: {
+                Text("The time starts at 6 hours from now, rounded up (15 min: 6:54 → 7:00, 7:02 → 7:15). Off: the picker allows any minute.")
+            }
+            Section {
+                Picker("The time is the", selection: $settings.ownAlarmWakeIs) {
+                    ForEach(WakeTimeAlarm.allCases) { Text($0.displayName).tag($0) }
+                }
+                Stepper("\(settings.ownAlarmCount) alarms", value: $settings.ownAlarmCount, in: 1...10)
+                Stepper("\(settings.ownAlarmSpacingMinutes) min apart", value: $settings.ownAlarmSpacingMinutes, in: 1...60)
+            } header: {
+                Text("Defaults")
+            } footer: {
+                Text("The backstops switch starts from Backstops for your own alarm (day off or leave).")
             }
         }
     }

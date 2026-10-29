@@ -137,6 +137,8 @@ struct WakePlan: Equatable {
     var freezingAt: Double? = nil
     /// Your own alarm's backstops on or off (v0.4.1 item 14); nil for shifts and appointments.
     var ownBackstops: Bool? = nil
+    /// Backstop times edited in the preview (item 18), in place of the offsets after the last alarm.
+    var customBackstops: [String: Date]? = nil
     /// A "wake up" appointment replaced this shift's alarms for the morning (v0.4.1 item 11):
     /// the shift's cause, e.g. "Days".
     var replacedShift: String? = nil

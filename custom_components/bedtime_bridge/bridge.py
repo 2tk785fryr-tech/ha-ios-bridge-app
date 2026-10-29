@@ -475,9 +475,9 @@ class BedtimeBridge:
         """From the early rung until 60 minutes after the late rung, nothing recomputes it."""
         if ladder.get("status") != ldr.STATUS_ARMED:
             return False
-        early = _time((ladder.get("times") or {}).get("early"))
-        late = _time((ladder.get("times") or {}).get("late"))
-        return early is not None and late is not None and early <= now < late + ldr.LADDER_TAIL
+        times = [t for t in (_time(v) for v in (ladder.get("times") or {}).values()) if t]
+        # The first and last rung (your own alarm's preview can leave one out, item 18).
+        return bool(times) and min(times) <= now < max(times) + ldr.LADDER_TAIL
 
     async def _recompute_ladder(self) -> None:
         """Works out the ladder for the next morning with a leave-by. Inside the morning lock it
@@ -571,7 +571,7 @@ class BedtimeBridge:
             if plan.get("on"):
                 own = ldr.Morning(
                     "own", last_alarm, "plan", False,
-                    fixed_times=ldr.own_times(last_alarm, plan.get("offsets")),
+                    fixed_times=ldr.own_times(last_alarm, plan.get("offsets"), plan.get("times")),
                     firing=plan.get("firing") or "gentle",
                 )
             elif last_alarm + timedelta(minutes=int((plan.get("offsets") or {}).get("late") or 45)) + ldr.LADDER_TAIL > now:
@@ -587,7 +587,7 @@ class BedtimeBridge:
         def finished(morning: ldr.Morning) -> bool:
             delay = self._ladder_delay_for(morning.key).get("minutes", 0)
             if morning.fixed_times:
-                late = morning.fixed_times["late"] + timedelta(minutes=delay)
+                late = max(morning.fixed_times.values()) + timedelta(minutes=delay)
             else:
                 late = ldr.rung_times(morning.leave_by, offsets, morning.first_day_back, delay)["late"]
             return late + ldr.LADDER_TAIL <= now
@@ -708,9 +708,10 @@ class BedtimeBridge:
         if self._ladder_unsub:
             self._ladder_unsub()
             self._ladder_unsub = None
-        late = _time(((self.state.get("ladder") or {}).get("times") or {}).get("late"))
-        if late is None:
+        times = [t for t in (_time(v) for v in ((self.state.get("ladder") or {}).get("times") or {}).values()) if t]
+        if not times:
             return
+        late = max(times)
         due = late + ldr.LADDER_TAIL
         if due <= dt_util.utcnow():
             return

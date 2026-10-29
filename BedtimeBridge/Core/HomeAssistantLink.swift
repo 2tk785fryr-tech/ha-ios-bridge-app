@@ -386,6 +386,7 @@ extension WakePlan {
             block["last_alarm"] = iso.string(from: last)
             block["offsets"] = ["early": settings.ownEarlyMinutes, "deadline": settings.ownDeadlineMinutes, "late": settings.ownLateMinutes]
             block["firing"] = settings.ownBackstopsFull ? "full" : "gentle"
+            if let customBackstops { block["times"] = customBackstops.mapValues { iso.string(from: $0) } }
         case .none:
             break
         }

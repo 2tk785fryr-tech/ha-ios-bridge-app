@@ -426,3 +426,16 @@ async def test_own_alarm_offsets_that_cross_fall_back_to_the_defaults(hass, ladd
     await send(hass_client_no_auth, own_plan("08:00", on=True, offsets={"early": 30, "deadline": 20, "late": 45}))
     await hass.async_block_till_done()
     assert rungs(hass) == ["08:15", "08:30", "08:45"]
+
+
+async def test_own_alarm_backstops_edited_in_the_preview(hass, ladder, hass_client_no_auth):
+    """v0.4.1 item 18: times edited (and one removed) in Wake at a different time's preview."""
+    shift_sensor(hass, start=None)
+    await ladder()
+    await send(hass_client_no_auth, own_plan("08:00", on=True, times={"early": local("08:20").isoformat(), "late": local("09:00").isoformat()}))
+    await hass.async_block_till_done()
+    early = hass.states.get("sensor.bedtime_bridge_ladder_early").state
+    assert dt_util.as_local(dt_util.parse_datetime(early)).strftime("%H:%M") == "08:20"
+    assert hass.states.get("sensor.bedtime_bridge_ladder_deadline").state == "unknown", "removed"
+    late = hass.states.get("sensor.bedtime_bridge_ladder_late").state
+    assert dt_util.as_local(dt_util.parse_datetime(late)).strftime("%H:%M") == "09:00"
