@@ -27,7 +27,7 @@ struct OwnAlarmSheet: View {
         self.settings = settings
         self.backstopsDefault = backstopsDefault
         self.done = done
-        _time = State(initialValue: OwnAlarmDraft.defaultTime(roundingMinutes: settings.ownAlarmRoundingMinutes))
+        _time = State(initialValue: OwnAlarmDraft.defaultTime(hoursAhead: settings.newAlarmHoursAhead, roundingMinutes: settings.ownAlarmRoundingMinutes))
         _wakeIs = State(initialValue: settings.ownAlarmWakeIs)
         _count = State(initialValue: settings.ownAlarmCount)
         _spacing = State(initialValue: settings.ownAlarmSpacingMinutes)
@@ -131,7 +131,7 @@ private struct OwnAlarmPreview: View {
                         .font(.footnote)
                 } else {
                     Button("Add an alarm", systemImage: "plus") {
-                        change([OwnAlarmDraft.defaultTime(roundingMinutes: settings.ownAlarmRoundingMinutes)])
+                        change([OwnAlarmDraft.defaultTime(hoursAhead: settings.newAlarmHoursAhead, roundingMinutes: settings.ownAlarmRoundingMinutes)])
                     }
                 }
                 if undoneNote {

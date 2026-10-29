@@ -16,6 +16,9 @@ final class OwnAlarmDraftTests: XCTestCase {
         XCTAssertEqual(OwnAlarmDraft.defaultTime(now: at(1, 2), roundingMinutes: 15, calendar: calendar), at(7, 15))
         XCTAssertEqual(OwnAlarmDraft.defaultTime(now: at(1, 0), roundingMinutes: 15, calendar: calendar), at(7, 0), "already on the interval")
         XCTAssertEqual(OwnAlarmDraft.defaultTime(now: at(1, 2, 30), roundingMinutes: 0, calendar: calendar), at(7, 2, 30), "exact")
+        // v0.4.2 item 2: 8 h from 10:52 PM = 6:52 → 7:00 with 15-min rounding; default 6 h.
+        XCTAssertEqual(BridgeSettings().newAlarmHoursAhead, 6)
+        XCTAssertEqual(OwnAlarmDraft.defaultTime(now: at(0, 0).addingTimeInterval(-68 * 60), hoursAhead: 8, roundingMinutes: 15, calendar: calendar), at(7, 0))
     }
 
     func testDraftMakesTheSeriesAndBackstopsAfterTheLastAlarm() {

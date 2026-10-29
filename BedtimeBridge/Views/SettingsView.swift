@@ -462,6 +462,7 @@ private struct AlarmSettingsSection: View {
                     OwnAlarmSettings(settings: $settings)
                 }
             }
+            Stepper("Start new alarms this far from now: \(settings.newAlarmHoursAhead) h", value: $settings.newAlarmHoursAhead, in: 1...12)
             Stepper("Look ahead \(settings.lookAheadHours) h", value: $settings.lookAheadHours, in: 6...72)
         } header: {
             Text("Alarms (appointments, day off)")
@@ -491,7 +492,7 @@ private struct OwnAlarmSettings: View {
                     Toggle("Picker shows only those times", isOn: $settings.ownAlarmPickerSnaps)
                 }
             } footer: {
-                Text("The time starts at 6 hours from now, rounded up (15 min: 6:54 → 7:00, 7:02 → 7:15). Off: the picker allows any minute.")
+                Text("The time starts at \(settings.newAlarmHoursAhead) h from now (Alarms → Start new alarms this far from now), rounded up (15 min: 6:54 → 7:00, 7:02 → 7:15). Off: the picker allows any minute.")
             }
             Section {
                 Picker("The time is the", selection: $settings.ownAlarmWakeIs) {

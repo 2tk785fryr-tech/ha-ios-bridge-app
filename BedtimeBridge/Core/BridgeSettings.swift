@@ -125,6 +125,8 @@ struct BridgeSettings: Codable, Equatable {
     /// Shift alarms only: the early backstop moves to this long after the new last alarm when
     /// it would otherwise come before it.
     var earlyBackstopGapMinutes = 5
+    /// Wake at a different time starts this many hours from now, then rounds (v0.4.2 item 2).
+    var newAlarmHoursAhead = 6
 
     // MARK: Your own alarm's backstops (v0.4.1 item 14)
 
