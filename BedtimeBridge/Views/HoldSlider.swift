@@ -22,6 +22,9 @@ struct HoldSlider: View {
     @State private var holdProgress: Double = 0
     @State private var hold: Task<Void, Never>?
     @State private var done = false
+    /// True only while a finger is on the knob. Unlike onEnded, this also resets when the
+    /// system cancels the drag, so a cancelled drag can never let the hold finish on its own.
+    @GestureState private var pressing = false
 
     private let knob: CGFloat = 64
 
@@ -62,6 +65,7 @@ struct HoldSlider: View {
                     .offset(x: offset)
                     .gesture(
                         DragGesture()
+                            .updating($pressing) { _, state, _ in state = true }
                             .onChanged { value in
                                 guard !done else { return }
                                 offset = min(max(value.translation.width, 0), travel)
@@ -91,6 +95,13 @@ struct HoldSlider: View {
             if let onSlide { onSlide() } else { onHold() }
         }
         .onDisappear { hold?.cancel() }
+        .onChange(of: pressing) { _, isPressing in
+            // The drag ended or was cancelled. onEnded handles a normal end; a cancelled drag
+            // (no onEnded) must stop the hold and spring back.
+            guard !isPressing, !done else { return }
+            cancelHold()
+            withAnimation(.spring(duration: 0.3)) { offset = 0 }
+        }
     }
 
     private func startHold() {
@@ -104,6 +115,12 @@ struct HoldSlider: View {
                 guard !Task.isCancelled else { return }
                 holdProgress = Double(step) / Double(steps)
                 if step % 20 == 0, step < steps { ticks.impactOccurred() }
+            }
+            // Only a finger still holding the knob completes it.
+            guard pressing else {
+                hold = nil
+                withAnimation(.easeOut(duration: 0.2)) { holdProgress = 0 }
+                return
             }
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             hold = nil

@@ -179,6 +179,9 @@ SENSORS = (
             "last_command": s.get("last_command"),
             # Item 3: the last morning change, with its reason, for tracking.
             "last_morning_change": s.get("last_morning_change"),
+            # v0.4.1 item 1: how the last stop was decided, and alarms the phone couldn't set.
+            "last_stop": s.get("last_stop"),
+            "alarms_missing": s.get("alarms_missing"),
         },
     ),
 )

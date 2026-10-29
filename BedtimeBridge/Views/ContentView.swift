@@ -74,7 +74,7 @@ struct ContentView: View {
                         }
                     } else if !scheduled.isEmpty {
                         // Set earlier (the bedtime shortcut, or before the app was closed).
-                        SetAlarmsCard(scheduled: scheduled, snapshot: NextAlarmSnapshot.load())
+                        SetAlarmsCard(scheduled: scheduled, snapshot: NextAlarmSnapshot.load(), status: coordinator.alarmStatus())
                     } else {
                         EmptyPlanCard()
                     }
@@ -327,6 +327,9 @@ struct ContentView: View {
         temporaryAlarms = coordinator.temporaryAlarms
         morningEnd = coordinator.morningEnd(settings: store.settings)
         backToBed = coordinator.backToBedAvailable(settings: store.settings)
+        // After a change this morning, the old plan's times are no longer what's set: show the
+        // alarms AlarmKit holds instead (v0.4.1 items 4 and 10).
+        if coordinator.morningChangeReason != nil { plan = nil }
         refreshUpcoming()
     }
 
@@ -451,7 +454,7 @@ private struct PlanCard: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 if plan.hasAlarm {
-                    SetStatus(isSet: isSet, count: setCount)
+                    SetStatus(status: isSet ? BedtimeCoordinator.shared.alarmStatus() : AlarmStatus(kind: .notSet, text: "Preview, not set yet"))
                 } else {
                     Text("Tomorrow")
                         .font(.footnote.weight(.semibold))
@@ -534,15 +537,30 @@ private struct CauseChip: View {
 }
 
 /// "✓ 3 alarms set" or "Preview, not set yet", so it's clear whether anything will ring.
+/// What AlarmKit actually holds (v0.4.1 item 4), or that this is only a preview.
 private struct SetStatus: View {
-    let isSet: Bool
-    let count: Int
+    let status: AlarmStatus
+
+    private var symbol: String {
+        switch status.kind {
+        case .set: "checkmark.circle.fill"
+        case .error: "exclamationmark.triangle.fill"
+        case .notSet: "eye"
+        }
+    }
+
+    private var color: Color {
+        switch status.kind {
+        case .set: Theme.good
+        case .error: Theme.danger
+        case .notSet: Theme.warning.text
+        }
+    }
 
     var body: some View {
-        Label(isSet ? (count == 1 ? "1 alarm set" : "\(count) alarms set") : "Preview, not set yet",
-              systemImage: isSet ? "checkmark.circle.fill" : "eye")
+        Label(status.text, systemImage: symbol)
             .font(.footnote.weight(.bold))
-            .foregroundStyle(isSet ? Theme.good : Theme.warning.text)
+            .foregroundStyle(color)
     }
 }
 
@@ -551,6 +569,7 @@ private struct SetStatus: View {
 private struct SetAlarmsCard: View {
     let scheduled: [Date]
     let snapshot: NextAlarmSnapshot
+    let status: AlarmStatus
 
     private var upcoming: [Date] { scheduled.filter { $0 > .now } }
     private var wake: Date? {
@@ -561,7 +580,7 @@ private struct SetAlarmsCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                SetStatus(isSet: true, count: upcoming.count)
+                SetStatus(status: status)
                 Spacer()
                 if !snapshot.label.isEmpty {
                     Text(snapshot.label)

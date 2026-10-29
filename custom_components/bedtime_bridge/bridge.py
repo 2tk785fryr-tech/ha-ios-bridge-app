@@ -69,6 +69,7 @@ from .const import (
     DOMAIN,
     EVENT,
     EVENT_PLAN_OUTDATED,
+    EVENT_ALARMS_MISSING,
     EVENT_COMMAND_INCOMPLETE,
     EVENT_REARMED,
     EVENT_RERUN,
@@ -370,6 +371,7 @@ class BedtimeBridge:
         self.state["last_plan"] = dt_util.utcnow().isoformat()
         self.state["plan_error"] = None
         self.state["ladder_plan"] = data.get("ladder") or {}
+        self._check_alarms_set(data)
         if (data.get("ladder") or {}).get("work_buffer_minutes") is not None:
             self.state["work_buffer_minutes"] = int(data["ladder"]["work_buffer_minutes"])
         # Bedtime ran again (by hand, or the nudge): no need to wait for you to get into bed.
@@ -802,6 +804,11 @@ class BedtimeBridge:
             self._end_morning()
         # early: ended from Tonight before any alarm rang (item 8), so the early helper runs.
         early = bool(data.get("early"))
+        # How the phone decided what to keep (v0.4.1 item 1), so a morning can be traced.
+        self.state["last_stop"] = {
+            "time": dt_util.utcnow().isoformat(), "all": stop_all, "up": data.get("up"),
+            "stop_behavior": data.get("stop_behavior"), "alarms_left": len(remaining),
+        }
         # The wake routine runs on the first stop of a wake-up only (item 9): Wake Sequence
         # treats its helper as a button, so every turn-on would re-run it.
         first = not self.state.get("routine_ran")
@@ -816,6 +823,17 @@ class BedtimeBridge:
             # The phone's own morning shortcut (disarm, good morning, Focus off) used to run
             # from the Clock app; app alarms don't trigger that, so this push does instead.
             await self._command(CMD_MORNING)
+
+    def _check_alarms_set(self, data: dict[str, Any]) -> None:
+        """The phone reads back what AlarmKit holds; fewer than it meant to set is reported."""
+        planned = data.get("alarms_planned")
+        actual = len(data.get("alarm_times") or [])
+        if isinstance(planned, int) and actual < planned:
+            self.state["alarms_missing"] = {"set": actual, "planned": planned, "time": dt_util.utcnow().isoformat()}
+            _LOGGER.warning("Bedtime Bridge: the phone set %s of %s alarms", actual, planned)
+            self.hass.bus.async_fire(EVENT, {"type": EVENT_ALARMS_MISSING, "set": actual, "planned": planned})
+        else:
+            self.state["alarms_missing"] = None
 
     @callback
     def _end_morning(self) -> None:
@@ -957,6 +975,7 @@ class BedtimeBridge:
         self.state["alarm_time"] = times[0].isoformat() if times else None
         self.state["series_start"] = times[0].isoformat() if times else None
         self.state["routine_ran"] = False
+        self._check_alarms_set(data)
         if not times:
             self.state["alarm_cause"] = "noalarm"
         self.state["last_morning_change"] = {

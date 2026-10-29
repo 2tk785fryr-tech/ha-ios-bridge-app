@@ -36,10 +36,15 @@ final class AlarmScheduler {
 
     /// Replaces every alarm this app owns with the given times, so re-running the
     /// bedtime routine never leaves stale alarms behind. Alarms in `keeping` (temporary
-    /// wake-ups, the test alarm) are left alone.
-    func replaceAlarms(with times: [Date], title: String, cause: String, snoozeMinutes: Int, sound: AlarmSound, keeping: Set<UUID> = []) async throws {
+    /// wake-ups, the test alarm) are left alone. Returns the times AlarmKit actually holds
+    /// afterwards (read back), which can be fewer than asked for.
+    @discardableResult
+    func replaceAlarms(with times: [Date], title: String, cause: String, snoozeMinutes: Int, sound: AlarmSound, keeping: Set<UUID> = []) async throws -> [Date] {
         try await ensureAccess()
-        try cancelAll(keeping: keeping)
+        // Every alarm is cancelled even if one refuses, so none of the old series survives.
+        for alarm in (try? manager.alarms) ?? [] where !keeping.contains(alarm.id) {
+            try? manager.cancel(id: alarm.id)
+        }
 
         let alert = AlarmPresentation.Alert(
             title: LocalizedStringResource(stringLiteral: title),
@@ -58,6 +63,9 @@ final class AlarmScheduler {
             tintColor: Theme.accent
         )
 
+        // Each alarm on its own: one that fails doesn't stop the rest being set.
+        var ids: Set<UUID> = []
+        var lastError: Error?
         for time in times where time > .now {
             let id = UUID()
             let configuration = AlarmManager.AlarmConfiguration<WakeAlarmMetadata>(
@@ -68,8 +76,16 @@ final class AlarmScheduler {
                 secondaryIntent: SnoozeWakeAlarmIntent(alarmID: id),
                 sound: alertSound(sound)
             )
-            _ = try await manager.schedule(id: id, configuration: configuration)
+            do {
+                _ = try await manager.schedule(id: id, configuration: configuration)
+                ids.insert(id)
+            } catch {
+                lastError = error
+            }
         }
+        let actual = scheduledAlarms().filter { ids.contains($0.id) }.map(\.date)
+        if actual.isEmpty, let lastError, !times.filter({ $0 > .now }).isEmpty { throw lastError }
+        return actual
     }
 
     /// One alarm a couple of minutes out, alongside tonight's alarms (it doesn't replace them).

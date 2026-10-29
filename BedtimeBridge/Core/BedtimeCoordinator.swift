@@ -87,6 +87,7 @@ final class BedtimeCoordinator {
         leaveReminder.clear()
         lastAppliedPlan = nil
         alarmSeries = []
+        morningChangeReason = nil
         updateWidget { $0 = NextAlarmSnapshot(alarmStyle: settings.alarmStyle.rawValue, temporaryAlarms: temporaryAlarms.map(\.time)) }
         lastCause = AlarmCause.none
         guard case .wakeAt(let time, let wakeIs) = choice else { return nil }
@@ -137,6 +138,7 @@ final class BedtimeCoordinator {
         leaveReminder.clear()
         lastAppliedPlan = nil
         alarmSeries = []
+        morningChangeReason = nil
         updateWidget { $0 = NextAlarmSnapshot(alarmStyle: settings.alarmStyle.rawValue, temporaryAlarms: temporaryAlarms.map(\.time)) }
         lastCause = AlarmCause.none
         await report(.bedtimeUndone, data: [:], settings: settings)
@@ -372,6 +374,7 @@ final class BedtimeCoordinator {
         leaveReminder.clear()
         lastAppliedPlan = nil
         alarmSeries = []
+        morningChangeReason = nil
         updateWidget { $0 = NextAlarmSnapshot(alarmStyle: settings.alarmStyle.rawValue, temporaryAlarms: temporaryAlarms.map(\.time)) }
         lastCause = AlarmCause.none
         await report(.cancelled, data: [:], settings: settings)
@@ -380,9 +383,9 @@ final class BedtimeCoordinator {
     /// Sets (or clears) alarms, the leave-by reminder and the HA sensor for a plan.
     private func apply(_ plan: WakePlan, settings: BridgeSettings) async throws {
         lastAppliedPlan = plan
-        alarmSeries = plan.hasAlarm && settings.alarmStyle == .app ? plan.alarmTimes : []
+        var actual = plan.alarmTimes
         if plan.hasAlarm, settings.alarmStyle == .app {
-            try await alarms.replaceAlarms(
+            actual = try await alarms.replaceAlarms(
                 with: plan.alarmTimes,
                 title: alarmTitle(for: plan),
                 cause: plan.cause,
@@ -394,6 +397,10 @@ final class BedtimeCoordinator {
             // No alarm, or the shortcut is making Clock alarms: don't leave old app alarms ringing.
             try alarms.cancelAll(keeping: keptAlarms)
         }
+        let planned = settings.alarmStyle == .app ? plan.alarmTimes.filter { $0 > .now } : []
+        alarmSeries = settings.alarmStyle == .app ? actual : []
+        morningChangeReason = nil
+        recordShortfall(planned: planned, actual: actual)
 
         if settings.leaveReminderEnabled, let trip = Self.trip(for: plan, settings: settings) {
             await leaveReminder.schedule(trip, leadMinutes: settings.leaveReminderLeadMinutes)
@@ -409,7 +416,7 @@ final class BedtimeCoordinator {
 
         updateWidget { snapshot in
             snapshot = NextAlarmSnapshot(
-                alarmTimes: plan.alarmTimes,
+                alarmTimes: settings.alarmStyle == .app ? actual : plan.alarmTimes,
                 cause: plan.cause,
                 label: plan.label,
                 leaveBy: plan.leaveBy(settings: settings),
@@ -424,6 +431,12 @@ final class BedtimeCoordinator {
         lastCause = plan.cause
         var payload = plan.homeAssistantPayload(settings: settings)
         payload["app_settings"] = settings.homeAssistantSettings
+        if settings.alarmStyle == .app, plan.hasAlarm {
+            // What AlarmKit really holds, not what was asked for.
+            payload["alarm_times"] = actual.map(Self.iso)
+            payload["alarm_time"] = actual.min().map(Self.iso)
+            payload["alarms_planned"] = planned.count
+        }
         await report(.planned, data: payload, settings: settings)
     }
 
@@ -612,6 +625,42 @@ final class BedtimeCoordinator {
         await report(.stopped, data: ["all": true, "early": early, "alarm_times": [String](), "alarm_cause": cause], settings: settings)
     }
 
+    // MARK: What's really set (v0.4.1 items 1 and 4)
+
+    private static let shortfallKey = "alarmShortfall.v1"
+
+    /// The last time alarms were set and AlarmKit took fewer than asked: (set, asked). nil when
+    /// they all went in.
+    private(set) var alarmShortfall: (set: Int, planned: Int)? {
+        get {
+            guard let pair = UserDefaults.standard.array(forKey: Self.shortfallKey) as? [Int], pair.count == 2 else { return nil }
+            return (pair[0], pair[1])
+        }
+        set { UserDefaults.standard.set(newValue.map { [$0.set, $0.planned] }, forKey: Self.shortfallKey) }
+    }
+
+    private func recordShortfall(planned: [Date], actual: [Date]) {
+        alarmShortfall = actual.count < planned.count ? (actual.count, planned.count) : nil
+    }
+
+    private static let morningChangeKey = "morningChangeReason.v1"
+
+    /// Set when this morning's alarms were changed (item 3) or edited, so Tonight shows what's
+    /// set rather than offering to set the old plan again. Cleared by the next plan.
+    private(set) var morningChangeReason: String? {
+        get { UserDefaults.standard.string(forKey: Self.morningChangeKey) }
+        set { UserDefaults.standard.set(newValue, forKey: Self.morningChangeKey) }
+    }
+
+    func alarmStatus() -> AlarmStatus {
+        AlarmStatus.make(setTimes: setAlarmTimes(), shortfall: alarmShortfall)
+    }
+
+    /// The series alarms AlarmKit holds now (snoozing ones included), earliest first.
+    func setAlarmTimes() -> [Date] {
+        alarms.scheduledAlarms().filter { !keptAlarms.contains($0.id) }.map(\.date).sorted()
+    }
+
     // MARK: Change this morning (item 3)
 
     /// The wake-up this morning's series is built around.
@@ -642,10 +691,11 @@ final class BedtimeCoordinator {
         for alarm in alarms.scheduledAlarms() where !keptAlarms.contains(alarm.id) {
             alarms.stop(alarm.id)
         }
+        var actual: [Date] = []
         if change.alarmTimes.isEmpty {
             try alarms.cancelAll(keeping: keptAlarms)
         } else {
-            try await alarms.replaceAlarms(
+            actual = try await alarms.replaceAlarms(
                 with: change.alarmTimes,
                 title: lastAppliedPlan.map(alarmTitle(for:)) ?? "Wake up",
                 cause: lastCause == AlarmCause.none ? AlarmCause.manual : lastCause,
@@ -654,7 +704,9 @@ final class BedtimeCoordinator {
                 keeping: keptAlarms
             )
         }
-        alarmSeries = change.alarmTimes
+        alarmSeries = actual
+        recordShortfall(planned: change.alarmTimes.filter { $0 > .now }, actual: actual)
+        morningChangeReason = reason ?? "Changed"
         let shift = TimeInterval(change.delayMinutes * 60)
         if change.alarmTimes.isEmpty {
             lastCause = AlarmCause.none
@@ -666,12 +718,14 @@ final class BedtimeCoordinator {
         }
         updateWidget { snapshot in
             snapshot.snoozedUntil = nil
-            snapshot.alarmTimes = change.alarmTimes
+            snapshot.alarmTimes = actual
             if let wake = change.newWake { snapshot.wakeTime = wake }
             if !change.alarmTimes.isEmpty, let leaveBy = snapshot.leaveBy { snapshot.leaveBy = leaveBy + shift }
         }
         var data: [String: Any] = [
-            "alarm_times": change.alarmTimes.map(Self.iso),
+            // What AlarmKit really holds after the change (item 1), and how many were asked for.
+            "alarm_times": actual.map(Self.iso),
+            "alarms_planned": change.alarmTimes.filter { $0 > .now }.count,
             "delay_minutes": change.delayMinutes,
             "phase": phase.rawValue,
             "changed_by": "app",
@@ -717,6 +771,7 @@ final class BedtimeCoordinator {
             ], settings: settings)
             return
         }
+        var upAnswer: Bool?
         switch all ? .cancelRest : settings.stopBehavior {
         case .cancelRest:
             alarms.cancelAll(except: id, keeping: keptAlarms)
@@ -725,7 +780,8 @@ final class BedtimeCoordinator {
         case .keepUntilUp:
             // Only once HA confirms you're up. Still in bed, HA unreachable or no sensors:
             // the later alarms stay as your phone's own backstop.
-            if await HomeAssistantLinks.current(settings)?.isUp(settings: settings) == true {
+            upAnswer = await HomeAssistantLinks.current(settings)?.isUp(settings: settings)
+            if upAnswer == true {
                 alarms.cancelAll(except: id, keeping: keptAlarms)
             }
         }
@@ -737,7 +793,10 @@ final class BedtimeCoordinator {
         if remaining.isEmpty { lastCause = AlarmCause.none }
         var stopped: [String: Any] = ["alarm_times": remaining.map(Self.iso), "alarm_cause": lastCause]
         stopped["alarm_time"] = remaining.first.map(Self.iso)
-        if all { stopped["all"] = true }
+        // How this stop was decided, so a morning can be traced afterwards (item 1).
+        stopped["all"] = all
+        stopped["stop_behavior"] = settings.stopBehavior.rawValue
+        if let upAnswer { stopped["up"] = upAnswer }
         await report(.stopped, data: stopped, settings: settings)
 
         if settings.leaveReminderEnabled, leaveReminder.pendingTrip != nil,

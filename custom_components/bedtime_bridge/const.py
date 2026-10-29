@@ -87,6 +87,8 @@ CONF_RESTART_AUTOMATIONS = "restart_automations"
 CONF_COMPLETE_MINUTES = "command_complete_minutes"
 DEFAULT_COMPLETE_MINUTES = 5
 EVENT_COMMAND_INCOMPLETE = "command_incomplete"
+# The phone set fewer alarms than it meant to (it reads back what AlarmKit holds).
+EVENT_ALARMS_MISSING = "alarms_missing"
 COMMAND_NAMES = {
     "RUN_DISARM": "Disarm",
     "RUN_ARM_STAY": "Arm Stay",

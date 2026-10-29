@@ -127,3 +127,31 @@ async def test_context_reply_has_the_ladder_and_curtain_time(hass, ladder, hass_
     assert reply["ladder"]["shift_start"]
     # Sunrise moved to the first alarm's own day (28th), plus 15 minutes.
     assert dt_util.as_local(dt_util.parse_datetime(reply["curtains_open_at"])).strftime("%d %H:%M") == "28 07:36"
+
+
+async def test_fewer_alarms_set_than_planned_is_reported(hass, ladder, hass_client_no_auth):
+    """v0.4.1 item 1: the phone sends what AlarmKit really holds."""
+    await ladder()
+    events = async_capture_events(hass, "bedtime_bridge")
+    await send(hass_client_no_auth, change(local("05:00"), delay=30, alarms_planned=3))
+    await hass.async_block_till_done()
+    missing = [e.data for e in events if e.data["type"] == "alarms_missing"]
+    assert missing == [{"type": "alarms_missing", "set": 1, "planned": 3}]
+    assert hass.states.get("sensor.bedtime_bridge_last_event").attributes["alarms_missing"]["set"] == 1
+
+    await send(hass_client_no_auth, change(local("05:00"), local("05:05"), local("05:10"), delay=30, alarms_planned=3))
+    await hass.async_block_till_done()
+    assert hass.states.get("sensor.bedtime_bridge_last_event").attributes["alarms_missing"] is None
+
+
+async def test_each_stop_records_how_it_was_decided(hass, ladder, hass_client_no_auth):
+    await ladder()
+    await send(hass_client_no_auth, {"type": "stopped", "data": {
+        "all": False, "up": False, "stop_behavior": "keepUntilUp", "alarm_times": [local("04:50").isoformat()],
+    }})
+    await hass.async_block_till_done()
+    last = hass.states.get("sensor.bedtime_bridge_last_event").attributes["last_stop"]
+    assert last["all"] is False and last["up"] is False and last["alarms_left"] == 1
+    await send(hass_client_no_auth, {"type": "stopped", "data": {"all": True, "alarm_times": []}})
+    await hass.async_block_till_done()
+    assert hass.states.get("sensor.bedtime_bridge_last_event").attributes["last_stop"]["all"] is True
