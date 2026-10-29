@@ -1136,7 +1136,8 @@ private struct ScheduledAlarmsCard: View {
                 Text(times.map { $0.formatted(.dateTime.weekday(.abbreviated).hour().minute()) }.joined(separator: " · "))
                     .font(.system(size: 15))
                     .foregroundStyle(Theme.text)
-                if times.contains(where: { $0 > .now }) {
+                if !times.isEmpty {
+                    // Alarms still ahead, and a snoozing one (v0.4.1 item 13).
                     Button { editing = true } label: {
                         Label("Edit alarms", systemImage: "slider.horizontal.3")
                             .font(.system(size: 15, weight: .semibold))

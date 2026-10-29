@@ -743,17 +743,38 @@ final class BedtimeCoordinator {
 
     // MARK: Edit single alarms (v0.4.1 item 13)
 
-    /// The series alarms still ahead, which Tonight lets you edit, add to or remove.
-    func editableAlarms(now: Date = .now) -> [Date] {
-        setAlarmTimes().filter { $0 > now }
+    /// One alarm in Edit alarms: still ahead, or snoozing (shown at its snooze-until time).
+    struct EditableAlarm: Equatable, Identifiable {
+        let id: UUID
+        var time: Date
+        /// Snoozing: unchanged, it keeps snoozing; moved, it's ended and set again at the new time.
+        var snoozing = false
+        var original: Date
+    }
+
+    /// The series alarms Tonight lets you edit: those still ahead, and any snoozing one.
+    func editableAlarms(now: Date = .now) -> [EditableAlarm] {
+        let snoozeEnds = NextAlarmSnapshot.load().snoozedUntil
+        return alarms.scheduledAlarms().filter { !keptAlarms.contains($0.id) }.map { alarm in
+            if alarm.date > now { return EditableAlarm(id: alarm.id, time: alarm.date, original: alarm.date) }
+            let until = snoozeEnds.flatMap { $0 > now ? $0 : nil } ?? now.addingTimeInterval(5 * 60)
+            return EditableAlarm(id: alarm.id, time: until, snoozing: true, original: until)
+        }
+        .sorted { $0.time < $1.time }
     }
 
     /// Sets exactly these alarms in place of the ones still ahead (a snoozing one stays). Always
     /// Shift alarms only: deadline and late never move, early follows the last alarm, and Home
     /// Assistant refuses an alarm after the late backstop.
-    func editAlarms(_ times: [Date], settings phoneSettings: BridgeSettings) async throws {
+    func editAlarms(_ edited: [EditableAlarm], settings phoneSettings: BridgeSettings) async throws {
         let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
-        let future = times.filter { $0 > .now }.sorted()
+        // A snoozing alarm that was moved or removed ends now; one left as it was keeps snoozing.
+        let keptSnoozing = Set(edited.filter { $0.snoozing && abs($0.time.timeIntervalSince($0.original)) < 30 }.map(\.id))
+        for alarm in alarms.scheduledAlarms() where alarm.date <= .now && !keptAlarms.contains(alarm.id) && !keptSnoozing.contains(alarm.id) {
+            alarms.stop(alarm.id)
+            alarms.cancel(alarm.id)
+        }
+        let future = edited.filter { !keptSnoozing.contains($0.id) }.map(\.time).filter { $0 > .now }.sorted()
         let before = currentWake(settings: settings)
         let added = try await alarms.replaceAlarms(
             with: future,

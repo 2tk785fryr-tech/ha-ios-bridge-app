@@ -7,7 +7,7 @@ struct EditAlarmsSheet: View {
     let settings: BridgeSettings
     let done: () -> Void
     @Environment(\.dismiss) private var dismiss
-    @State private var times: [Date] = BedtimeCoordinator.shared.editableAlarms()
+    @State private var alarms: [BedtimeCoordinator.EditableAlarm] = BedtimeCoordinator.shared.editableAlarms()
     @State private var context: MorningContext?
     @State private var message: String?
     @State private var saving = false
@@ -15,8 +15,8 @@ struct EditAlarmsSheet: View {
 
     private var late: Date? { context?.ladderArmed == true ? context?.backstops["late"] : nil }
     private var problem: String? {
-        if times.contains(where: { $0 <= .now }) { return "An alarm is in the past." }
-        if let late, let last = times.max(), last > late {
+        if alarms.contains(where: { $0.time <= .now }) { return "An alarm is in the past." }
+        if let late, let last = alarms.map(\.time).max(), last > late {
             return "An alarm is after the late backstop (\(WakePlanner.format(late))). Move it earlier, or change the whole wake-up instead."
         }
         return nil
@@ -26,17 +26,18 @@ struct EditAlarmsSheet: View {
         NavigationStack {
             SettingsPage(title: "Edit alarms") {
                 Section {
-                    ForEach(times.indices, id: \.self) { index in
-                        DatePicker("Alarm \(index + 1)", selection: Binding(get: { times[index] }, set: { times[index] = BedtimeCoordinator.nextOccurrence(ofTimeIn: $0) }),
+                    ForEach($alarms) { $alarm in
+                        DatePicker(alarm.snoozing ? "Snoozing until" : "Alarm",
+                                   selection: Binding(get: { alarm.time }, set: { alarm.time = BedtimeCoordinator.nextOccurrence(ofTimeIn: $0) }),
                                    displayedComponents: .hourAndMinute)
                     }
-                    .onDelete { times.remove(atOffsets: $0) }
+                    .onDelete { alarms.remove(atOffsets: $0) }
                     Button("Add an alarm", systemImage: "plus") {
-                        let next = (times.max() ?? Date.now.addingTimeInterval(3600)).addingTimeInterval(5 * 60)
-                        times.append(next)
+                        let next = (alarms.map(\.time).max() ?? Date.now.addingTimeInterval(3600)).addingTimeInterval(5 * 60)
+                        alarms.append(.init(id: UUID(), time: next, original: next))
                     }
                 } footer: {
-                    Text("Only alarms still ahead. The deadline and late backstops stay where they are; the early backstop follows the last alarm" + (late.map { "; no alarm can be after \(WakePlanner.format($0))" } ?? "") + ".")
+                    Text("Alarms still ahead, and a snoozing one at its snooze-until time: move it later to keep the number of alarms. The deadline and late backstops stay where they are; the early backstop follows the last alarm" + (late.map { "; no alarm can be after \(WakePlanner.format($0))" } ?? "") + ".")
                 }
                 if let shown = problem ?? message {
                     Section { Text(shown).font(.footnote).foregroundStyle(Theme.danger) }
@@ -57,7 +58,7 @@ struct EditAlarmsSheet: View {
         saving = true
         Task { @MainActor in
             do {
-                try await coordinator.editAlarms(times.sorted(), settings: settings)
+                try await coordinator.editAlarms(alarms, settings: settings)
                 done()
                 dismiss()
             } catch {
