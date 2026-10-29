@@ -17,6 +17,8 @@ or home IDs.
 | Home Assistant push `RUN_ARM_STAY` (back in bed after a temporary alarm) | Set Arm Stay |
 | Home Assistant push `RUN_BACK_TO_BED` (v0.4: *Back to bed* after you're up) | Back To Bed - App |
 | Home Assistant push `RUN_LEAVE_CHECK` (v0.4.1: at each leave reminder) | Bedtime Bridge **Check Drive and Remind** (no shortcut needed) |
+| Home Assistant push `RUN_NAP_START` (v0.4.2: a nap started, home or away) | Nap Start - App |
+| Home Assistant push `RUN_NAP_END` (v0.4.2: the nap ended) | Nap End - App |
 | By hand | Temporary Wake-Up - App |
 
 Each push trigger is an iOS 27 "When I receive a notification from Home Assistant" personal
@@ -107,6 +109,30 @@ reminders (default 15 min before and at leave time), while you're home, until 15
 leave-by; a morning change or skip stops them. Without the automation you still get the
 reminders set at bedtime, 2 min after each time and marked "not re-checked", refreshed whenever
 you stop an alarm or open the app.
+
+## Nap Start - App (v0.4.2 item 3)
+
+New. Run when you tap a nap length in the app (its alarms are already set).
+
+0. Bedtime Bridge **Report Shortcut Ran** (`RUN_NAP_START`, Outcome **Started**).
+1. Turn your nap **Focus on** (for example Sleep, or a Focus of its own; "Until Turned Off").
+2. Report Shortcut Ran (`RUN_NAP_START`, Outcome **Completed**).
+
+Phone setup: a "When I receive a notification from Home Assistant" automation, message
+`RUN_NAP_START`, running this shortcut immediately.
+
+## Nap End - App (v0.4.2 item 3)
+
+New. Run when the nap ends: its last alarm stopped, or End nap in the app.
+
+1. Turn the nap **Focus off**.
+2. Bedtime Bridge **Report Shortcut Ran** (`RUN_NAP_END`, Outcome **Completed**).
+
+Phone setup: a "When I receive a notification from Home Assistant" automation, message
+`RUN_NAP_END`, running this shortcut immediately.
+
+Both are sent home or away. The napping helper (integration option *Napping helper*) only goes
+on while you're home.
 
 ## Temporary Wake-Up - App
 

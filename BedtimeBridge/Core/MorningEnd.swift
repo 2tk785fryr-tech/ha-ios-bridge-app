@@ -14,7 +14,7 @@ struct MorningEnd: Equatable {
     ///   - windowHours: how long before the first alarm the early end shows.
     static func make(now: Date, series: [Date], remaining: [Date], snoozedUntil: Date?, windowHours: Int) -> MorningEnd? {
         guard !remaining.isEmpty, let first = (series.isEmpty ? remaining : series).min() else { return nil }
-        guard now >= first.addingTimeInterval(-Double(windowHours) * 3600) else { return nil }
+        guard OptionWindows.upEarly(firstAlarm: first, anyLeft: true, hours: windowHours, now: now) else { return nil }
         let snoozing = remaining.filter { $0 <= now }.sorted()
         let toRing = remaining.filter { $0 > now }.sorted()
         let early = now < first

@@ -190,7 +190,7 @@ final class BedtimeCoordinator {
 
     /// Alarms that replacing or cancelling the regular series must leave alone.
     private var keptAlarms: Set<UUID> {
-        Set(temporaryAlarms.map(\.id)).union([testAlarmID].compactMap { $0 })
+        Set(temporaryAlarms.map(\.id)).union(napAlarms.map(\.id)).union([testAlarmID].compactMap { $0 })
     }
 
     /// One extra alarm beside the regular ones. A time already past today means tomorrow.
@@ -210,6 +210,110 @@ final class BedtimeCoordinator {
         alarms.stop(id)
         cancelTemporaryAlarm(id)
         _ = try await setTemporaryAlarm(at: time, disarmHouse: alarm.disarmHouse, settings: settings)
+    }
+
+    // MARK: Nap (v0.4.2 item 3)
+
+    private static let napKey = "napAlarms.v1"
+    private static let napStatusKey = "napStatus.v1"
+
+    /// This nap's alarms still set (or snoozing), earliest first.
+    private(set) var napAlarms: [NapAlarm] {
+        get {
+            guard let data = UserDefaults.standard.data(forKey: Self.napKey),
+                  let saved = try? JSONDecoder().decode([NapAlarm].self, from: data) else { return [] }
+            let live = Set(alarms.scheduledAlarms().map(\.id))
+            return saved.filter { live.contains($0.id) }.sorted { $0.time < $1.time }
+        }
+        set { UserDefaults.standard.set(try? JSONEncoder().encode(newValue), forKey: Self.napKey) }
+    }
+
+    var isNapping: Bool { !napAlarms.isEmpty }
+
+    /// What Home Assistant did when the nap started: "Nap Focus on · napping helper on".
+    private(set) var napStatus: String? {
+        get { UserDefaults.standard.string(forKey: Self.napStatusKey) }
+        set { UserDefaults.standard.set(newValue, forKey: Self.napStatusKey) }
+    }
+
+    /// Everything later today and up to 12 hours ahead that the nap must end before: shifts,
+    /// events marked wake up and any other event, with the drive time now.
+    func napLimit(settings phoneSettings: BridgeSettings, now: Date = .now) async -> NapLimit? {
+        let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
+        // An empty choice means every calendar.
+        let ids = settings.shiftCalendarIDs.isEmpty || settings.appointmentCalendarIDs.isEmpty ? [] : settings.shiftCalendarIDs.union(settings.appointmentCalendarIDs)
+        try? await calendar.ensureAccess()
+        let events = calendar.events(from: now, to: now.addingTimeInterval(12 * 3600), calendarIDs: ids).filter { $0.startDate > now }
+        let keywords = settings.shiftRules.map { $0.keyword.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        let provider = try? travel.provider(for: settings)
+        let home = try? await origin(settings: settings)
+        var conflicts: [NapConflict] = []
+        for event in events {
+            let title = event.title ?? "Event"
+            let isShift = (settings.shiftCalendarIDs.isEmpty || settings.shiftCalendarIDs.contains(event.calendar.calendarIdentifier))
+                && keywords.contains { title.localizedCaseInsensitiveContains($0) }
+            let location = (event.location ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let hasAddress = isShift || !location.isEmpty
+            guard hasAddress else {
+                conflicts.append(NapConflict(title: title, start: event.startDate, hasAddress: false, readyMinutes: settings.napReadyNoAddressMinutes))
+                continue
+            }
+            let arriveEarly = isShift ? settings.workArrivalBufferMinutes : settings.arrivalBufferMinutes
+            var drive = settings.fallbackTravelMinutes
+            if !location.isEmpty, let provider, let home,
+               let target = try? await travel.destination(locationText: location, coordinates: nil),
+               let seconds = try? await provider.drivingTime(from: home, to: target, arrivingBy: event.startDate.addingTimeInterval(-Double(arriveEarly) * 60)) {
+                drive = Int((seconds / 60).rounded())
+            }
+            conflicts.append(NapConflict(title: title, start: event.startDate, hasAddress: true, driveMinutes: drive,
+                                         arriveEarlyMinutes: arriveEarly, readyMinutes: settings.napReadyWithAddressMinutes))
+        }
+        let nextAlarm = alarms.scheduledAlarms().filter { !keptAlarms.contains($0.id) && $0.date > now }.map(\.date).min()
+        return NapPlanner.limit(conflicts: conflicts, nextAlarm: nextAlarm)
+    }
+
+    /// Sets the nap's alarms straight away (a new length replaces a nap already running) and
+    /// tells Home Assistant: napping helper on at home, the nap Focus shortcut home or away.
+    func startNap(minutes: Int, settings phoneSettings: BridgeSettings) async throws {
+        let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
+        for alarm in napAlarms {
+            alarms.stop(alarm.id)
+            alarms.cancel(alarm.id)
+        }
+        var set: [NapAlarm] = []
+        for time in NapPlanner.times(now: .now, minutes: minutes, count: settings.napAlarmCount, spacing: settings.napSpacingMinutes) {
+            let id = try await alarms.scheduleSingle(at: time, title: "Nap", cause: AlarmCause.nap, snoozeMinutes: settings.snoozeMinutes, sound: settings.alarmSound)
+            set.append(NapAlarm(id: id, time: time))
+        }
+        napAlarms = set
+        napStatus = nil
+        let data: [String: Any] = ["alarm_times": set.map { Self.iso($0.time) }, "minutes": minutes]
+        if let link = HomeAssistantLinks.current(settings) as? IntegrationLink,
+           let reply = try? await link.reply(.napStarted, data: data) {
+            let parts = [reply["nap_focus"] as? Bool == true ? "Nap Focus on" : nil,
+                         reply["napping_helper"] as? Bool == true ? "napping helper on" : nil].compactMap { $0 }
+            napStatus = parts.isEmpty ? nil : parts.joined(separator: " · ")
+        } else {
+            await report(.napStarted, data: data, settings: settings)
+        }
+    }
+
+    /// End nap: its alarms go; Home Assistant turns the helper and nap Focus off.
+    func endNap(settings phoneSettings: BridgeSettings) async {
+        let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
+        for alarm in napAlarms {
+            alarms.stop(alarm.id)
+            alarms.cancel(alarm.id)
+        }
+        napAlarms = []
+        napStatus = nil
+        await report(.napEnded, data: [:], settings: settings)
+    }
+
+    /// A temporary (or nap) alarm's ring, like the regular ones (v0.4.2 item 5).
+    func ring(forAlarm id: UUID, at time: Date, now: Date = .now) -> AlarmBubble.Ring {
+        guard alarms.scheduledAlarms().contains(where: { $0.id == id }) else { return .notSet }
+        return time <= now ? .snoozing(until: NextAlarmSnapshot.load().snoozedUntil) : .set
     }
 
     func cancelTemporaryAlarm(_ id: UUID) {
@@ -634,6 +738,11 @@ final class BedtimeCoordinator {
             await report(.snoozed, data: ["test": true], settings: settings)
             return
         }
+        if napAlarms.contains(where: { $0.id == id }) {
+            // Like a temporary alarm: nothing in the house changes (v0.4.2 item 3).
+            updateWidget { $0.snoozedUntil = Date.now.addingTimeInterval(Double(settings.snoozeMinutes) * 60) }
+            return
+        }
         if temporaryAlarms.contains(where: { $0.id == id }) {
             // Quiet: no wake ramp, nothing in the house changes for a temporary alarm.
             let ringsAgain = Date.now.addingTimeInterval(Double(settings.snoozeMinutes) * 60)
@@ -680,6 +789,7 @@ final class BedtimeCoordinator {
         let cause = lastCause
         lastCause = AlarmCause.none
         stoppedThisWakeUp = true
+        lastStopAt = .now
         await report(.stopped, data: ["all": true, "early": early, "alarm_times": [String](), "alarm_cause": cause], settings: settings)
     }
 
@@ -697,11 +807,48 @@ final class BedtimeCoordinator {
         set { UserDefaults.standard.set(newValue.map { [$0.set, $0.planned] }, forKey: Self.shortfallKey) }
     }
 
-    private func recordShortfall(planned: [Date], actual: [Date]) {
+    private func recordShortfall(planned: [Date], actual: [Date], keepingPast: Bool = false) {
         alarmShortfall = actual.count < planned.count ? (actual.count, planned.count) : nil
+        // Every alarm this morning should have, for the bubbles' rings (v0.4.2 item 5). An edit
+        // keeps the ones that already rang.
+        let past = keepingPast ? morningAlarms.filter { $0 <= .now } : []
+        morningAlarms = Array(Set(past + planned + actual)).sorted()
+    }
+
+    private static let morningAlarmsKey = "morningAlarms.v1"
+
+    /// This morning's alarms as planned and set, kept after they ring or are turned off.
+    private(set) var morningAlarms: [Date] {
+        get { UserDefaults.standard.array(forKey: Self.morningAlarmsKey) as? [Date] ?? [] }
+        set { UserDefaults.standard.set(newValue, forKey: Self.morningAlarmsKey) }
+    }
+
+    /// The main card's bubbles for this morning, with their rings (v0.4.2 item 5).
+    func alarmBubbles(wake: Date?, now: Date = .now) -> [AlarmBubble] {
+        AlarmBubble.make(morning: morningAlarms, held: setAlarmTimes(), wake: wake,
+                         snoozedUntil: NextAlarmSnapshot.load().snoozedUntil, stopped: stoppedThisWakeUp, now: now)
     }
 
     private static let stoppedKey = "stoppedThisWakeUp.v1"
+    private static let lastStopKey = "lastStop.v1"
+    private static let bedtimeRanKey = "bedtimeRanAt.v1"
+
+    /// When an alarm of this wake-up was last stopped, for Back to bed's window (v0.4.2 item 7).
+    private(set) var lastStopAt: Date? {
+        get { UserDefaults.standard.object(forKey: Self.lastStopKey) as? Date }
+        set { UserDefaults.standard.set(newValue, forKey: Self.lastStopKey) }
+    }
+
+    /// When the bedtime routine last started, for Not ready for bed's window (v0.4.2 item 7).
+    private(set) var bedtimeRanAt: Date? {
+        get { UserDefaults.standard.object(forKey: Self.bedtimeRanKey) as? Date }
+        set { UserDefaults.standard.set(newValue, forKey: Self.bedtimeRanKey) }
+    }
+
+    func notReadyForBedAvailable(settings: BridgeSettings, now: Date = .now) -> Bool {
+        OptionWindows.notReadyForBed(bedtimeRanAt: bedtimeRanAt, alarmsSet: !setAlarmTimes().filter { $0 > now }.isEmpty,
+                                     hours: settings.notReadyForBedHours, now: now)
+    }
 
     /// An alarm of this wake-up was stopped (so Wake Mike and Good Morning ran): a change this
     /// morning is then "back to bed", wherever it's started (v0.4.1 item 2). A new series resets it.
@@ -745,7 +892,9 @@ final class BedtimeCoordinator {
         guard calendarObserver == nil else { return }
         calendarObserver = NotificationCenter.default.addObserver(forName: .EKEventStoreChanged, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self, !self.alarmSeries.isEmpty else { return }
+                guard let self else { return }
+                self.dropLeaveRemindersIfEventGone(settings: SettingsStore.shared.settings)
+                guard !self.alarmSeries.isEmpty else { return }
                 self.calendarChangedSinceSet = true
             }
         }
@@ -818,7 +967,7 @@ final class BedtimeCoordinator {
         )
         let all = setAlarmTimes()
         alarmSeries = all
-        recordShortfall(planned: future, actual: added)
+        recordShortfall(planned: future, actual: added, keepingPast: true)
         if morningChangeReason == nil { morningChangeReason = "Edited alarms" }
         updateWidget { snapshot in
             snapshot.alarmTimes = all
@@ -876,8 +1025,8 @@ final class BedtimeCoordinator {
 
     /// Sleep later is offered while the alarms are set and none has rung yet.
     func sleepLaterAvailable(settings: BridgeSettings, now: Date = .now) -> Bool {
-        guard settings.alarmStyle == .app, let first = setAlarmTimes().first else { return false }
-        return first > now && !stoppedThisWakeUp
+        guard settings.alarmStyle == .app else { return false }
+        return OptionWindows.sleepLater(firstAlarm: setAlarmTimes().first, stopped: stoppedThisWakeUp, now: now)
     }
 
     /// Back to planned alarms, until the first alarm rings.
@@ -928,11 +1077,10 @@ final class BedtimeCoordinator {
     /// Back to bed on Tonight: this morning's series is over (stopped, or ended early) and it's
     /// still that morning.
     func backToBedAvailable(settings: BridgeSettings, now: Date = .now) -> Bool {
-        guard settings.alarmStyle == .app, let first = alarmSeries.min(), let last = alarmSeries.max() else { return false }
+        guard settings.alarmStyle == .app else { return false }
         let remaining = alarms.scheduledAlarms().filter { !keptAlarms.contains($0.id) }
-        return remaining.isEmpty
-            && now >= first.addingTimeInterval(-Double(settings.endAlarmsEarlyHours) * 3600)
-            && now <= last.addingTimeInterval(12 * 3600)
+        return OptionWindows.backToBed(series: alarmSeries, lastStop: lastStopAt, anyLeft: !remaining.isEmpty,
+                                       upEarlyHours: settings.endAlarmsEarlyHours, hours: settings.backToBedHours, now: now)
     }
 
     func morningContext(firstAlarm: Date?, settings: BridgeSettings) async -> MorningContext? {
@@ -1013,8 +1161,12 @@ final class BedtimeCoordinator {
     func stopDescription(for id: UUID) -> StopDescription {
         let alarm = alarms.scheduledAlarms().first { $0.id == id }
         let kind: StopDescription.Kind = id == testAlarmID ? .test
-            : temporaryAlarms.contains { $0.id == id } ? .temporary : .series
+            : temporaryAlarms.contains { $0.id == id } ? .temporary
+            : napAlarms.contains { $0.id == id } ? .nap : .series
         let time = alarm?.date ?? temporaryAlarms.first { $0.id == id }?.time
+        if kind == .nap {
+            return StopDescription.make(kind: .nap, alarmTime: time, series: napAlarms.map(\.time), remaining: napAlarms.filter { $0.id != id }.map(\.time))
+        }
         let remaining = alarms.scheduledAlarms().filter { $0.id != id && !keptAlarms.contains($0.id) }.map(\.date)
         return StopDescription.make(kind: kind, alarmTime: time, series: alarmSeries, remaining: remaining)
     }
@@ -1028,6 +1180,18 @@ final class BedtimeCoordinator {
         if id == testAlarmID {
             testAlarmID = nil
             await report(.stopped, data: ["test": true], settings: settings)
+            return
+        }
+        if napAlarms.contains(where: { $0.id == id }) {
+            // Stopping one leaves the nap's later alarm as a backup; the nap ends once none is
+            // left (v0.4.2 item 3). No wake routines, Good Morning or backstops.
+            alarms.cancel(id)
+            updateWidget { $0.snoozedUntil = nil }
+            if napAlarms.filter({ $0.id != id }).isEmpty {
+                napAlarms = []
+                napStatus = nil
+                await report(.napEnded, data: [:], settings: settings)
+            }
             return
         }
         if let temporary = temporaryAlarms.first(where: { $0.id == id }) {
@@ -1059,6 +1223,7 @@ final class BedtimeCoordinator {
             }
         }
         stoppedThisWakeUp = true
+        lastStopAt = .now
         let remaining = scheduledAlarmTimes().filter { $0 > .now }
         updateWidget { snapshot in
             snapshot.snoozedUntil = nil
@@ -1109,6 +1274,20 @@ final class BedtimeCoordinator {
         await recheckDrive(settings: settings)
     }
 
+    /// With no alarms left, the leave reminders stay only while the calendar still shows the
+    /// shift or appointment (v0.4.2 item 1, the same rule as Home Assistant's checks).
+    func dropLeaveRemindersIfEventGone(settings: BridgeSettings) {
+        guard let trip = leaveReminder.pendingTrip, setAlarmTimes().isEmpty else { return }
+        // An empty choice means every calendar.
+        let ids = settings.shiftCalendarIDs.isEmpty || settings.appointmentCalendarIDs.isEmpty ? [] : settings.shiftCalendarIDs.union(settings.appointmentCalendarIDs)
+        let found = calendar.events(from: trip.start.addingTimeInterval(-60), to: trip.start.addingTimeInterval(60), calendarIDs: ids)
+        if !Self.tripStillOnCalendar(trip, events: found.map { ($0.title ?? "", $0.startDate) }) { leaveReminder.clear() }
+    }
+
+    nonisolated static func tripStillOnCalendar(_ trip: PendingTrip, events: [(title: String, start: Date)]) -> Bool {
+        events.contains { abs($0.start.timeIntervalSince(trip.start)) < 60 && $0.title.localizedCaseInsensitiveContains(trip.title) }
+    }
+
     nonisolated static func shouldRecheckOnOpen(leaveBy: Date, lastCheck: Date?, now: Date = .now) -> Bool {
         guard now > leaveBy.addingTimeInterval(-3 * 3600), now < leaveBy.addingTimeInterval(LeaveReminder.tail) else { return false }
         return lastCheck.map { now.timeIntervalSince($0) >= 600 } ?? true
@@ -1120,6 +1299,7 @@ final class BedtimeCoordinator {
     /// Returns whether it started, so the shortcut can branch.
     func startBedtime(settings: BridgeSettings) async throws -> (started: Bool, atHome: Bool) {
         guard let link = HomeAssistantLinks.current(settings) else { throw BridgeError.homeAssistantNotSetUp }
+        bedtimeRanAt = .now
         return try await link.startBedtime(settings: settings)
     }
 

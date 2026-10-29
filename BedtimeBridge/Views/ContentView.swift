@@ -17,15 +17,24 @@ struct ContentView: View {
     @State private var temporaryAlarms: [TemporaryAlarm] = []
     @State private var morningEnd: MorningEnd?
     @State private var backToBed = false
+    @State private var notReadyForBed = false
+    /// A protected action waiting for its slide-and-hold in the bottom bar (v0.4.2 item 6).
+    @State private var barSlider: BarAction?
+    @State private var menuOpen = false
+    @State private var showSettings = false
     @State private var sleepLater = false
     /// From Home Assistant for "Your morning" (v0.4.1 item 8); nil when it couldn't be reached.
     @State private var morningContext: MorningContext?
     @State private var morningContextLoaded = false
     @State private var sheet: Sheet?
 
-    private enum Sheet: String, Identifiable {
-        case temporary, dayOff, skipToTime
-        var id: String { rawValue }
+    private enum Sheet: Identifiable {
+        case temporary, dayOff, skipToTime, nap, napChange, sleepLater, editAlarms
+        case changeMorning(MorningChangePhase)
+        var id: String {
+            if case .changeMorning(let phase) = self { return "changeMorning-\(phase.rawValue)" }
+            return String(describing: self)
+        }
     }
 
     private let coordinator = BedtimeCoordinator.shared
@@ -38,6 +47,18 @@ struct ContentView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     header
+
+                    if coordinator.isNapping {
+                        NappingCard(alarms: coordinator.napAlarms, status: coordinator.napStatus,
+                                    ring: { coordinator.ring(forAlarm: $0.id, at: $0.time) }) {
+                            Task {
+                                await coordinator.endNap(settings: store.settings)
+                                refreshScheduled()
+                            }
+                        } change: {
+                            sheet = .nap
+                        }
+                    }
 
                     if let skippedMorning {
                         SkippedMorningCard(morning: skippedMorning, replacement: skipReplacement, undo: unskip)
@@ -52,8 +73,9 @@ struct ContentView: View {
                         .buttonStyle(.plain)
                     }
 
-                    if let plan {
-                        PlanCard(plan: plan, isSet: isSet(plan), setCount: scheduled.filter { $0 > .now }.count)
+                    if let plan, !(morningRingsShowing && !sameMorning(plan)) {
+                        PlanCard(plan: plan, bubbles: isSet(plan) || sameMorning(plan) ? morningBubbles : AlarmBubble.preview(plan.alarmTimes, wake: plan.wakeTime),
+                                 header: isSet(plan) || sameMorning(plan) ? morningHeader : AlarmStatus(kind: .notSet, text: "Preview · not set"))
                         if let weather = plan.weather {
                             WarningBanner(text: "+\(weather.minutes) min for \(weather.reason)", systemImage: "cloud.rain")
                         }
@@ -76,9 +98,10 @@ struct ContentView: View {
                                 self.plan?.missingLocations.removeAll { $0.eventID == appointment.eventID }
                             }
                         }
-                    } else if !scheduled.isEmpty {
-                        // Set earlier (the bedtime shortcut, or before the app was closed).
-                        SetAlarmsCard(scheduled: scheduled, snapshot: NextAlarmSnapshot.load(), status: coordinator.alarmStatus())
+                    } else if !scheduled.isEmpty || morningRingsShowing {
+                        // Set earlier (the bedtime shortcut, or before the app was closed), or
+                        // this morning's, until the morning is over (v0.4.2 item 5).
+                        SetAlarmsCard(bubbles: morningBubbles, snapshot: NextAlarmSnapshot.load(), status: morningHeader)
                         if let info = backstopInfo(leaveBy: NextAlarmSnapshot.load().leaveBy, firstDayBack: false) {
                             BackstopsCard(info: info)
                         }
@@ -137,7 +160,7 @@ struct ContentView: View {
                     }
 
                     if skippedMorning == nil, let morning = scheduled.first ?? plan?.firstAlarm {
-                        ScheduledAlarmsCard(times: store.settings.alarmStyle == .app ? scheduled : [], morning: morning, isShift: plan?.source == .shift) {
+                        ScheduledAlarmsCard(times: store.settings.alarmStyle == .app ? scheduled : [], morning: morning, isShift: plan?.source == .shift, notReadyForBed: notReadyForBed) {
                             skip(morning, then: .sleepIn)
                         } differentTime: {
                             sheet = .skipToTime
@@ -150,7 +173,7 @@ struct ContentView: View {
                     }
 
                     if store.settings.alarmStyle == .app {
-                        TemporaryAlarmsCard(alarms: temporaryAlarms) {
+                        TemporaryAlarmsCard(alarms: temporaryAlarms, ring: { coordinator.ring(forAlarm: $0.id, at: $0.time) }) {
                             sheet = .temporary
                         } remove: { id in
                             coordinator.cancelTemporaryAlarm(id)
@@ -209,6 +232,27 @@ struct ContentView: View {
                 switch which {
                 case .temporary:
                     TemporaryAlarmSheet { time, disarm in setTemporary(time, disarmHouse: disarm) }
+                case .napChange:
+                    NapSheet(settings: settings, protected: true) { minutes in
+                        try? await coordinator.startNap(minutes: minutes, settings: store.settings)
+                        refreshScheduled()
+                    }
+                case .sleepLater:
+                    SleepLaterSheet(settings: store.settings, done: refreshScheduled)
+                case .editAlarms:
+                    EditAlarmsSheet(settings: store.settings, done: refreshScheduled)
+                case .changeMorning(let phase):
+                    let wake = coordinator.currentWake(settings: store.settings)
+                    ChangeMorningFlow(phase: phase, currentWake: wake ?? .now, wakeKnown: wake != nil, settings: store.settings, done: refreshScheduled)
+                case .nap:
+                    NapSheet(settings: settings) { minutes in
+                        do {
+                            try await coordinator.startNap(minutes: minutes, settings: store.settings)
+                        } catch {
+                            errorMessage = "Couldn't set the nap: \(error.localizedDescription)"
+                        }
+                        refreshScheduled()
+                    }
                 case .dayOff:
                     OwnAlarmSheet(
                         title: "Day off alarm",
@@ -227,6 +271,7 @@ struct ContentView: View {
                     }
                 }
             }
+            .navigationDestination(isPresented: $showSettings) { SettingsView() }
             .fullScreenCover(item: $stoppingAlarm) { alarm in
                 let description = coordinator.stopDescription(for: alarm.id)
                 SlideToStopView(description: description, canEndAll: description.canEndAll,
@@ -299,46 +344,112 @@ struct ContentView: View {
         )
     }
 
-    private var actions: some View {
-        VStack(spacing: 10) {
-            let action = primaryAction
-            if let title = action.buttonTitle {
-                Button { run(schedule: true) } label: {
-                    HStack(spacing: 8) {
-                        if isWorking {
-                            ProgressView().tint(.white)
-                        } else {
-                            Image(systemName: "alarm")
-                        }
-                        Text(title)
-                    }
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity, minHeight: 56)
-                    .background(Theme.accent, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                }
-            } else {
-                VStack(spacing: 4) {
-                    SetStatus(status: coordinator.alarmStatus())
-                    if let note = action.note {
-                        Text(note).font(.footnote).foregroundStyle(Theme.textMuted)
-                    }
-                }
-                .frame(maxWidth: .infinity, minHeight: 56)
-            }
-            Button { run(schedule: false) } label: {
-                Text("Preview plan")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(Theme.accentText)
-                    .frame(maxWidth: .infinity, minHeight: 52)
-                    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Theme.border, lineWidth: 1))
-            }
+    /// The moment the bottom bar is for (v0.4.2 item 6).
+    private var barInputs: BottomBar.Inputs {
+        let now = Date.now
+        let snapshot = NextAlarmSnapshot.load()
+        let set = store.settings.alarmStyle == .app ? coordinator.setAlarmTimes() : []
+        var i = BottomBar.Inputs(now: now)
+        i.napUpAt = coordinator.napAlarms.first?.time
+        i.snoozing = morningBubbles.contains { if case .snoozing = $0.ring { true } else { false } }
+        i.snoozingUntil = snapshot.snoozedUntil
+        if !set.isEmpty, let title = primaryAction.buttonTitle {
+            i.plansChanged = title.hasPrefix("Calendar") ? "Calendar changed · re-plan"
+                : title.hasPrefix("Set the missing") ? "Alarm missing · re-set" : "Plan changed · re-plan"
         }
-        .disabled(isWorking)
+        i.alarmsSet = set.count
+        i.firstAlarm = (coordinator.alarmSeries.min() ?? set.first)
+        i.nextAlarm = set.first { $0 > now }
+        i.upEarlyWindow = morningEnd != nil
+        i.notReadyWindow = notReadyForBed
+        i.backToBedWindow = backToBed
+        i.sleepLaterWindow = sleepLater
+        i.leaveBy = snapshot.leaveBy
+        if let plan, plan.hasAlarm, !isSet(plan) { i.planReady = (plan.alarmTimes.count, plan.wakeTime) }
+        i.tomorrow = plan?.wakeTime ?? plan?.firstAlarm
+        i.napEnabled = store.settings.napEnabled && store.settings.alarmStyle == .app
+        let hour = Calendar.current.component(.hour, from: now)
+        i.evening = hour >= 17 || hour < 4
+        return i
+    }
+
+    private var barMorning: Date? { scheduled.first ?? plan?.firstAlarm }
+    private var barDay: String { (barMorning ?? .now).formatted(.dateTime.weekday(.wide)) }
+
+    private var actions: some View {
+        BottomBarView(
+            bar: BottomBar.make(barInputs),
+            day: barDay,
+            working: isWorking,
+            slider: $barSlider,
+            perform: perform,
+            menu: { menuOpen = true }
+        )
         .padding(.horizontal, 20)
         .padding(.top, 12)
         .padding(.bottom, 8)
         .background(Theme.ground)
+        .sheet(isPresented: $menuOpen) {
+            BarMenu(items: BottomBar.menu(barInputs, alarmStyleApp: store.settings.alarmStyle == .app, morningKnown: barMorning != nil && skippedMorning == nil),
+                    day: barDay) { action in
+                menuOpen = false
+                // Protected actions from ⋯ take over the bar too.
+                if action.isProtected && !action.opensScreen { barSlider = action } else { perform(action) }
+            }
+        }
+    }
+
+    /// Runs a bar or ⋯ action (a protected one only after its slide-and-hold).
+    private func perform(_ action: BarAction) {
+        barSlider = nil
+        switch action {
+        case .setAlarms, .replan: run(schedule: true)
+        case .previewPlan: run(schedule: false)
+        case .nap: sheet = .nap
+        case .changeNap: sheet = .napChange
+        case .sleepLater: sheet = .sleepLater
+        case .editAlarms: sheet = .editAlarms
+        case .notReadyForBed, .notGoingToSleep: undoBedtime()
+        case .upEarly, .endAlarms:
+            Task {
+                await coordinator.endMorning(settings: store.settings)
+                refreshScheduled()
+            }
+        case .endNap:
+            Task {
+                await coordinator.endNap(settings: store.settings)
+                refreshScheduled()
+            }
+        case .wakeLater, .changeMorning:
+            let snoozing = barInputs.snoozing
+            sheet = .changeMorning(snoozing ? .snoozing : coordinator.stoppedThisWakeUp ? .up : .bedtime)
+        case .backToBed: sheet = .changeMorning(.up)
+        case .skip: if let morning = barMorning { skip(morning, then: .sleepIn) }
+        case .addTemporary: sheet = .temporary
+        case .settings: showSettings = true
+        }
+    }
+
+    /// This morning's bubbles with their rings (v0.4.2 item 5).
+    private var morningBubbles: [AlarmBubble] {
+        _ = scheduled
+        return coordinator.alarmBubbles(wake: NextAlarmSnapshot.load().wakeTime)
+    }
+
+    private var morningHeader: AlarmStatus { AlarmBubble.header(morningBubbles, shortfall: coordinator.alarmShortfall) }
+
+    /// The rings stay after the last alarm is off until the morning is over.
+    private var morningRingsShowing: Bool {
+        let bubbles = morningBubbles
+        guard store.settings.alarmStyle == .app, !bubbles.isEmpty else { return false }
+        let late = backstopInfo(leaveBy: NextAlarmSnapshot.load().leaveBy, firstDayBack: false)?.rungs.map(\.time).max()
+        guard let over = AlarmBubble.morningOver(lateBackstop: late, lastAlarm: bubbles.map(\.time).max()) else { return false }
+        return Date.now < over
+    }
+
+    private func sameMorning(_ plan: WakePlan) -> Bool {
+        let morning = Set(morningBubbles.map(\.time))
+        return morningRingsShowing && plan.alarmTimes.contains { morning.contains($0) }
     }
 
     /// Every alarm the plan still has to ring is set on this iPhone.
@@ -400,6 +511,7 @@ struct ContentView: View {
         temporaryAlarms = coordinator.temporaryAlarms
         morningEnd = coordinator.morningEnd(settings: store.settings)
         backToBed = coordinator.backToBedAvailable(settings: store.settings)
+        notReadyForBed = coordinator.notReadyForBedAvailable(settings: store.settings)
         sleepLater = coordinator.sleepLaterAvailable(settings: store.settings)
         // After a change this morning, the old plan's times are no longer what's set: show the
         // alarms AlarmKit holds instead (v0.4.1 items 4 and 10).
@@ -525,15 +637,15 @@ struct ContentView: View {
 
 private struct PlanCard: View {
     let plan: WakePlan
-    /// The plan's alarms are set on this iPhone (not just previewed).
-    let isSet: Bool
-    let setCount: Int
+    /// Plain bubbles for a preview; ringed ones once set (v0.4.2 item 5).
+    let bubbles: [AlarmBubble]
+    let header: AlarmStatus
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 if plan.hasAlarm {
-                    SetStatus(status: isSet ? BedtimeCoordinator.shared.alarmStatus() : AlarmStatus(kind: .notSet, text: "Preview, not set yet"))
+                    SetStatus(status: header)
                 } else {
                     Text("Tomorrow")
                         .font(.footnote.weight(.semibold))
@@ -555,18 +667,8 @@ private struct PlanCard: View {
                 .font(.subheadline)
                 .foregroundStyle(Theme.textSoft)
 
-            if plan.alarmTimes.count > 1 {
-                HStack(spacing: 8) {
-                    // The highlighted pill is the wake-up time: last by default, or first.
-                    ForEach(Array(plan.alarmTimes.enumerated()), id: \.offset) { _, time in
-                        let isWake = time == plan.wakeTime
-                        Text(time.formatted(.dateTime.hour(.defaultDigits(amPM: .omitted)).minute()))
-                            .font(.system(size: 15, weight: isWake ? .bold : .semibold))
-                            .foregroundStyle(isWake ? .white : Theme.textSoft)
-                            .frame(maxWidth: .infinity, minHeight: 40)
-                            .background(isWake ? Theme.accent : Theme.raised, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    }
-                }
+            if bubbles.count > 1 || bubbles.contains(where: { $0.ring != .none && $0.ring != .set }) {
+                AlarmBubbleRow(bubbles: bubbles)
             }
         }
         .nightfallCard(radius: 28, padding: 24)
@@ -632,7 +734,7 @@ private struct SetStatus: View {
         switch status.kind {
         case .set: Theme.good
         case .error: Theme.danger
-        case .notSet: Theme.warning.text
+        case .notSet: Theme.textMuted
         }
     }
 
@@ -687,15 +789,11 @@ private struct BackstopsCard: View {
 /// Alarms already set (by the bedtime shortcut, or before the app was last closed), shown
 /// the same way as a plan.
 private struct SetAlarmsCard: View {
-    let scheduled: [Date]
+    let bubbles: [AlarmBubble]
     let snapshot: NextAlarmSnapshot
     let status: AlarmStatus
 
-    private var upcoming: [Date] { scheduled.filter { $0 > .now } }
-    private var wake: Date? {
-        if let wake = snapshot.wakeTime, upcoming.contains(where: { abs($0.timeIntervalSince(wake)) < 60 }) { return wake }
-        return upcoming.last
-    }
+    private var wake: Date? { bubbles.first(where: \.isWake)?.time ?? bubbles.last?.time }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -722,17 +820,8 @@ private struct SetAlarmsCard: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Theme.leaveBy)
             }
-            if upcoming.count > 1 {
-                HStack(spacing: 8) {
-                    ForEach(upcoming, id: \.self) { time in
-                        let isWake = time == wake
-                        Text(time.formatted(.dateTime.hour(.defaultDigits(amPM: .omitted)).minute()))
-                            .font(.system(size: 15, weight: isWake ? .bold : .semibold))
-                            .foregroundStyle(isWake ? .white : Theme.textSoft)
-                            .frame(maxWidth: .infinity, minHeight: 40)
-                            .background(isWake ? Theme.accent : Theme.raised, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    }
-                }
+            if !bubbles.isEmpty {
+                AlarmBubbleRow(bubbles: bubbles)
             }
         }
         .nightfallCard(radius: 28, padding: 24)
@@ -1152,6 +1241,8 @@ private struct ScheduledAlarmsCard: View {
     let times: [Date]
     let morning: Date
     let isShift: Bool
+    /// Inside Not ready for bed's window (v0.4.2 item 7).
+    let notReadyForBed: Bool
     let sleepIn: () -> Void
     let differentTime: () -> Void
     let undoBedtime: () -> Void
@@ -1183,7 +1274,7 @@ private struct ScheduledAlarmsCard: View {
                     }
                 }
             }
-            if !times.isEmpty {
+            if !times.isEmpty && notReadyForBed {
                 Button { confirmingUndo = true } label: {
                     Label("Not going to sleep yet", systemImage: "figure.walk")
                         .font(.system(size: 15, weight: .semibold))
@@ -1310,5 +1401,235 @@ private struct WarningBanner: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Theme.warning.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.warning.border, lineWidth: 1))
+    }
+}
+
+/// A row of alarm bubbles, each outlined by its real state (v0.4.2 item 5): green set, yellow
+/// pulsing snoozing, red off (crossed out), red dashed not set. The wake-up keeps its purple
+/// fill under the outline.
+struct AlarmBubbleRow: View {
+    let bubbles: [AlarmBubble]
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            ForEach(bubbles) { AlarmBubbleView(bubble: $0) }
+        }
+    }
+}
+
+struct AlarmBubbleView: View {
+    let bubble: AlarmBubble
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var pulse = false
+
+    private var outline: Color? {
+        switch bubble.ring {
+        case .none: nil
+        case .set: Theme.good
+        case .snoozing: Theme.snoozing
+        case .off, .notSet: Theme.danger
+        }
+    }
+
+    private var isOff: Bool { bubble.ring == .off }
+    private var isSnoozing: Bool { if case .snoozing = bubble.ring { true } else { false } }
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+        VStack(spacing: 4) {
+            Text(bubble.time.formatted(.dateTime.hour(.defaultDigits(amPM: .omitted)).minute()))
+                .font(.system(size: 15, weight: bubble.isWake ? .bold : .semibold))
+                .strikethrough(isOff)
+                .foregroundStyle(bubble.isWake ? .white : Theme.textSoft)
+                .opacity(isOff ? 0.45 : 1)
+                .frame(maxWidth: .infinity, minHeight: 40)
+                .background(bubble.isWake ? Theme.accent : Theme.raised, in: shape)
+                .overlay {
+                    if let outline {
+                        shape.strokeBorder(outline, style: StrokeStyle(lineWidth: 2, dash: bubble.ring == .notSet ? [5, 4] : []))
+                            .opacity(isSnoozing && !reduceMotion && pulse ? 0.35 : 1)
+                    }
+                }
+            if let label = bubble.label {
+                Text(label)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(outline ?? Theme.textMuted)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .onAppear {
+            guard isSnoozing, !reduceMotion else { return }
+            withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) { pulse = true }
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// The bottom bar (v0.4.2 item 6): a top row and a row of two buttons plus ⋯, or, for a
+/// protected action, a caption with ✕ above the slide-and-hold, at the same height.
+private struct BottomBarView: View {
+    let bar: BottomBar
+    let day: String
+    let working: Bool
+    @Binding var slider: BarAction?
+    let perform: (BarAction) -> Void
+    let menu: () -> Void
+
+    private static let topHeight: CGFloat = 56
+    private static let rowHeight: CGFloat = 52
+    private static let spacing: CGFloat = 10
+
+    var body: some View {
+        Group {
+            if let action = slider {
+                VStack(spacing: Self.spacing) {
+                    HStack {
+                        Text(action.caption(day: day))
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(Theme.textSoft)
+                            .lineLimit(2)
+                        Spacer()
+                        Button { slider = nil } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundStyle(Theme.textMuted)
+                                .frame(width: 44, height: 44)
+                        }
+                        .accessibilityLabel("Back out")
+                    }
+                    .frame(height: Self.topHeight + Self.rowHeight + Self.spacing - 72 - Self.spacing)
+                    HoldSlider(
+                        label: "Slide and hold",
+                        holdLabel: { "Hold \($0)…" },
+                        knobSymbol: knobSymbol(action),
+                        tint: knobTint(action),
+                        onHold: { perform(action) },
+                        accessibilityHint: action.caption(day: day)
+                    )
+                    .frame(height: 72)
+                    .id(action)
+                }
+            } else {
+                VStack(spacing: Self.spacing) {
+                    top
+                        .frame(maxWidth: .infinity, minHeight: Self.topHeight, maxHeight: Self.topHeight)
+                    HStack(spacing: 10) {
+                        ForEach(bar.buttons) { action in button(action) }
+                        Button(action: menu) {
+                            Image(systemName: "ellipsis")
+                                .font(.system(size: 18, weight: .bold))
+                                .foregroundStyle(Theme.accentText)
+                                .frame(width: Self.rowHeight, height: Self.rowHeight)
+                                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Theme.border, lineWidth: 1))
+                        }
+                        .accessibilityLabel("More")
+                    }
+                    .frame(height: Self.rowHeight)
+                }
+            }
+        }
+        .frame(height: Self.topHeight + Self.rowHeight + Self.spacing)
+        .disabled(working)
+    }
+
+    @ViewBuilder private var top: some View {
+        switch bar.top {
+        case .main(let action, let title):
+            Button { tap(action) } label: {
+                HStack(spacing: 8) {
+                    if working { ProgressView().tint(.white) } else { Image(systemName: "alarm") }
+                    Text(title).lineLimit(1).minimumScaleFactor(0.8)
+                }
+                .font(.system(size: 17, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Theme.accent, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            }
+        case .status(let text, let tone):
+            Text(text)
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(color(tone))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+    }
+
+    private func button(_ action: BarAction) -> some View {
+        let tint = action.isProtected ? Theme.amber : Theme.accentText
+        return Button { tap(action) } label: {
+            Text(action.title(day: day))
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(tint)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+                .frame(maxWidth: .infinity, minHeight: Self.rowHeight)
+                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(action.isProtected ? Theme.amber.opacity(0.6) : Theme.border, lineWidth: 1))
+        }
+    }
+
+    private func tap(_ action: BarAction) {
+        if action.isProtected && !action.opensScreen { slider = action } else { perform(action) }
+    }
+
+    private func color(_ tone: BottomBar.Tone) -> Color {
+        switch tone {
+        case .good: Theme.good
+        case .muted: Theme.textMuted
+        case .snoozing: Theme.snoozing
+        case .accent: Theme.accentText
+        }
+    }
+
+    private func knobSymbol(_ action: BarAction) -> String {
+        switch action.knob {
+        case .stop: "stop.fill"
+        case .moon: "moon.fill"
+        case .clock: "clock.fill"
+        }
+    }
+
+    private func knobTint(_ action: BarAction) -> Color {
+        switch action.knob {
+        case .stop: Theme.danger
+        case .moon: Theme.amber
+        case .clock: Theme.accent
+        }
+    }
+}
+
+/// ⋯: one list in every state, hiding what doesn't apply; protected actions in amber.
+private struct BarMenu: View {
+    let items: [BarAction]
+    let day: String
+    let choose: (BarAction) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(items) { action in
+                Button { choose(action) } label: {
+                    HStack {
+                        Text(action.title(day: day))
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(action.isProtected ? Theme.amber : Theme.text)
+                        Spacer()
+                        if action.isProtected {
+                            Image(systemName: "hand.draw").foregroundStyle(Theme.amber.opacity(0.7))
+                        }
+                    }
+                    .frame(minHeight: 46)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                if action != items.last { Divider().overlay(Theme.divider) }
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 24)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .background(Theme.surface.ignoresSafeArea())
+        .presentationDetents([.height(CGFloat(items.count) * 47 + 60)])
+        .presentationDragIndicator(.visible)
     }
 }

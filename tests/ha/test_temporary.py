@@ -150,7 +150,9 @@ async def test_skipped_appointment_leaves_the_override(hass, hass_client_no_auth
     assert hass.states.get("input_select.select_shift_override").state == "Auto"
 
 
-async def test_sleep_in_follows_the_first_alarm(hass, hass_client_no_auth):
+async def test_sleep_in_follows_the_first_alarm(hass, hass_client_no_auth, freezer):
+    # An evening: the result depended on the wall clock before.
+    freezer.move_to("2026-10-28T02:00:00+00:00")
     assert await async_setup_component(hass, "input_boolean", {"input_boolean": {"sleep_in": {}}})
     sunrise = dt_util.utcnow() + timedelta(hours=10)
     hass.states.async_set("sun.sun", "below_horizon", {"next_rising": sunrise.isoformat()})

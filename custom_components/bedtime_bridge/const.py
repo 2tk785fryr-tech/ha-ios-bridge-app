@@ -30,6 +30,8 @@ CONF_SLEEP_IN = "sleep_in_helper"
 CONF_CURTAIN_OFFSET = "curtain_offset_minutes"
 CONF_HOME_CHECKS = "home_check_entities"
 CONF_AWAKE_HELPER = "awake_helper"
+# v0.4.2 item 3: on while you nap at home (house automations on it are yours).
+CONF_NAP_HELPER = "napping_helper"
 CONF_RERUN_MINUTES = "rerun_minutes"
 
 # What Snooze/Stop on the phone do in Home Assistant.
@@ -80,7 +82,10 @@ CMD_BEDTIME = "RUN_BEDTIME"
 CMD_BACK_TO_BED = "RUN_BACK_TO_BED"
 # Item 17 (v0.4.1): at each leave reminder the phone re-checks the drive (Check drive and remind).
 CMD_LEAVE_CHECK = "RUN_LEAVE_CHECK"
-COMMANDS = (CMD_DISARM, CMD_ARM, CMD_MORNING, CMD_BEDTIME, CMD_BACK_TO_BED, CMD_LEAVE_CHECK)
+# v0.4.2 item 3: Nap Start - App / Nap End - App (nap Focus on and off), home or away.
+CMD_NAP_START = "RUN_NAP_START"
+CMD_NAP_END = "RUN_NAP_END"
+COMMANDS = (CMD_DISARM, CMD_ARM, CMD_MORNING, CMD_BEDTIME, CMD_BACK_TO_BED, CMD_LEAVE_CHECK, CMD_NAP_START, CMD_NAP_END)
 # Leave checks stop this long after leave-by.
 LEAVE_CHECK_TAIL_MINUTES = 15
 # Item 3 stops what's already running (until v0.5 fires the ladder itself): these automations
@@ -107,6 +112,8 @@ COMMAND_NAMES = {
     "RUN_BEDTIME": "the bedtime shortcut",
     "RUN_BACK_TO_BED": "Back To Bed",
     "RUN_LEAVE_CHECK": "the leave check",
+    "RUN_NAP_START": "Nap Start - App",
+    "RUN_NAP_END": "Nap End - App",
 }
 DEFAULT_RESTART_AUTOMATIONS = ["automation.wake_confirm_still_in_bed_after_alarm", "automation.wake_deadline_backstop"]
 RESTART_NOTIFICATION_TAGS = ("wake_backstop", "wake_confirm")
@@ -157,6 +164,9 @@ MSG_BEDTIME_UNDONE = "bedtime_undone"
 MSG_COMMAND_RAN = "command_ran"
 # Item 3: the morning's alarms were moved or cancelled.
 MSG_MORNING_CHANGED = "morning_changed"
+# v0.4.2 item 3: a nap's alarms were set / the nap ended.
+MSG_NAP_STARTED = "nap_started"
+MSG_NAP_ENDED = "nap_ended"
 EVENT_RERUN = "bedtime_rerun"
 EVENT_REARMED = "temporary_rearmed"
 # The bed sensor drops out for up to ~19 s while you're in it; "empty" must last longer.

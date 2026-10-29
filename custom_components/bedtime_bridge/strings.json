@@ -32,6 +32,7 @@
           "curtain_offset_minutes": "Curtains open after sunrise",
           "home_check_entities": "Check these when I'm away",
           "awake_helper": "Awake For Day helper",
+          "napping_helper": "Napping helper",
           "rerun_minutes": "Bedtime again after back in bed for"
         },
         "data_description": {
@@ -55,6 +56,7 @@
           "curtain_offset_minutes": "Match your curtain automation's open time (sunrise plus this).",
           "home_check_entities": "Doors, locks and the garage the app's Away Bedtime Summary checks when you go to bed away from home. Anything open, unlocked or not responding is read out; otherwise it says everything at home is good.",
           "awake_helper": "Turned back on when you undo bedtime (\"Not going to sleep yet\" in the app), so the house is in day mode while you're up.",
+          "napping_helper": "Turned on when you start a nap at home (Nap in the app) and off when it ends, for your own house automations. Leave empty for none.",
           "rerun_minutes": "After undoing bedtime, once the bed reads occupied this long without a break, RUN_BEDTIME is sent so your bedtime shortcut runs again (within 6 hours)."
         }
       },
@@ -100,6 +102,7 @@
           "curtain_offset_minutes": "Curtains open after sunrise",
           "home_check_entities": "Check these when I'm away",
           "awake_helper": "Awake For Day helper",
+          "napping_helper": "Napping helper",
           "rerun_minutes": "Bedtime again after back in bed for"
         },
         "data_description": {
@@ -123,6 +126,7 @@
           "curtain_offset_minutes": "Match your curtain automation's open time (sunrise plus this).",
           "home_check_entities": "Doors, locks and the garage the app's Away Bedtime Summary checks when you go to bed away from home. Anything open, unlocked or not responding is read out; otherwise it says everything at home is good.",
           "awake_helper": "Turned back on when you undo bedtime (\"Not going to sleep yet\" in the app), so the house is in day mode while you're up.",
+          "napping_helper": "Turned on when you start a nap at home (Nap in the app) and off when it ends, for your own house automations. Leave empty for none.",
           "rerun_minutes": "After undoing bedtime, once the bed reads occupied this long without a break, RUN_BEDTIME is sent so your bedtime shortcut runs again (within 6 hours)."
         }
       }

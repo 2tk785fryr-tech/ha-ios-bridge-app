@@ -113,6 +113,10 @@ struct BridgeSettings: Codable, Equatable {
     var alarmSound: AlarmSound = .standard
     /// Tonight offers "Up before the alarms?" from this many hours before the first one.
     var endAlarmsEarlyHours = 2
+    /// Not ready for bed shows this long after bedtime ran (v0.4.2 item 7).
+    var notReadyForBedHours = 2
+    /// Back to bed shows until this long after the wake-up or the last stop (v0.4.2 item 7).
+    var backToBedHours = 3
     /// Why a morning changed, each with what it moves (v0.4.1 item 7). New reasons ask.
     var morningReasons: [MorningReason] = [
         MorningReason(name: "Snow delay", scope: .wakeUp),
@@ -125,6 +129,21 @@ struct BridgeSettings: Codable, Equatable {
     /// Shift alarms only: the early backstop moves to this long after the new last alarm when
     /// it would otherwise come before it.
     var earlyBackstopGapMinutes = 5
+    /// Wake at a different time starts this many hours from now, then rounds (v0.4.2 item 2).
+    var newAlarmHoursAhead = 6
+
+    // MARK: Nap (v0.4.2 item 3)
+
+    /// Off by default; the Nap button only shows when on.
+    var napEnabled = false
+    var napAlarmCount = 2
+    var napSpacingMinutes = 10
+    /// Get-ready before events with an address (shifts too).
+    var napReadyWithAddressMinutes = 30
+    /// Before events without an address: no get-ready, you may just get up and stay home.
+    var napReadyNoAddressMinutes = 0
+    /// The quick choices, in minutes.
+    var napLengths = [20, 30, 45, 60, 90, 120]
 
     // MARK: Your own alarm's backstops (v0.4.1 item 14)
 

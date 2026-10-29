@@ -6,6 +6,7 @@ struct StopDescription: Equatable {
     enum Kind: Equatable {
         case series
         case temporary
+        case nap
         case test
     }
 
@@ -26,6 +27,10 @@ struct StopDescription: Equatable {
             return StopDescription(title: [time, "Test alarm"].compactMap { $0 }.joined(separator: " · "), detail: "Your real alarms aren't affected.", kind: .test)
         case .temporary:
             return StopDescription(title: [time, "Temporary alarm"].compactMap { $0 }.joined(separator: " · "), detail: "Your regular alarms are unchanged.", kind: .temporary)
+        case .nap:
+            let next = remaining.filter { alarm in alarmTime.map { alarm > $0.addingTimeInterval(30) } ?? true }.min()
+            return StopDescription(title: [time, "Nap"].compactMap { $0 }.joined(separator: " · "),
+                                   detail: next.map { "Next: \(WakePlanner.format($0)) (backup)" } ?? "Last nap alarm", kind: .nap)
         case .series:
             let sorted = series.sorted()
             let place = alarmTime.flatMap { time in sorted.firstIndex { abs($0.timeIntervalSince(time)) < 60 } }

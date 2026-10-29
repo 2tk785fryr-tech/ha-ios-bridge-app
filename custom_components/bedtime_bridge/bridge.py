@@ -25,6 +25,8 @@ from .const import (
     BED_EMPTY_SECONDS,
     CMD_ARM,
     CMD_BACK_TO_BED,
+    CMD_NAP_END,
+    CMD_NAP_START,
     CMD_LEAVE_CHECK,
     CMD_BEDTIME,
     CMD_DISARM,
@@ -35,6 +37,7 @@ from .const import (
     LADDER_SETTINGS,
     LEAVE_CHECK_TAIL_MINUTES,
     CONF_AWAKE_HELPER,
+    CONF_NAP_HELPER,
     CONF_BED_SENSOR,
     CONF_BEDTIME_HELPER,
     CONF_CURTAIN_OFFSET,
@@ -85,6 +88,8 @@ from .const import (
     MSG_BEDTIME_UNDONE,
     MSG_COMMAND_RAN,
     MSG_MORNING_CHANGED,
+    MSG_NAP_ENDED,
+    MSG_NAP_STARTED,
     MSG_CANCELLED,
     MSG_CONTEXT,
     MSG_FORECAST,
@@ -312,6 +317,8 @@ class BedtimeBridge:
             MSG_BEDTIME_UNDONE: self._bedtime_undone,
             MSG_COMMAND_RAN: self._command_ran,
             MSG_MORNING_CHANGED: self._morning_changed,
+            MSG_NAP_STARTED: self._nap_started,
+            MSG_NAP_ENDED: self._nap_ended,
         }.get(kind)
         if handler is None:
             return {"error": f"unknown message type: {kind}"}
@@ -320,8 +327,9 @@ class BedtimeBridge:
             await self._recompute_ladder()
         if kind == MSG_PLANNED:
             self._schedule_leave_checks()
-        elif kind in (MSG_CANCELLED, MSG_SKIPPED, MSG_BEDTIME_UNDONE, MSG_MORNING_CHANGED):
-            # The morning changed or went: no more leave checks (item 17).
+        elif kind in (MSG_CANCELLED, MSG_SKIPPED, MSG_BEDTIME_UNDONE):
+            # The morning went: no more leave checks (item 17). A morning change keeps them
+            # (v0.4.2 item 1, in _morning_changed).
             self.state["leave_reminders"] = []
             self._cancel_leave_checks()
         return {"settings": self.settings_for_app(), **result}
@@ -978,6 +986,34 @@ class BedtimeBridge:
 
     # MARK: Temporary alarms
 
+    # MARK: Nap (v0.4.2 item 3)
+
+    async def _nap_started(self, data: dict[str, Any]) -> dict[str, Any]:
+        """A nap's alarms are set. Like temporary alarms, nothing about the morning changes: no
+        wake routines, Good Morning or backstops; Sleep In and Awake For Day stay. The napping
+        helper goes on while you're home; the nap Focus shortcut runs home or away."""
+        times = [t.isoformat() for t in sorted(t for t in (_time(v) for v in data.get("alarm_times") or []) if t)]
+        self.state["nap_alarm_times"] = times
+        helper = self.options.get(CONF_NAP_HELPER)
+        helper_on = bool(helper) and self.is_home()
+        if helper_on:
+            await self._turn_on(helper)
+        focus = await self._command(CMD_NAP_START)
+        self._event(MSG_NAP_STARTED, alarm_times=times, napping_helper=helper_on)
+        return {"napping_helper": helper_on, "nap_focus": focus}
+
+    async def _nap_ended(self, data: dict[str, Any]) -> dict[str, Any]:
+        """The nap is over (its last alarm stopped, or End nap). The helper goes off if it's on,
+        so a nap started at home doesn't leave it on after you've gone out."""
+        self.state["nap_alarm_times"] = []
+        helper = self.options.get(CONF_NAP_HELPER)
+        if helper and self.hass.states.is_state(helper, "on"):
+            await self._turn_off(helper)
+        await self._clear_command(CMD_NAP_START)
+        focus = await self._command(CMD_NAP_END)
+        self._event(MSG_NAP_ENDED)
+        return {"nap_focus": focus}
+
     async def _temporary_snoozed(self, data: dict[str, Any]) -> None:
         """Nothing in the house changes: no ramp, no snooze count."""
         self._event(MSG_TEMP_SNOOZED, rings_again=data.get("rings_again"))
@@ -1126,12 +1162,25 @@ class BedtimeBridge:
         now = dt_util.utcnow()
         if leave_by is None or now > leave_by + timedelta(minutes=LEAVE_CHECK_TAIL_MINUTES):
             return
-        if not self.is_home():
-            # Already left: no more checks.
+        if not self.is_home() or not self._leave_shift_still_on():
+            # Already left, or the shift came off the calendar: no more checks.
             self.state["leave_reminders"] = []
             self._cancel_leave_checks()
             return
         await self._command(CMD_LEAVE_CHECK)
+
+    def _leave_shift_still_on(self) -> bool:
+        """With no alarms left on a work morning, the checks run only while the calendar still
+        shows the shift (v0.4.2 item 1): the shift sensor's next start is the planned one."""
+        plan = self.state.get("ladder_plan") or {}
+        if self.state.get("alarm_times") or plan.get("type") != "shift":
+            return True
+        planned = _time(plan.get("shift_start"))
+        sensor = self.hass.states.get(self.options.get(CONF_SHIFT_SENSOR) or "")
+        if planned is None or sensor is None:
+            return True
+        start = _time(sensor.attributes.get("next_shift_start"))
+        return start is not None and abs((start - planned).total_seconds()) < 60
 
     # MARK: Change this morning (item 3)
 
@@ -1184,6 +1233,12 @@ class BedtimeBridge:
             self.ladder_early_floor(times[-1] + timedelta(minutes=gap), data.get("changed_by") or "app", reason)
         elif times and delay:
             self.change_morning_ladder(delay, data.get("changed_by") or "app", reason)
+        # Leave checks (v0.4.2 item 1): an entire wake-up moved takes leave-by and the checks
+        # with it; shifting the alarms only, or no alarms, keeps them as they are.
+        leave_by = _time(self.state.get("leave_by"))
+        if times and scope == "wake_up" and delay and leave_by is not None:
+            self.state["leave_by"] = (leave_by + timedelta(minutes=delay)).isoformat()
+            self._schedule_leave_checks()
         if phase not in ("bedtime", "edit"):
             await self._restart_wake_automations()
         # Blocking: Sleep In must be set before the bedtime routine can move the curtains.

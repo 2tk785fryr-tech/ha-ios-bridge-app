@@ -484,7 +484,7 @@ async def test_leave_checks_stop_once_youve_left(hass, ladder, hass_client_no_au
     assert not [c for c in notify if c.data.get("message") == "RUN_LEAVE_CHECK"]
 
 
-async def test_leave_checks_stop_when_the_morning_changes(hass, ladder, hass_client_no_auth, freezer):
+async def test_leave_checks_stop_when_the_morning_is_skipped(hass, ladder, hass_client_no_auth, freezer):
     from pytest_homeassistant_custom_component.common import async_mock_service
 
     notify = async_mock_service(hass, "notify", "mobile_app_test")
@@ -498,3 +498,73 @@ async def test_leave_checks_stop_when_the_morning_changes(hass, ladder, hass_cli
     async_fire_time_changed(hass)
     await hass.async_block_till_done()
     assert not [c for c in notify if c.data.get("message") == "RUN_LEAVE_CHECK"]
+
+
+async def _leave_checks_planned(hass, ladder, client, notify_list=None):
+    from pytest_homeassistant_custom_component.common import async_mock_service
+
+    notify = async_mock_service(hass, "notify", "mobile_app_test")
+    await ladder(notify_service="notify.mobile_app_test", phone_commands=True)
+    data = plan(local("05:45").isoformat())
+    data["data"]["leave_by"] = local("05:45").isoformat()
+    data["data"]["leave_reminders"] = [15, 0]
+    data["data"]["alarm_times"] = [local("04:20").isoformat(), local("04:25").isoformat()]
+    await send(client, data)
+    await hass.async_block_till_done()
+    return lambda: [c for c in notify if c.data.get("message") == "RUN_LEAVE_CHECK"]
+
+
+async def _at(hass, freezer, when):
+    freezer.move_to(when)
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+
+
+def _changed(times, delay, scope):
+    return {"type": "morning_changed", "data": {
+        "alarm_times": [t.isoformat() for t in times], "alarms_planned": len(times), "delay_minutes": delay,
+        "scope": scope, "phase": "snoozing", "reason": "Snow delay",
+    }}
+
+
+async def test_v042_wake_up_change_moves_the_leave_checks(hass, ladder, hass_client_no_auth, freezer):
+    """v0.4.2 item 1: shift the entire wake-up +120 → checks 120 min later."""
+    client = hass_client_no_auth
+    checks = await _leave_checks_planned(hass, ladder, client)
+    await _at(hass, freezer, local("04:21"))
+    await send(client, _changed([local("06:20"), local("06:25")], 120, "wake_up"))
+    assert dt_util.parse_datetime(hass.states.get("sensor.bedtime_bridge_leave_by").state) == local("07:45")
+    await _at(hass, freezer, local("05:31"))
+    assert checks() == []
+    await _at(hass, freezer, local("07:30") + timedelta(seconds=30))
+    assert len(checks()) == 1
+
+
+async def test_v042_alarms_only_change_keeps_the_leave_checks(hass, ladder, hass_client_no_auth, freezer):
+    client = hass_client_no_auth
+    checks = await _leave_checks_planned(hass, ladder, client)
+    await _at(hass, freezer, local("04:21"))
+    await send(client, _changed([local("04:50"), local("04:55")], 30, "alarms"))
+    await _at(hass, freezer, local("05:30") + timedelta(seconds=30))
+    assert len(checks()) == 1
+
+
+async def test_v042_no_alarms_keeps_checks_while_the_shift_is_on(hass, ladder, hass_client_no_auth, freezer):
+    client = hass_client_no_auth
+    checks = await _leave_checks_planned(hass, ladder, client)
+    await _at(hass, freezer, local("04:21"))
+    await send(client, _changed([], 0, "wake_up"))
+    await _at(hass, freezer, local("05:30") + timedelta(seconds=30))
+    assert len(checks()) == 1
+    # The shift comes off the calendar: the next check doesn't go out.
+    shift_sensor(hass, start="2026-10-29T06:30:00-04:00")
+    await _at(hass, freezer, local("05:45") + timedelta(seconds=30))
+    assert len(checks()) == 1
+
+
+async def test_v042_skip_still_stops_the_leave_checks(hass, ladder, hass_client_no_auth, freezer):
+    client = hass_client_no_auth
+    checks = await _leave_checks_planned(hass, ladder, client)
+    await send(client, {"type": "skipped", "data": {}})
+    await _at(hass, freezer, local("05:31"))
+    assert checks() == []

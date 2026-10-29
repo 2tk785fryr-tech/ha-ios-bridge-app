@@ -12,8 +12,8 @@ struct OwnAlarmDraft: Hashable {
     var backstopsEdited = false
 
     /// 6 hours from now, rounded UP to the interval (15: 6:54 → 7:00, 7:02 → 7:15; 0: exact).
-    static func defaultTime(now: Date = .now, roundingMinutes: Int, calendar: Calendar = .current) -> Date {
-        let later = now.addingTimeInterval(6 * 3600)
+    static func defaultTime(now: Date = .now, hoursAhead: Int = 6, roundingMinutes: Int, calendar: Calendar = .current) -> Date {
+        let later = now.addingTimeInterval(Double(hoursAhead) * 3600)
         guard roundingMinutes > 0 else { return later }
         let parts = calendar.dateComponents([.minute, .second, .nanosecond], from: later)
         let intoHour = Double((parts.minute ?? 0) * 60 + (parts.second ?? 0)) + Double(parts.nanosecond ?? 0) / 1e9

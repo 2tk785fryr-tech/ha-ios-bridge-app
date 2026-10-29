@@ -57,6 +57,9 @@ struct SettingsView: View {
                 SettingsLink(title: "Alarms", icon: "alarm", value: "\(settings.alarmCount) alarms, \(settings.alarmSpacingMinutes) min apart") {
                     SettingsPage(title: "Alarms") { AlarmSettingsSection(settings: $store.settings) }
                 }
+                SettingsLink(title: "Nap", icon: "powersleep", value: settings.napEnabled ? "\(settings.napAlarmCount) alarms, \(settings.napSpacingMinutes) min apart" : "Off") {
+                    NapSettings(settings: $store.settings)
+                }
                 SettingsLink(title: "Appointments", icon: "calendar.badge.clock",
                              value: settings.appointmentKeyword.isEmpty ? "Wake-up keyword: none" : "Wake-up keyword: \(settings.appointmentKeyword)") {
                     SettingsPage(title: "Appointments") { AppointmentsSection(settings: $store.settings) }
@@ -447,11 +450,13 @@ private struct AlarmSettingsSection: View {
             if settings.alarmStyle == .app {
                 Stepper("Snooze: \(settings.snoozeMinutes) min", value: $settings.snoozeMinutes, in: 1...30)
                 AlarmSoundPicker(sound: $settings.alarmSound)
-                Stepper("End early from \(settings.endAlarmsEarlyHours) h before", value: $settings.endAlarmsEarlyHours, in: 1...6)
                 Picker("When I stop an alarm", selection: $settings.stopBehavior) {
                     ForEach(StopBehavior.allCases) { Text($0.displayName).tag($0) }
                 }
                 TestAlarmButton(settings: settings)
+                NavigationLink("When options show") {
+                    OptionWindowsSettings(settings: $settings)
+                }
                 NavigationLink("Change this morning") {
                     MorningChangeSettings(settings: $settings)
                 }
@@ -462,6 +467,7 @@ private struct AlarmSettingsSection: View {
                     OwnAlarmSettings(settings: $settings)
                 }
             }
+            Stepper("Start new alarms this far from now: \(settings.newAlarmHoursAhead) h", value: $settings.newAlarmHoursAhead, in: 1...12)
             Stepper("Look ahead \(settings.lookAheadHours) h", value: $settings.lookAheadHours, in: 6...72)
         } header: {
             Text("Alarms (appointments, day off)")
@@ -471,6 +477,75 @@ private struct AlarmSettingsSection: View {
                 Text("Rings through Silent and Focus. Snooze and Stop tell Home Assistant directly (set it up below), because the Shortcuts \"alarm snoozed/stopped\" automations only see Clock app alarms. \"Keep the rest until I'm up\" cancels the later alarms only once Home Assistant sees the bedroom door opened or the bed empty for over a minute, so stopping the first alarm and dozing off still leaves the others. A new sound is used from the next time alarms are set.")
             case .clock:
                 Text("The app works out the times and your shortcut creates Clock alarms from Wake Plan › Alarm Dates. Your snooze/stop automations keep working, but Apple fixes Clock snooze at 9 minutes.")
+            }
+        }
+    }
+}
+
+/// Settings → Nap (v0.4.2 item 3).
+private struct NapSettings: View {
+    @Binding var settings: BridgeSettings
+    @State private var newLength = 15
+
+    var body: some View {
+        SettingsPage(title: "Nap") {
+            Section {
+                Toggle("Nap", isOn: $settings.napEnabled)
+            } footer: {
+                Text("Shows the Nap button. A nap's alarms behave like temporary alarms: no wake routines, Good Morning or backstops, and your other alarms stay.")
+            }
+            if settings.napEnabled {
+                Section {
+                    Stepper("\(settings.napAlarmCount) alarm\(settings.napAlarmCount == 1 ? "" : "s")", value: $settings.napAlarmCount, in: 1...5)
+                    Stepper("\(settings.napSpacingMinutes) min apart", value: $settings.napSpacingMinutes, in: 1...30)
+                } header: {
+                    Text("Alarms")
+                }
+                Section {
+                    Stepper("Events with an address: \(settings.napReadyWithAddressMinutes) min", value: $settings.napReadyWithAddressMinutes, in: 0...120, step: 5)
+                    Stepper("Events without an address: \(settings.napReadyNoAddressMinutes) min", value: $settings.napReadyNoAddressMinutes, in: 0...120, step: 5)
+                } header: {
+                    Text("Get-ready buffer")
+                } footer: {
+                    Text("Your last nap alarm must leave this long before you leave for a shift or an event with an address (after the drive time now and arriving early), or before an event without one, where you may just get up and stay home.")
+                }
+                Section {
+                    ForEach(settings.napLengths, id: \.self) { minutes in
+                        Text(NapPlanner.lengthName(minutes))
+                    }
+                    .onDelete { settings.napLengths.remove(atOffsets: $0) }
+                    HStack {
+                        Stepper(NapPlanner.lengthName(newLength), value: $newLength, in: 5...600, step: 5)
+                        Button("Add") {
+                            if !settings.napLengths.contains(newLength) {
+                                settings.napLengths.append(newLength)
+                                settings.napLengths.sort()
+                            }
+                        }
+                    }
+                } header: {
+                    Text("Quick choices")
+                } footer: {
+                    Text("Swipe to remove one. Other… on the nap screen picks any length.")
+                }
+            }
+        }
+    }
+}
+
+/// When each situational option shows (v0.4.2 item 7).
+private struct OptionWindowsSettings: View {
+    @Binding var settings: BridgeSettings
+
+    var body: some View {
+        SettingsPage(title: "When options show") {
+            Section {
+                Stepper("I'm up early / End this morning's alarms: from \(settings.endAlarmsEarlyHours) h before the first alarm", value: $settings.endAlarmsEarlyHours, in: 1...12)
+                Stepper("Not ready for bed: for \(settings.notReadyForBedHours) h after bedtime ran", value: $settings.notReadyForBedHours, in: 1...12)
+                Stepper("Back to bed: until \(settings.backToBedHours) h after the wake-up or the last stop, whichever is later", value: $settings.backToBedHours, in: 1...12)
+                LabeledContent("Sleep later", value: "until the first alarm")
+            } footer: {
+                Text("These decide when each option shows in the bottom bar, the ⋯ menu and the cards.")
             }
         }
     }
@@ -491,7 +566,7 @@ private struct OwnAlarmSettings: View {
                     Toggle("Picker shows only those times", isOn: $settings.ownAlarmPickerSnaps)
                 }
             } footer: {
-                Text("The time starts at 6 hours from now, rounded up (15 min: 6:54 → 7:00, 7:02 → 7:15). Off: the picker allows any minute.")
+                Text("The time starts at \(settings.newAlarmHoursAhead) h from now (Alarms → Start new alarms this far from now), rounded up (15 min: 6:54 → 7:00, 7:02 → 7:15). Off: the picker allows any minute.")
             }
             Section {
                 Picker("The time is the", selection: $settings.ownAlarmWakeIs) {
