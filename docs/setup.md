@@ -1,4 +1,9 @@
-# Setting up v0.4.2 – 0.4.5: everything, in order
+# Setting up v0.4.2 – 0.4.6: everything, in order
+
+**New in 0.4.6** (if you've done everything below already, this is all): update the integration
+to **0.4.6** in HACS and restart, then set **Hallway presence** in Bedtime Bridge → Configure, and
+check **Settings → Mornings → Mornings with no alarms** in the app. Details:
+`docs/ha-handoffs-v0.4.6.md`. Optional: add the **I'm awake** control (step 12).
 
 Everything you need to do by hand for the features added since v0.4.1 (nap, wind-down, Live
 Activities by push, drive times in Home Assistant, the new notifications), in the order to do it.
@@ -13,8 +18,8 @@ the paid account, good until 30 Oct 2027).
 ## Part 1: Home Assistant
 
 ### 1. Update the integration
-- [ ] **HACS → Bedtime Bridge → Update** to **0.4.5** (it includes 0.4.2 – 0.4.4). Not 0.4.4:
-      0.4.5 has the `RUN_CANCEL_WIND_DOWN` command the new Wind Down Off shortcut uses.
+- [ ] **HACS → Bedtime Bridge → Update** to **0.4.6** (it includes 0.4.2 – 0.4.5). Not 0.4.4:
+      0.4.5 and later have the `RUN_CANCEL_WIND_DOWN` command the new Wind Down Off shortcut uses.
 - [ ] **Settings → System → Restart Home Assistant.** On restart it installs `h2`, which the
       Live Activity pushes need.
 
@@ -43,6 +48,7 @@ else as it is:
 | Apple push key (.p8) | the push key, see below |
 | Apple push Key ID | `S663T448S3` |
 | Drive times from | **Phone** for now (see Part 4 to change it) |
+| Hallway presence (0.4.6) | `binary_sensor.hallway_master_presence` and the other hallway sensors it suggests |
 
 **The push key:** on the Mac, open `Downloads/AuthKey_S663T448S3.p8` with TextEdit, press ⌘A
 then ⌘C, and paste it into *Apple push key (.p8)*. It must include the
@@ -158,7 +164,7 @@ Drive times from**, and:
 ### 12. *(optional)* Add controls and widgets
 - [ ] **Widgets:** long-press the Home Screen → **Edit → Add Widget → Bedtime Bridge** (every size).
 - [ ] **Lock Screen controls:** long-press the Lock Screen → **Customize → Lock Screen** → tap a
-      bottom button → **Bedtime Bridge** → Nap, Wind-down or Tonight.
+      bottom button → **Bedtime Bridge** → Nap, Wind-down, Tonight or I'm awake.
 - [ ] **Control Center:** swipe down → **+ → Add a Control → Bedtime Bridge**.
 - [ ] **Action button:** Settings → Action Button → **Controls → Bedtime Bridge**.
 
