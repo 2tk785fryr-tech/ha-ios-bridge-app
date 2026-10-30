@@ -646,6 +646,44 @@ final class BedtimeCoordinator {
         undoPlan = nil
     }
 
+    // MARK: Reset (v0.4.3 item 7)
+
+    /// "Reset alarms and backstops to nothing set": every alarm the app set (regular,
+    /// temporary, nap, test) and everything about tonight and this morning goes; Home Assistant
+    /// gets `reset` and recalculates the ladder from the calendar alone. Settings, keys, the
+    /// Home Assistant link, the override, Sleep In and Awake For Day stay.
+    func resetAlarmsAndBackstops(settings phoneSettings: BridgeSettings) async {
+        let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
+        try? alarms.cancelAll()
+        leaveReminder.clear()
+        lastAppliedPlan = nil
+        alarmSeries = []
+        skippedMorning = nil
+        skipReplacement = nil
+        clearedMorning = nil
+        morningChangeReason = nil
+        plannedBeforeSleepLater = nil
+        storedPattern = nil
+        temporaryAlarms = []
+        napAlarms = []
+        napStatus = nil
+        testAlarmID = nil
+        undoRecord = nil
+        undoPlan = nil
+        calendarChangedSinceSet = false
+        alarmShortfall = nil
+        morningAlarms = []
+        stoppedThisWakeUp = false
+        lastCause = AlarmCause.none
+        PlanChangeNotice.clear()
+        UserDefaults.standard.removeObject(forKey: Self.changeNotifiedKey)
+        WindDownState.cached = WindDownState()
+        updateWidget { $0 = NextAlarmSnapshot(alarmStyle: settings.alarmStyle.rawValue) }
+        await BedtimeActivities.end(.windDown)
+        await BedtimeActivities.end(.morning)
+        await report(.reset, data: [:], settings: settings)
+    }
+
     // MARK: Wind-down (v0.4.3 item 5)
 
     /// Home Assistant's last word on tonight's wind-down.

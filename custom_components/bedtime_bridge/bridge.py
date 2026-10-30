@@ -40,6 +40,7 @@ from .const import (
     LEAVE_CHECK_TAIL_MINUTES,
     CONF_AWAKE_HELPER,
     CONF_NAP_HELPER,
+    CONF_WIND_DOWN_HELPER,
     CONF_BED_SENSOR,
     CONF_BEDTIME_HELPER,
     CONF_CURTAIN_OFFSET,
@@ -92,6 +93,7 @@ from .const import (
     MSG_MORNING_CHANGED,
     MSG_NAP_ENDED,
     MSG_PREVIEW,
+    MSG_RESET,
     MSG_WIND_DOWN,
     MSG_NAP_STARTED,
     MSG_CANCELLED,
@@ -328,6 +330,7 @@ class BedtimeBridge:
             MSG_NAP_ENDED: self._nap_ended,
             MSG_PREVIEW: self._preview,
             MSG_WIND_DOWN: self._wind_down_action,
+            MSG_RESET: self._reset,
         }.get(kind)
         if handler is None:
             return {"error": f"unknown message type: {kind}"}
@@ -350,6 +353,36 @@ class BedtimeBridge:
                 moved_reason=data.get("reason") if changed else data.get("moved_reason"),
             )
         return {"settings": self.settings_for_app(), "wind_down": self.wind_down.summary(), **result}
+
+    async def _reset(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Reset alarms and backstops to nothing set (v0.4.3 item 7a): clears the alarm state, the
+        ladder's delay and weather moves, pending leave checks and phone commands, turns the
+        napping and winding-down helpers off, then recalculates the ladder from the calendar
+        alone (armed again if a covered shift is on it). Settings, the override, Sleep In and
+        Awake For Day are left as they are."""
+        self.state.update(empty_state())
+        self.state["last_morning_change"] = None
+        self.state["ladder"] = {}
+        self.state["ladder_plan"] = {}
+        self.state["ladder_delay"] = None
+        self.state["leave_reminders"] = []
+        self._cancel_leave_checks()
+        for command in list(self._pending_commands):
+            await self._clear_command(command)
+        for command in list(self._command_unsubs):
+            self._unwatch_command(command)
+        self.state["command_started"] = {}
+        for option in (CONF_NAP_HELPER, CONF_WIND_DOWN_HELPER):
+            helper = self.options.get(option)
+            state = self.hass.states.get(helper or "")
+            if helper and state is not None and state.state == "on":
+                await self._turn_off(helper)
+        self.wind_down.cancel_timers()
+        self.state["wind_down"] = {"status": "off"}
+        await self._recompute_ladder()
+        self.wind_down.async_reschedule()
+        self._event(MSG_RESET)
+        return {}
 
     async def _preview(self, data: dict[str, Any]) -> dict[str, Any]:
         """The phone's Preview tomorrow (RUN_PLAN_PREVIEW): sets nothing, gives the wind-down

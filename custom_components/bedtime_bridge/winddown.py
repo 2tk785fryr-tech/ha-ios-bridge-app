@@ -160,6 +160,10 @@ class WindDown:
         self._reschedule()
 
     @callback
+    def async_reschedule(self) -> None:
+        self._reschedule()
+
+    @callback
     def cancel_timers(self) -> None:
         for unsub in self._unsubs:
             unsub()

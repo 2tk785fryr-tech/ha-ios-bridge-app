@@ -27,6 +27,8 @@ enum BridgeEvent: String {
     /// v0.4.3 item 5: Preview tomorrow's answer, and wind-down actions (start, cancel, stop_reminders).
     case preview
     case windDown = "wind_down"
+    /// v0.4.3 item 7a.
+    case reset
 }
 
 /// For item 3's confirm screen: the backstops now, and when the curtains open that morning.

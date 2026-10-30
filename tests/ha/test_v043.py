@@ -230,3 +230,31 @@ async def test_item5_off_until_set_up(hass, ladder, hass_client_no_auth, freezer
     assert status_of(hass) == "off"
     await at(hass, freezer, local("22:30", day=27))
     assert not any((m or "").startswith(("Wind-down", "Time for bed")) for m in messages(notes))
+
+
+# MARK: Item 7a, reset alarms and backstops
+
+
+async def test_item7_reset_clears_alarms_moves_and_helpers_then_follows_the_calendar(hass, ladder, hass_client_no_auth, freezer):
+    assert await async_setup_component(hass, "input_boolean", {"input_boolean": {"winding_down": {}, "napping": {}, "sleep_in": {}}})
+    await ladder(winding_down_helper="input_boolean.winding_down", napping_helper="input_boolean.napping",
+                 sleep_in_helper="input_boolean.sleep_in")
+    hass.states.async_set("input_boolean.sleep_in", "on")
+    events = async_capture_events(hass, "bedtime_bridge")
+    await send(hass_client_no_auth, days_plan())
+    # A delay this morning moved the ladder.
+    await send(hass_client_no_auth, {"type": "morning_changed", "data": {
+        "alarm_times": [local("06:20").isoformat()], "alarms_planned": 1, "delay_minutes": 120, "phase": "bedtime", "scope": "wake_up"}})
+    await hass.services.async_call("input_boolean", "turn_on", {"entity_id": ["input_boolean.winding_down", "input_boolean.napping"]}, blocking=True)
+    await send(hass_client_no_auth, {"type": "reset", "data": {}})
+    await hass.async_block_till_done()
+    assert hass.states.get("sensor.bedtime_bridge_alarm_cause").state == "noalarm"
+    assert hass.states.get("sensor.bedtime_bridge_next_alarm").state == "unknown"
+    assert hass.states.get("input_boolean.winding_down").state == "off"
+    assert hass.states.get("input_boolean.napping").state == "off"
+    assert hass.states.get("input_boolean.sleep_in").state == "on", "Sleep In is left alone"
+    # The Days shift is still on the calendar: armed again at the calendar's own times, no delay.
+    assert status(hass) == "armed"
+    assert rungs(hass) == ["04:55", "05:10", "05:25"]
+    assert any(e.data.get("type") == "reset" for e in events)
+    assert status_of(hass) == "off"

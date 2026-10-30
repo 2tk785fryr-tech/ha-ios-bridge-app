@@ -190,6 +190,8 @@ MSG_NAP_ENDED = "nap_ended"
 # v0.4.3 item 5: the phone's Preview tomorrow answer, and wind-down actions from the app
 # (start, cancel, later, stop_reminders).
 MSG_PREVIEW = "preview"
+# v0.4.3 item 7a: Reset alarms and backstops to nothing set.
+MSG_RESET = "reset"
 MSG_WIND_DOWN = "wind_down"
 EVENT_RERUN = "bedtime_rerun"
 EVENT_REARMED = "temporary_rearmed"

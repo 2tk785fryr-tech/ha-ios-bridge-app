@@ -76,24 +76,7 @@ struct WindDownSettings: View {
                 Text("Home Assistant asks the phone for tomorrow's plan (Preview tomorrow) before wind-down. If the phone doesn't answer, it uses the shift calendar alone and says appointments weren't checked.")
             }
 
-            ResetPageSection {
-                let reset = BridgeSettings()
-                settings.windDownEnabled = reset.windDownEnabled
-                settings.sleepGoalMinutes = reset.sleepGoalMinutes
-                settings.windDownMinutes = reset.windDownMinutes
-                settings.freeAfterHomeMinutes = reset.freeAfterHomeMinutes
-                settings.minimumWindDownMinutes = reset.minimumWindDownMinutes
-                settings.windDownWarningMinutes = reset.windDownWarningMinutes
-                settings.windDownLaterMinutes = reset.windDownLaterMinutes
-                settings.notInBedReminders = reset.notInBedReminders
-                settings.reminderFirstMinutes = reset.reminderFirstMinutes
-                settings.reminderEveryMinutes = reset.reminderEveryMinutes
-                settings.reminderStopMinutes = reset.reminderStopMinutes
-                settings.planCheckBeforeMinutes = reset.planCheckBeforeMinutes
-                settings.planCheckFallback = reset.planCheckFallback
-                settings.windDownOwnAlarm = reset.windDownOwnAlarm
-                settings.startWindDownHours = reset.startWindDownHours
-            }
+            ResetPageSection { settings.resetToDefaults(SettingsPages.windDown) }
         }
     }
 
