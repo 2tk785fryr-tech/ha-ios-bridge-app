@@ -299,7 +299,7 @@ struct ContentView: View {
                         setPreviewed(preview)
                     }
                 case .weeklySummary:
-                    WeeklySummaryView(settings: store.settings)
+                    WeeklySummaryView(settings: store.settings, justEnded: true)
                 case .addLeave:
                     AddLeaveSheet(settings: store.settings) { refreshScheduled() }
                 case .addWakeUp:

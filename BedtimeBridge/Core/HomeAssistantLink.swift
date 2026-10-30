@@ -290,6 +290,9 @@ struct IntegrationLink: HomeAssistantLink {
         if let week = reply["weekly_summary"] as? [String: Any] {
             WeeklySummary.cached = WeeklySummary(week)
         }
+        if let weeks = reply["weekly_summaries"] as? [[String: Any]] {
+            WeeklySummary.cachedWeeks = weeks.map(WeeklySummary.init)
+        }
         return reply
     }
 

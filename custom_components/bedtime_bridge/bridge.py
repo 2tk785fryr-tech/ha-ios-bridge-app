@@ -515,7 +515,11 @@ class BedtimeBridge:
 
     async def send_weekly_summary(self) -> dict[str, Any]:
         """The week, as a sensor and a notification that opens the app's summary screen."""
-        summary = weekly.summarize(self.state.get("history") or [], self.state.get("wind_down_history") or [], dt_util.utcnow())
+        # The week that just ended, cut at the setting's day and time (v0.4.6 item 5).
+        now = dt_util.utcnow()
+        cutoff = weekly.last_cutoff(self.state.get("weekly_settings") or {}, now)
+        summary = weekly.summarize(self.state.get("history") or [], self.state.get("wind_down_history") or [], now,
+                                   since=weekly.week_start(cutoff), until=cutoff)
         self.state["weekly_summary"] = summary
         self._changed()
         await self.wind_down._notify("Your week", summary["text"] or "Nothing tracked this week.", tag="weekly",
@@ -617,6 +621,9 @@ class BedtimeBridge:
             "outdated_reason": self.state.get("outdated_reason"),
             "wind_down": self.wind_down.summary(),
             "weekly_summary": self.state.get("weekly_summary"),
+            # This week so far and up to 8 earlier weeks, newest first (v0.4.6 item 5).
+            "weekly_summaries": weekly.weeks(self.state.get("history") or [], self.state.get("wind_down_history") or [],
+                                             self.state.get("weekly_settings") or {}, dt_util.utcnow()),
             "curtains_open_at": self._curtains_open(_time(data.get("first_alarm")) or dt_util.utcnow()),
         }
 
