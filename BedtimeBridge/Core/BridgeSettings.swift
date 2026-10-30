@@ -193,6 +193,21 @@ struct BridgeSettings: Codable, Equatable {
     /// The Next alarm widget always opens Tonight instead of what matters now.
     var widgetTapAlwaysTonight = false
 
+    // MARK: No-alarm mornings (v0.4.6 item 2)
+
+    /// Leaving the bedroom disarms, back in bed re-arms, staying up asks Up for the day?
+    var noAlarmMorningEnabled = true
+    /// Good morning never runs by itself before this ("HH:mm").
+    var noAlarmEarliest = "08:00"
+    /// Up this long without getting back in bed counts as up for the day.
+    var noAlarmUpMinutes = 15
+    /// Up for the day? goes ahead this long after asking, if you're still up.
+    var noAlarmWaitMinutes = 10
+
+    var awakeForHomeAssistant: [String: Any] {
+        ["enabled": noAlarmMorningEnabled, "earliest": noAlarmEarliest, "up_minutes": noAlarmUpMinutes, "wait_minutes": noAlarmWaitMinutes]
+    }
+
     // MARK: Weekly summary (v0.4.3 item 15)
 
     var weeklySummaryEnabled = true
@@ -478,6 +493,7 @@ final class SettingsStore {
     static func everyMessage(_ settings: BridgeSettings) -> [String: Any] {
         var message: [String: Any] = [
             "wind_down_settings": settings.windDownForHomeAssistant,
+            "awake_settings": settings.awakeForHomeAssistant,
             "charge_warning": ["enabled": settings.chargeWarningEnabled, "threshold": settings.chargeWarningThreshold],
             "weekly_summary": ["enabled": settings.weeklySummaryEnabled, "weekday": settings.weeklySummaryWeekday, "time": settings.weeklySummaryTime],
             "notification_levels": NotificationKind.forHomeAssistant(settings),

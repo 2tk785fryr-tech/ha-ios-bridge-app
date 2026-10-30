@@ -31,6 +31,8 @@ enum BridgeEvent: String {
     case reset
     /// Live Activity push tokens and the morning lines Home Assistant can't work out.
     case liveActivity = "live_activity"
+    /// v0.4.6 item 2: I'm awake on a morning with no alarms.
+    case awake
 }
 
 /// For item 3's confirm screen: the backstops now, and when the curtains open that morning.
@@ -289,6 +291,9 @@ struct IntegrationLink: HomeAssistantLink {
         }
         if let week = reply["weekly_summary"] as? [String: Any] {
             WeeklySummary.cached = WeeklySummary(week)
+        }
+        if let morning = reply["no_alarm_morning"] as? [String: Any] {
+            NoAlarmMorning.offered = morning["offered"] as? Bool == true
         }
         if let weeks = reply["weekly_summaries"] as? [[String: Any]] {
             WeeklySummary.cachedWeeks = weeks.map(WeeklySummary.init)

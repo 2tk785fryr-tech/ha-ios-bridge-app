@@ -9,6 +9,8 @@ enum ControlActions {
     nonisolated(unsafe) static var windDown: ((Bool) async throws -> Void)?
     /// Nap with the first quick length, checked as on the nap screen.
     nonisolated(unsafe) static var napNow: (() async throws -> Void)?
+    /// I'm awake (v0.4.6 item 2): good morning in Home Assistant; what to say back.
+    nonisolated(unsafe) static var imAwake: (() async -> String)?
     /// Opens the app at one of its own URLs (once it's in the foreground).
     nonisolated(unsafe) static var open: ((URL) async -> Void)?
 }
@@ -47,6 +49,17 @@ struct NapControlIntent: AppIntent, LiveActivityIntent {
             await ControlActions.open?(URL(string: "bedtimebridge://action/nap")!)
         }
         return .result()
+    }
+}
+
+/// The I'm awake control (v0.4.6 item 2): good morning straight away, without opening the app.
+struct ImAwakeControlIntent: AppIntent, LiveActivityIntent {
+    static var title: LocalizedStringResource = "I'm Awake"
+    static var description = IntentDescription("On a morning with no alarms: Sleep In off, Awake For Day on, the house disarmed and Good Morning run.")
+
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        let said = await ControlActions.imAwake?() ?? "Open Bedtime Bridge once, then try again."
+        return .result(dialog: "\(said)")
     }
 }
 

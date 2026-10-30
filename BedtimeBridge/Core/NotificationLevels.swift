@@ -42,6 +42,8 @@ enum NotificationKind: String, CaseIterable, Identifiable {
     case weekly
     /// A leave check worked out in Home Assistant (drive times there, 0.4.4).
     case leaveCheck = "leave_check"
+    /// Up for the day? on a morning with no alarms (v0.4.6 item 2).
+    case upForDay = "up_for_day"
 
     var id: String { rawValue }
 
@@ -67,6 +69,7 @@ enum NotificationKind: String, CaseIterable, Identifiable {
         case .appExpiry: "Reinstall the app"
         case .weekly: "Your week"
         case .leaveCheck: "Leave by (checked by Home Assistant)"
+        case .upForDay: "Up for the day?"
         }
     }
 

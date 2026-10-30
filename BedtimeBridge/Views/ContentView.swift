@@ -471,6 +471,7 @@ struct ContentView: View {
             i.startWindDownHours = store.settings.startWindDownHours
         }
         i.evening = ScreenClock.isEvening(now)
+        i.awakeOffered = NoAlarmMorning.offered
         return i
     }
 
@@ -555,6 +556,12 @@ struct ContentView: View {
         case .skip: if let morning = barMorning { skip(morning, then: .sleepIn) }
         case .addTemporary: sheet = .temporary
         case .settings: showSettings = true
+        case .imAwake:
+            Task {
+                let outcome = await coordinator.imAwake(settings: store.settings)
+                if outcome != .done { errorMessage = NoAlarmMorning.dialog(outcome) }
+                refreshScheduled()
+            }
         }
     }
 

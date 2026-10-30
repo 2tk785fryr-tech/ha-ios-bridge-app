@@ -13,6 +13,9 @@ struct BedtimeBridgeApp: App {
         ControlActions.napNow = {
             await BedtimeCoordinator.shared.napNowFromControl(settings: SettingsStore.shared.settings)
         }
+        ControlActions.imAwake = {
+            NoAlarmMorning.dialog(await BedtimeCoordinator.shared.imAwake(settings: SettingsStore.shared.settings))
+        }
         // Live Activity push tokens go to Home Assistant from launch.
         Task { @MainActor in BedtimeActivities.watchPushTokens() }
         ControlActions.open = { url in

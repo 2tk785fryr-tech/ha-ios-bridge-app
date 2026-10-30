@@ -398,6 +398,13 @@ struct BedtimeBridgeShortcuts: AppShortcutsProvider {
             shortTitle: "Add Leave",
             systemImageName: "beach.umbrella"
         )
+        // v0.4.6 item 2
+        AppShortcut(
+            intent: ImAwakeIntent(),
+            phrases: ["I'm awake in \(.applicationName)", "Good morning with \(.applicationName)", "\(.applicationName) I'm awake"],
+            shortTitle: "I'm Awake",
+            systemImageName: "sun.horizon"
+        )
         AppShortcut(
             intent: AddWakeUpEventIntent(),
             phrases: ["Add a wake-up event in \(.applicationName)"],

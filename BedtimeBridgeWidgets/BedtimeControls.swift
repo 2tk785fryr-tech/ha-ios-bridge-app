@@ -17,6 +17,17 @@ struct NapControl: ControlWidget {
     }
 }
 
+/// "I'm awake" (v0.4.6 item 2): good morning on a morning with no alarms.
+struct ImAwakeControl: ControlWidget {
+    var body: some ControlWidgetConfiguration {
+        StaticControlConfiguration(kind: "io.bedtimebridge.control.imawake") {
+            ControlWidgetButton(action: ImAwakeControlIntent()) { Label("I'm awake", systemImage: "sun.horizon") }
+        }
+        .displayName("I'm awake")
+        .description("Good morning: Sleep In off and the house wakes up.")
+    }
+}
+
 /// "Wind-down": start now within its window, or cancel if running, without opening the app;
 /// shows its state. Or opens the app first.
 struct WindDownControl: ControlWidget {
