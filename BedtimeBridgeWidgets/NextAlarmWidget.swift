@@ -293,8 +293,7 @@ private struct WidgetChip: View {
     let entry: NextAlarmEntry
 
     var body: some View {
-        let label = entry.bed != nil ? "Bed in" : entry.label
-        if !label.isEmpty {
+        if let label = entry.snapshot.chipLabel(at: entry.date) {
             Text(label)
                 .font(.caption.weight(.bold))
                 .foregroundStyle(Theme.shiftChip.text)

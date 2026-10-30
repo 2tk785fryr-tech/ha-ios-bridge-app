@@ -95,6 +95,16 @@ struct NextAlarmSnapshot: Codable, Equatable {
         ([snoozedUntil, leaveBy.map(leaveByHiddenAt), windDownAt, goToBedAt].compactMap { $0 } + alarmTimes + (temporaryAlarms ?? [])).filter { $0 > date }.sorted()
     }
 
+    /// The label chip at `date`: "Bed in" during wind-down, the alarm's label while an alarm or
+    /// leave-by is still ahead, and nothing otherwise (the label of alarms that have passed or were
+    /// turned off isn't tomorrow's).
+    func chipLabel(at date: Date) -> String? {
+        if bedCountdown(at: date) != nil { return "Bed in" }
+        guard nextAlarm(after: date) != nil || leaveByAfterAlarms(at: date) != nil else { return nil }
+        let text = label(after: date)
+        return text.isEmpty ? nil : text
+    }
+
     /// One line of the bigger widgets' timeline: wind-down, go to bed, each alarm, leave-by.
     struct Step: Equatable {
         enum Kind: Equatable { case windDown, goToBed, alarm, wakeUp, temporary, snooze, leaveBy }

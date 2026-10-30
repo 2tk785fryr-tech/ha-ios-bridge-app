@@ -35,3 +35,24 @@ final class WidgetTimelineTests: XCTestCase {
         XCTAssertTrue(s.steps(after: at(1)).contains { $0.kind == .snooze && $0.time == at(9) })
     }
 }
+
+/// Reported 29 Oct: the medium widget said "No alarm" with a "Days shift" chip on a day off.
+final class WidgetChipTests: XCTestCase {
+    private let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+    func testNoChipWhenNothingIsSet() {
+        let old = NextAlarmSnapshot(alarmTimes: [now.addingTimeInterval(-3600 * 10)], cause: "Days", label: "Days shift")
+        XCTAssertNil(old.chipLabel(at: now), "the label of alarms that have passed isn't tomorrow's")
+        let cleared = NextAlarmSnapshot(alarmTimes: [], cause: "noalarm", label: "Days shift")
+        XCTAssertNil(cleared.chipLabel(at: now))
+    }
+
+    func testChipWithSomethingSet() {
+        let set = NextAlarmSnapshot(alarmTimes: [now.addingTimeInterval(3600)], cause: "Days", label: "Days shift")
+        XCTAssertEqual(set.chipLabel(at: now), "Days shift")
+        var winding = set
+        winding.windDownAt = now.addingTimeInterval(-600)
+        winding.goToBedAt = now.addingTimeInterval(1800)
+        XCTAssertEqual(winding.chipLabel(at: now), "Bed in")
+    }
+}
