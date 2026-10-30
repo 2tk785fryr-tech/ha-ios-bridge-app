@@ -16,6 +16,18 @@ from .pairing import async_placeholders
 from .const import shift_types as parse_shift_types
 from .const import (
     CONF_AWAKE_HELPER,
+    CONF_APNS_KEY,
+    CONF_APNS_KEY_ID,
+    CONF_BEDROOM_DOOR,
+    CONF_DRIVE_SOURCE,
+    CONF_GOOGLE_KEY,
+    CONF_MAPS_KEY,
+    CONF_MAPS_KEY_ID,
+    CONF_TOMTOM_KEY,
+    CONF_PHONE_BATTERY,
+    CONF_PHONE_BATTERY_STATE,
+    CONF_WIND_DOWN_HELPER,
+    CONF_WIND_DOWN_NOTIFY,
     CONF_NAP_HELPER,
     CONF_BED_SENSOR,
     CONF_BEDTIME_HELPER,
@@ -93,6 +105,18 @@ OPTION_KEYS = [
     CONF_AWAKE_HELPER,
     CONF_RERUN_MINUTES,
     CONF_NAP_HELPER,
+    CONF_WIND_DOWN_HELPER,
+    CONF_BEDROOM_DOOR,
+    CONF_WIND_DOWN_NOTIFY,
+    CONF_PHONE_BATTERY,
+    CONF_PHONE_BATTERY_STATE,
+    CONF_APNS_KEY,
+    CONF_APNS_KEY_ID,
+    CONF_DRIVE_SOURCE,
+    CONF_MAPS_KEY,
+    CONF_MAPS_KEY_ID,
+    CONF_TOMTOM_KEY,
+    CONF_GOOGLE_KEY,
 ]
 
 
@@ -196,6 +220,28 @@ def _schema(hass: HomeAssistant, current: dict[str, Any]) -> vol.Schema:
             vol.Optional(CONF_SLEEP_IN, description=suggested(CONF_SLEEP_IN)): entity(["input_boolean"]),
             vol.Optional(CONF_AWAKE_HELPER, description=suggested(CONF_AWAKE_HELPER)): entity(["input_boolean"]),
             vol.Optional(CONF_NAP_HELPER, description=suggested(CONF_NAP_HELPER)): entity(["input_boolean"]),
+            vol.Optional(CONF_WIND_DOWN_HELPER, description=suggested(CONF_WIND_DOWN_HELPER)): entity(["input_boolean"]),
+            vol.Optional(CONF_BEDROOM_DOOR, description=suggested(CONF_BEDROOM_DOOR)): entity(["binary_sensor"]),
+            vol.Optional(CONF_WIND_DOWN_NOTIFY, description=suggested(CONF_WIND_DOWN_NOTIFY)): selector.TextSelector(),
+            vol.Optional(CONF_PHONE_BATTERY, description=suggested(CONF_PHONE_BATTERY)): entity(["sensor"]),
+            vol.Optional(CONF_PHONE_BATTERY_STATE, description=suggested(CONF_PHONE_BATTERY_STATE)): entity(["sensor"]),
+            vol.Optional(CONF_APNS_KEY, description=suggested(CONF_APNS_KEY)): selector.TextSelector(
+                selector.TextSelectorConfig(multiline=True, type=selector.TextSelectorType.PASSWORD)
+            ),
+            vol.Optional(CONF_APNS_KEY_ID, description=suggested(CONF_APNS_KEY_ID)): selector.TextSelector(),
+            vol.Required(CONF_DRIVE_SOURCE, default=current.get(CONF_DRIVE_SOURCE) or "phone"): selector.SelectSelector(
+                selector.SelectSelectorConfig(options=["phone", "apple", "tomtom", "google", "longest"], translation_key=CONF_DRIVE_SOURCE)
+            ),
+            vol.Optional(CONF_MAPS_KEY, description=suggested(CONF_MAPS_KEY)): selector.TextSelector(
+                selector.TextSelectorConfig(multiline=True, type=selector.TextSelectorType.PASSWORD)
+            ),
+            vol.Optional(CONF_MAPS_KEY_ID, description=suggested(CONF_MAPS_KEY_ID)): selector.TextSelector(),
+            vol.Optional(CONF_TOMTOM_KEY, description=suggested(CONF_TOMTOM_KEY)): selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+            ),
+            vol.Optional(CONF_GOOGLE_KEY, description=suggested(CONF_GOOGLE_KEY)): selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+            ),
             vol.Required(
                 CONF_RERUN_MINUTES, default=current.get(CONF_RERUN_MINUTES) or DEFAULT_RERUN_MINUTES
             ): selector.NumberSelector(selector.NumberSelectorConfig(min=1, max=60, step=1, unit_of_measurement="min")),

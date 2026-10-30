@@ -7,6 +7,10 @@ struct BedtimeBridgeWidgets: WidgetBundle {
     var body: some Widget {
         NextAlarmWidget()
         WakeAlarmLiveActivity()
+        BedtimeLiveActivity()
+        NapControl()
+        WindDownControl()
+        TonightControl()
     }
 }
 

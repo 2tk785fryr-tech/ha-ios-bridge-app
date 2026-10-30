@@ -18,14 +18,17 @@ struct WeatherAdjustment: Equatable {
 enum PlanAdjustments {
     /// A plan whose alarms fall on a morning you turned off becomes one with no alarms,
     /// keeping what it found so the Tonight screen can still say why.
-    static func skipping(_ plan: WakePlan, morning skipped: Date?, calendar: Calendar = .current) -> WakePlan {
+    /// `noAlarms`: "No alarms tomorrow" (v0.4.3 item 3) rather than a skip.
+    static func skipping(_ plan: WakePlan, morning skipped: Date?, noAlarms: Bool = false, calendar: Calendar = .current) -> WakePlan {
         guard let skipped, let first = plan.firstAlarm, calendar.isDate(first, inSameDayAs: skipped) else { return plan }
         let day = skipped.formatted(.dateTime.weekday(.wide))
-        var off = WakePlan(source: .none, alarmTimes: [], reason: "Alarms off for \(day) morning")
+        var off = WakePlan(source: .none, alarmTimes: [], reason: noAlarms ? "No alarms \(day) morning" : "Alarms off for \(day) morning")
         off.shift = plan.shift
         off.appointment = plan.appointment
         off.atHome = plan.atHome
-        off.warnings = ["You turned off alarms for \(day) morning (\(plan.reason), first alarm \(WakePlanner.format(first))). Undo on the Tonight screen."] + plan.warnings
+        off.warnings = [noAlarms
+            ? "You chose no alarms for \(day) morning (\(plan.reason), first alarm \(WakePlanner.format(first))). Plan and set alarms to set them again."
+            : "You turned off alarms for \(day) morning (\(plan.reason), first alarm \(WakePlanner.format(first))). Undo on the Tonight screen."] + plan.warnings
         return off
     }
 

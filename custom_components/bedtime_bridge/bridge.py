@@ -10,6 +10,7 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import Event, EventStateChangedData, HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import (
     async_call_later,
@@ -20,12 +21,18 @@ from homeassistant.helpers.event import (
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
+from . import drivetime as dtm
 from . import ladder as ldr
+from . import weekly
+from .liveactivity import LiveActivities
+from .winddown import WindDown
 from .const import (
     BED_EMPTY_SECONDS,
     CMD_ARM,
     CMD_BACK_TO_BED,
     CMD_NAP_END,
+    CMD_PLAN_PREVIEW,
+    CMD_MORNING_UPDATE,
     CMD_NAP_START,
     CMD_LEAVE_CHECK,
     CMD_BEDTIME,
@@ -38,6 +45,14 @@ from .const import (
     LEAVE_CHECK_TAIL_MINUTES,
     CONF_AWAKE_HELPER,
     CONF_NAP_HELPER,
+    CONF_WIND_DOWN_HELPER,
+    CONF_PHONE_BATTERY,
+    CONF_PHONE_BATTERY_STATE,
+    CONF_DRIVE_SOURCE,
+    CONF_GOOGLE_KEY,
+    CONF_MAPS_KEY,
+    CONF_MAPS_KEY_ID,
+    CONF_TOMTOM_KEY,
     CONF_BED_SENSOR,
     CONF_BEDTIME_HELPER,
     CONF_CURTAIN_OFFSET,
@@ -89,6 +104,10 @@ from .const import (
     MSG_COMMAND_RAN,
     MSG_MORNING_CHANGED,
     MSG_NAP_ENDED,
+    MSG_PREVIEW,
+    MSG_RESET,
+    MSG_LIVE_ACTIVITY,
+    MSG_WIND_DOWN,
     MSG_NAP_STARTED,
     MSG_CANCELLED,
     MSG_CONTEXT,
@@ -212,6 +231,16 @@ class BedtimeBridge:
         self._command_unsubs: dict[str, Callable[[], None]] = {}
         # The leave checks still to send (item 17).
         self._leave_unsubs: list[Callable[[], None]] = []
+        # Tonight's wind-down (v0.4.3 item 5).
+        self.wind_down = WindDown(self)
+        # Live Activities by Apple push (0.4.4).
+        self.live = LiveActivities(self)
+        # Apple Maps' client keeps its access token between checks.
+        self._maps: dtm.AppleMaps | None = None
+        # RUN_MORNING_UPDATE timers for the morning Live Activity (v0.4.3 item 14).
+        self._morning_unsubs: list[Callable[[], None]] = []
+        # The weekly summary's timer (v0.4.3 item 15).
+        self._weekly_unsub: Callable[[], None] | None = None
 
     @property
     def options(self) -> dict[str, Any]:
@@ -245,6 +274,15 @@ class BedtimeBridge:
         # forecast every 15 minutes before leave-by.
         self.hass.async_create_task(self._recompute_ladder())
         self.entry.async_on_unload(async_track_time_interval(self.hass, self._weather_tick, timedelta(minutes=15)))
+        self.wind_down.async_start()
+        presence = self.options.get(CONF_PRESENCE) or []
+        if isinstance(presence, str):
+            presence = [presence]
+        if presence:
+            self.entry.async_on_unload(async_track_state_change_event(self.hass, presence, self._morning_presence))
+        self.entry.async_on_unload(self._cancel_morning_updates)
+        self._schedule_weekly()
+        self.entry.async_on_unload(lambda: self._weekly_unsub() if self._weekly_unsub else None)
     def _save(self) -> None:
         self._store.async_delay_save(lambda: {"state": self.state, "settings": self.settings}, 1)
 
@@ -319,9 +357,28 @@ class BedtimeBridge:
             MSG_MORNING_CHANGED: self._morning_changed,
             MSG_NAP_STARTED: self._nap_started,
             MSG_NAP_ENDED: self._nap_ended,
+            MSG_PREVIEW: self._preview,
+            MSG_WIND_DOWN: self._wind_down_action,
+            MSG_RESET: self._reset,
+            MSG_LIVE_ACTIVITY: self._live_activity,
         }.get(kind)
         if handler is None:
             return {"error": f"unknown message type: {kind}"}
+        # Every message may carry the app's wind-down settings (v0.4.3 item 5) and when this
+        # install of the app stops opening (item 9).
+        self.wind_down.adopt_settings(data.get("wind_down_settings"))
+        if isinstance(data.get("notification_levels"), dict):
+            self.state["notification_levels"] = {
+                k: v for k, v in data["notification_levels"].items() if v in ("normal", "time_sensitive", "critical")
+            }
+        if isinstance(data.get("charge_warning"), dict):
+            self.state["charge_warning"] = data["charge_warning"]
+        if isinstance(data.get("weekly_summary"), dict) and data["weekly_summary"] != self.state.get("weekly_settings"):
+            self.state["weekly_settings"] = data["weekly_summary"]
+            self._schedule_weekly()
+        if isinstance(data.get("app_expires"), str) and data["app_expires"] != self.state.get("app_expires"):
+            self.state["app_expires"] = data["app_expires"]
+            self._changed()
         result = await handler(data) or {}
         if kind in (MSG_PLANNED, MSG_CANCELLED, MSG_SKIPPED, MSG_UNSKIPPED, MSG_BEDTIME_UNDONE):
             await self._recompute_ladder()
@@ -332,7 +389,216 @@ class BedtimeBridge:
             # (v0.4.2 item 1, in _morning_changed).
             self.state["leave_reminders"] = []
             self._cancel_leave_checks()
-        return {"settings": self.settings_for_app(), **result}
+        if kind == MSG_STOPPED:
+            self._schedule_morning_updates()
+            if self.live.configured and self.state.get("morning_updates_until") and self.is_home():
+                await self.live.morning()
+        elif kind in (MSG_CANCELLED, MSG_SKIPPED, MSG_RESET) or (kind == MSG_MORNING_CHANGED and not data.get("alarm_times")):
+            self._cancel_morning_updates()
+            if self.live.configured:
+                await self.live.end_morning()
+        elif kind == MSG_LEAVE_BY and self.live.configured and self.state.get("morning_updates_until"):
+            # A new leave-by from a drive re-check: the countdown follows.
+            await self.live.morning()
+        if kind in (MSG_PLANNED, MSG_CANCELLED, MSG_SKIPPED, MSG_UNSKIPPED, MSG_MORNING_CHANGED):
+            changed = kind == MSG_MORNING_CHANGED
+            self.wind_down.refresh(
+                moved=True if changed else bool(data.get("first_alarm_moved")),
+                moved_reason=data.get("reason") if changed else data.get("moved_reason"),
+            )
+        return {
+            "settings": self.settings_for_app(), "wind_down": self.wind_down.summary(),
+            # The app skips its own leave reminders while home when the checks happen here.
+            "drive_checks_here": bool(self._drive_services()),
+            **result,
+        }
+
+    # MARK: Plug in your phone (v0.4.3 item 10)
+
+    def _battery(self) -> tuple[float | None, bool | None]:
+        """The companion app's battery level and whether it's charging (Full counts)."""
+        level_state = self.hass.states.get(self.options.get(CONF_PHONE_BATTERY) or "")
+        charge_state = self.hass.states.get(self.options.get(CONF_PHONE_BATTERY_STATE) or "")
+        try:
+            level = float(level_state.state) if level_state else None
+        except ValueError:
+            level = None
+        charging = None
+        if charge_state is not None and charge_state.state not in UNKNOWN_STATES:
+            charging = charge_state.state.lower() in ("charging", "full")
+        return level, charging
+
+    async def charge_check(self, level: Any = None, charging: Any = None, *, again: bool = True) -> None:
+        """At bedtime (with the phone's own reading) and at go to bed: under the threshold and
+        not charging → "Plug in your phone · alarms at 4:20", once more after 10 min if still
+        not charging."""
+        cfg = self.state.get("charge_warning") or {}
+        if not cfg.get("enabled", True):
+            return
+        sensor_level, sensor_charging = self._battery()
+        level = level if isinstance(level, (int, float)) else sensor_level
+        charging = charging if isinstance(charging, bool) else sensor_charging
+        if level is None or charging is None or charging or level >= int(cfg.get("threshold", 30)):
+            return
+        times = sorted(t for t in (_time(v) for v in self.state.get("alarm_times") or []) if t and t > dt_util.utcnow())
+        alarms = f" · alarms at {dt_util.as_local(times[0]).strftime('%-I:%M')}" if times else ""
+        await self.wind_down._notify("Plug in your phone", f"Plug in your phone{alarms}", tag="charge", time_sensitive=True)
+        if again:
+            async_call_later(self.hass, timedelta(minutes=10), callback(
+                lambda _now: self.hass.async_create_task(self.charge_check(again=False))))
+
+    # MARK: Morning Live Activity (v0.4.3 item 14)
+
+    @callback
+    def _schedule_morning_updates(self) -> None:
+        """After the first stop on a leave-by morning: RUN_MORNING_UPDATE every hour until 15 min
+        after leave-by, while home."""
+        until = _time(self.state.get("morning_updates_until"))
+        if self._morning_unsubs and until is not None and until > dt_util.utcnow():
+            return
+        # Last morning's timers have all fired: start over.
+        self._cancel_morning_updates()
+        leave_by = _time(self.state.get("leave_by"))
+        now = dt_util.utcnow()
+        end = leave_by + timedelta(minutes=LEAVE_CHECK_TAIL_MINUTES) if leave_by else None
+        if end is None or end <= now:
+            return
+        self.state["morning_updates_until"] = end.isoformat()
+        when = now + timedelta(hours=1)
+        while when < end:
+            self._morning_unsubs.append(async_track_point_in_utc_time(self.hass, self._morning_update_due, when))
+            when += timedelta(hours=1)
+        # The last one ends it.
+        self._morning_unsubs.append(async_track_point_in_utc_time(self.hass, self._morning_update_due, end))
+
+    @callback
+    def _cancel_morning_updates(self) -> None:
+        for unsub in self._morning_unsubs:
+            unsub()
+        self._morning_unsubs = []
+        self.state["morning_updates_until"] = None
+
+    @callback
+    def _morning_update_due(self, _now: datetime) -> None:
+        if not self.is_home():
+            return
+        if self.live.configured:
+            # By push: refreshed (or ended, 15 min after leave-by) without the app.
+            self.hass.async_create_task(self.live.morning())
+        else:
+            self.hass.async_create_task(self._command(CMD_MORNING_UPDATE))
+
+    @callback
+    def _morning_presence(self, event: Event[EventStateChangedData]) -> None:
+        """Left home during the morning: one more update, so the app ends the activity."""
+        until = _time(self.state.get("morning_updates_until"))
+        new = event.data.get("new_state")
+        if until is None or dt_util.utcnow() > until or new is None or self.is_home():
+            return
+        self._cancel_morning_updates()
+        if self.live.configured:
+            self.hass.async_create_task(self.live.end_morning())
+        else:
+            self.hass.async_create_task(self._command(CMD_MORNING_UPDATE))
+
+    # MARK: Weekly summary (v0.4.3 item 15)
+
+    @callback
+    def _schedule_weekly(self) -> None:
+        if self._weekly_unsub:
+            self._weekly_unsub()
+            self._weekly_unsub = None
+        when = weekly.next_run(self.state.get("weekly_settings") or {}, dt_util.utcnow())
+        if when is not None:
+            self._weekly_unsub = async_track_point_in_utc_time(
+                self.hass, callback(lambda _now: self.hass.async_create_task(self.send_weekly_summary())), when)
+
+    async def send_weekly_summary(self) -> dict[str, Any]:
+        """The week, as a sensor and a notification that opens the app's summary screen."""
+        summary = weekly.summarize(self.state.get("history") or [], self.state.get("wind_down_history") or [], dt_util.utcnow())
+        self.state["weekly_summary"] = summary
+        self._changed()
+        await self.wind_down._notify("Your week", summary["text"] or "Nothing tracked this week.", tag="weekly",
+                                     url="bedtimebridge://summary")
+        self._schedule_weekly()
+        return summary
+
+    async def bedtime_started(self, data: dict[str, Any]) -> None:
+        """Bedtime ran (the bedtime shortcut's Report Shortcut Ran RUN_BEDTIME, or Start Bedtime
+        Routine): wind-down ends (v0.4.3 item 5), the expiry warning (item 9) and Plug in your
+        phone (item 10), each once a night."""
+        await self.wind_down.bedtime_ran()
+        await self._warn_app_expiry()
+        today = dt_util.as_local(dt_util.utcnow()).date().isoformat()
+        if self.state.get("charge_checked_night") != today:
+            self.state["charge_checked_night"] = today
+            await self.charge_check(data.get("battery_level"), data.get("battery_charging"))
+
+    async def _warn_app_expiry(self) -> None:
+        """At bedtime on each of the last 2 days before the app stops opening (v0.4.3 item 9)."""
+        expires = _time(self.state.get("app_expires"))
+        now = dt_util.utcnow()
+        today = dt_util.as_local(now).date().isoformat()
+        if expires is None or not now < expires <= now + timedelta(days=2) or self.state.get("app_expiry_warned") == today:
+            return
+        self.state["app_expiry_warned"] = today
+        when = dt_util.as_local(expires).strftime("%a %-I:%M %p")
+        await self.wind_down._notify("Reinstall Bedtime Bridge", f"The app stops opening {when}. Reinstall it from Xcode (⌘R); settings are kept.",
+                                     tag="app_expiry")
+
+    async def _reset(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Reset alarms and backstops to nothing set (v0.4.3 item 7a): clears the alarm state, the
+        ladder's delay and weather moves, pending leave checks and phone commands, turns the
+        napping and winding-down helpers off, then recalculates the ladder from the calendar
+        alone (armed again if a covered shift is on it). Settings, the override, Sleep In and
+        Awake For Day are left as they are."""
+        self.state.update(empty_state())
+        self.state["last_morning_change"] = None
+        self.state["ladder"] = {}
+        self.state["ladder_plan"] = {}
+        self.state["ladder_delay"] = None
+        self.state["nap_alarm_times"] = []
+        self.state["leave_reminders"] = []
+        self._cancel_leave_checks()
+        for command in list(self._pending_commands):
+            await self._clear_command(command)
+        for command in list(self._command_unsubs):
+            self._unwatch_command(command)
+        self.state["command_started"] = {}
+        for option in (CONF_NAP_HELPER, CONF_WIND_DOWN_HELPER):
+            helper = self.options.get(option)
+            state = self.hass.states.get(helper or "")
+            if helper and state is not None and state.state == "on":
+                await self._turn_off(helper)
+        self.wind_down.cancel_timers()
+        self.state["wind_down"] = {"status": "off"}
+        await self._recompute_ladder()
+        self.wind_down.async_reschedule()
+        self._event(MSG_RESET)
+        return {}
+
+    async def _live_activity(self, data: dict[str, Any]) -> dict[str, Any]:
+        return self.live.handle(data)
+
+    async def _preview(self, data: dict[str, Any]) -> dict[str, Any]:
+        """The phone's Preview tomorrow (RUN_PLAN_PREVIEW): sets nothing, gives the wind-down
+        tomorrow's first alarm."""
+        await self._clear_command(CMD_PLAN_PREVIEW)
+        self.wind_down.preview_answered(data)
+        return {}
+
+    async def _wind_down_action(self, data: dict[str, Any]) -> dict[str, Any]:
+        """From the app, a control or Siri: start, cancel, later or stop_reminders."""
+        action = data.get("action")
+        if action == "start":
+            return {"started": await self.wind_down.start_now()}
+        if action == "cancel":
+            await self.wind_down.cancel()
+        elif action == "later":
+            await self.wind_down.later()
+        elif action == "stop_reminders":
+            self.wind_down.stop_reminders()
+        return {}
 
     async def _context(self, data: dict[str, Any]) -> dict[str, Any]:
         """Shift override and HA's next shift, read before the app plans."""
@@ -349,6 +615,8 @@ class BedtimeBridge:
             # The override or HA's next shift changed after the plan (v0.4.1 item 10).
             "plan_outdated": bool(self.state.get("plan_outdated")),
             "outdated_reason": self.state.get("outdated_reason"),
+            "wind_down": self.wind_down.summary(),
+            "weekly_summary": self.state.get("weekly_summary"),
             "curtains_open_at": self._curtains_open(_time(data.get("first_alarm")) or dt_util.utcnow()),
         }
 
@@ -420,6 +688,8 @@ class BedtimeBridge:
         self.state["plan_error"] = None
         self.state["ladder_plan"] = data.get("ladder") or {}
         self.state["leave_reminders"] = [int(m) for m in data.get("leave_reminders") or []]
+        # Where and when the morning's drive arrives, for drive checks here (0.4.4).
+        self.state["trip"] = data.get("trip") if isinstance(data.get("trip"), dict) else None
         self._check_alarms_set(data)
         if (data.get("ladder") or {}).get("work_buffer_minutes") is not None:
             self.state["work_buffer_minutes"] = int(data["ladder"]["work_buffer_minutes"])
@@ -982,6 +1252,15 @@ class BedtimeBridge:
         """The wake-up is over (every alarm stopped, ended all, or changed): this morning's
         snoozes become Snoozes last morning and the count starts again at 0."""
         self.state["snoozes_last_morning"] = int(self.state.get("snooze_count") or 0)
+        # For the weekly summary (v0.4.3 item 15): snoozes, and the backstops whose time came
+        # while the ladder was armed before the morning ended.
+        now = dt_util.utcnow()
+        ladder = self.state.get("ladder") or {}
+        fired = 0
+        if ladder.get("status") == "armed":
+            fired = sum(1 for v in (ladder.get("times") or {}).values() if (t := _time(v)) and now - timedelta(hours=6) < t <= now)
+        weekly.record(self.state.setdefault("history", []), "morning", now,
+                      snoozes=self.state["snoozes_last_morning"], backstops_fired=fired)
         self.state["snooze_count"] = 0
 
     # MARK: Temporary alarms
@@ -993,6 +1272,7 @@ class BedtimeBridge:
         wake routines, Good Morning or backstops; Sleep In and Awake For Day stay. The napping
         helper goes on while you're home; the nap Focus shortcut runs home or away."""
         times = [t.isoformat() for t in sorted(t for t in (_time(v) for v in data.get("alarm_times") or []) if t)]
+        weekly.record(self.state.setdefault("history", []), "nap", dt_util.utcnow(), minutes=data.get("minutes"))
         self.state["nap_alarm_times"] = times
         helper = self.options.get(CONF_NAP_HELPER)
         helper_on = bool(helper) and self.is_home()
@@ -1166,8 +1446,84 @@ class BedtimeBridge:
             # Already left, or the shift came off the calendar: no more checks.
             self.state["leave_reminders"] = []
             self._cancel_leave_checks()
+            if self.is_home():
+                self._drop_leave_by()
+            return
+        if await self._drive_check_here():
             return
         await self._command(CMD_LEAVE_CHECK)
+
+    # MARK: Drive times here (0.4.4)
+
+    def _drive_services(self) -> list[Any]:
+        """The services chosen in the options, as far as their keys are in; empty means the phone."""
+        source = self.options.get(CONF_DRIVE_SOURCE) or dtm.SOURCE_PHONE
+        if source == dtm.SOURCE_PHONE:
+            return []
+        session = async_get_clientsession(self.hass)
+        live = self.state.get("live_activity") or {}
+        services: dict[str, Any] = {}
+        if self.options.get(CONF_MAPS_KEY) and self.options.get(CONF_MAPS_KEY_ID) and live.get("team_id"):
+            if self._maps is None:
+                self._maps = dtm.AppleMaps(session, self.options[CONF_MAPS_KEY], self.options[CONF_MAPS_KEY_ID], live["team_id"])
+            services[dtm.SOURCE_APPLE] = self._maps
+        if self.options.get(CONF_TOMTOM_KEY):
+            services[dtm.SOURCE_TOMTOM] = dtm.TomTom(session, self.options[CONF_TOMTOM_KEY])
+        if self.options.get(CONF_GOOGLE_KEY):
+            services[dtm.SOURCE_GOOGLE] = dtm.Google(session, self.options[CONF_GOOGLE_KEY], live.get("bundle_id"))
+        if source == dtm.SOURCE_LONGEST:
+            return list(services.values())
+        return [services[source]] if source in services else []
+
+    def _home_place(self) -> dtm.Place | None:
+        home = self.hass.states.get("zone.home")
+        if home is None or home.attributes.get("latitude") is None:
+            if self.hass.config.latitude is None:
+                return None
+            return dtm.Place("home", self.hass.config.latitude, self.hass.config.longitude)
+        return dtm.Place("home", home.attributes["latitude"], home.attributes["longitude"])
+
+    async def _drive_check_here(self) -> bool:
+        """A leave check worked out here: the drive arriving by the trip's arrive-by with the
+        traffic expected then; leave-by moves and you're told. False: ask the phone instead."""
+        services = self._drive_services()
+        trip = self.state.get("trip") or {}
+        arrive_by = _time(trip.get("arrive_by"))
+        origin = self._home_place()
+        if not services or arrive_by is None or origin is None or not (trip.get("location") or trip.get("latitude") is not None):
+            return False
+        destination = dtm.Place(trip.get("location") or "", trip.get("latitude"), trip.get("longitude"))
+        try:
+            seconds = await dtm.drive_seconds(services, origin, destination, arrive_by)
+        except dtm.DriveTimeError as err:
+            _LOGGER.warning("Bedtime Bridge couldn't check the drive here, asking the phone: %s", err)
+            return False
+        planned = int(trip.get("planned_minutes") or self.state.get("drive_minutes") or 0)
+        minutes = round(seconds / 60)
+        leave_by = arrive_by - timedelta(seconds=seconds)
+        await self._leave_by({"leave_by": leave_by.isoformat(), "drive_minutes": minutes, "note": "checked by Home Assistant"})
+        await self._notify_leave(leave_by, minutes, planned, trip)
+        if self.live.configured and self.state.get("morning_updates_until"):
+            await self.live.morning()
+        return True
+
+    async def _notify_leave(self, leave_by: datetime, minutes: int, planned: int, trip: dict[str, Any]) -> None:
+        """"Leave by 5:48 · 32 min drive (5 min worse than planned)", or "Leave now · …", as the app says it."""
+        now = dt_util.utcnow()
+        head = "Leave now" if leave_by <= now + timedelta(minutes=1) else f"Leave by {dt_util.as_local(leave_by).strftime('%-I:%M')}"
+        difference = minutes - planned if planned else 0
+        change = f" ({abs(difference)} min {'worse' if difference > 0 else 'lighter'} than planned)" if abs(difference) >= 3 else ""
+        start = _time(trip.get("start"))
+        body = f"{trip.get('title') or 'Your drive'}" + (f" at {dt_util.as_local(start).strftime('%-I:%M %p')}." if start else ".")
+        await self.wind_down._notify(f"{head} · {minutes} min drive{change}", body, tag="leave_check", time_sensitive=True)
+
+    def _drop_leave_by(self) -> None:
+        """The shift behind leave-by is gone: leave-by goes too, so nothing shows a morning
+        that isn't happening."""
+        self.state["leave_by"] = None
+        self.state["leave_reminders"] = []
+        self._cancel_leave_checks()
+        self._changed()
 
     def _leave_shift_still_on(self) -> bool:
         """With no alarms left on a work morning, the checks run only while the calendar still
@@ -1217,6 +1573,12 @@ class BedtimeBridge:
         self._check_alarms_set(data)
         if not times:
             self.state["alarm_cause"] = "noalarm"
+        if data.get("phase") not in ("bedtime", "edit"):
+            # Mornings changed, for the weekly summary: once per morning, not Sleep later or edits.
+            history = self.state.setdefault("history", [])
+            today = dt_util.as_local(dt_util.utcnow()).date().isoformat()
+            if not any(h.get("kind") == "change" and dt_util.as_local(dt_util.parse_datetime(h["time"])).date().isoformat() == today for h in history):
+                weekly.record(history, "change", dt_util.utcnow(), reason=data.get("reason"))
         self.state["last_morning_change"] = {
             "delay_minutes": delay if times else None,
             "alarm_times": self.state["alarm_times"],
@@ -1238,6 +1600,9 @@ class BedtimeBridge:
         leave_by = _time(self.state.get("leave_by"))
         if times and scope == "wake_up" and delay and leave_by is not None:
             self.state["leave_by"] = (leave_by + timedelta(minutes=delay)).isoformat()
+            trip = self.state.get("trip") or {}
+            if _time(trip.get("arrive_by")):
+                trip["arrive_by"] = (_time(trip["arrive_by"]) + timedelta(minutes=delay)).isoformat()
             self._schedule_leave_checks()
         if phase not in ("bedtime", "edit"):
             await self._restart_wake_automations()
@@ -1246,6 +1611,9 @@ class BedtimeBridge:
             await self._sync_sleep_in(blocking=True)
         else:
             await self._set_sleep_in(bool(data.get("sleep_in", True)), blocking=True)
+            if not self._leave_shift_still_on():
+                # No alarms, and the shift is already off the calendar: no leave-by either.
+                self._drop_leave_by()
         at_home = self.is_home()
         if phase in ("bedtime", "edit"):
             # Sleep later before bed (item 12) or an edited alarm (item 13): nothing in the house,
@@ -1307,6 +1675,8 @@ class BedtimeBridge:
         """Up again after bedtime ran: alarms are off on the phone; here the house is
         disarmed, Awake For Day goes back on and Sleep In off. Once you're back in bed, bedtime
         runs again (RUN_BEDTIME, the same push the bedtime nudge sends)."""
+        # Wind-down doesn't restart; only its reminders run (v0.4.3 item 5).
+        self.wind_down.bedtime_undone()
         self.state.update(empty_state())
         now = dt_util.utcnow()
         self.state["undone_at"] = now.isoformat()
@@ -1477,6 +1847,10 @@ class BedtimeBridge:
         command = data.get("command")
         # "ran" is Started (the shortcut's first step); "completed" its last; "already_done".
         outcome = data.get("outcome") or "ran"
+        if command == CMD_BEDTIME and outcome == "ran":
+            # The bedtime shortcut's first step: this is bedtime, whether a push or you ran it
+            # (it never sends "bedtime" itself).
+            await self.bedtime_started(data)
         now = dt_util.utcnow().isoformat()
         if command in COMMANDS:
             await self._clear_command(command)
@@ -1542,11 +1916,16 @@ class BedtimeBridge:
         self._changed()
 
     async def _cancelled(self, data: dict[str, Any]) -> None:
+        """Alarms cleared. "No alarms tomorrow" (v0.4.3 item 3) sends sleep_in; the ladder then
+        follows the calendar alone (armed while a covered shift is on it)."""
         self.state.update(empty_state())
-        self._event(MSG_CANCELLED)
+        if "sleep_in" in data:
+            await self._set_sleep_in(bool(data["sleep_in"]))
+        self._event(MSG_CANCELLED, sleep_in=data.get("sleep_in"), morning=data.get("morning"))
 
     async def _bedtime(self, data: dict[str, Any]) -> dict[str, Any]:
         """Starts the bedtime routine by turning on its helper, only when you're home."""
+        await self.bedtime_started(data)
         at_home = self.is_home()
         helper = self.options.get(CONF_BEDTIME_HELPER)
         started = False

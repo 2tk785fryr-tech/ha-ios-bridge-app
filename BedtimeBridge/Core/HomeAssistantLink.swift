@@ -24,6 +24,13 @@ enum BridgeEvent: String {
     case morningChanged = "morning_changed"
     case napStarted = "nap_started"
     case napEnded = "nap_ended"
+    /// v0.4.3 item 5: Preview tomorrow's answer, and wind-down actions (start, cancel, stop_reminders).
+    case preview
+    case windDown = "wind_down"
+    /// v0.4.3 item 7a.
+    case reset
+    /// Live Activity push tokens and the morning lines Home Assistant can't work out.
+    case liveActivity = "live_activity"
 }
 
 /// For item 3's confirm screen: the backstops now, and when the curtains open that morning.
@@ -113,7 +120,23 @@ enum HomeAssistantLinks {
         return remote.isEmpty && local.isEmpty ? nil : (remote, local)
     }
 
+    private static let everyMessageKey = "homeAssistantEveryMessage.v1"
+
+    /// Added to every message (wind-down settings, v0.4.3 item 5), kept current by SettingsStore.
+    static var everyMessage: [String: Any] {
+        get {
+            guard let data = UserDefaults.standard.data(forKey: everyMessageKey) else { return [:] }
+            return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+        }
+        set { UserDefaults.standard.set(try? JSONSerialization.data(withJSONObject: newValue), forKey: everyMessageKey) }
+    }
+
     private static let cachedSettingsKey = "homeAssistantSettings.v1"
+
+    static let driveChecksHereKey = "homeAssistantDriveChecks.v1"
+
+    /// Home Assistant re-checks the drive itself at each leave check (drive times there, 0.4.4).
+    static var driveChecksHere: Bool { UserDefaults.standard.bool(forKey: driveChecksHereKey) }
 
     /// Last settings Home Assistant sent back, so snooze/stop in the morning use them
     /// without another round trip.
@@ -186,7 +209,8 @@ struct IntegrationLink: HomeAssistantLink {
 
     /// The integration checks presence and turns on its bedtime helper.
     func startBedtime(settings: BridgeSettings) async throws -> (started: Bool, atHome: Bool) {
-        let reply = try await send("bedtime")
+        // The phone's own battery reading, for Plug in your phone (v0.4.3 item 10).
+        let reply = try await send("bedtime", data: await PhoneBattery.reading())
         return (reply["started"] as? Bool ?? false, reply["at_home"] as? Bool ?? true)
     }
 
@@ -244,6 +268,7 @@ struct IntegrationLink: HomeAssistantLink {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let data = data.merging(HomeAssistantLinks.everyMessage) { mine, _ in mine }
         request.httpBody = try JSONSerialization.data(withJSONObject: ["type": type, "data": data])
         let (body, response) = try await session.data(for: request)
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
@@ -255,6 +280,15 @@ struct IntegrationLink: HomeAssistantLink {
         }
         if let settings = reply["settings"] as? [String: Any] {
             HomeAssistantLinks.cachedSettings = settings
+        }
+        if let windDown = reply["wind_down"] as? [String: Any] {
+            WindDownState.cached = WindDownState(windDown)
+        }
+        if let here = reply["drive_checks_here"] as? Bool {
+            UserDefaults.standard.set(here, forKey: HomeAssistantLinks.driveChecksHereKey)
+        }
+        if let week = reply["weekly_summary"] as? [String: Any] {
+            WeeklySummary.cached = WeeklySummary(week)
         }
         return reply
     }

@@ -78,6 +78,10 @@ struct BridgeSettings: Codable, Equatable {
     var appointmentCalendarIDs: Set<String> = []
     /// Appointments are only considered when their notes contain this text.
     var appointmentKeyword = "wake up"
+    /// All-day events with one of these titles are leave (v0.4.3 item 12); the first titles new leave.
+    var leaveTitles = ["Leave"]
+    /// Where Add leave and Add a wake-up event save; empty is the calendar holding the shifts.
+    var newEventsCalendarID = ""
     /// Time to get ready before leaving for an appointment.
     var getReadyMinutes = 60
     /// Arrive this long before an appointment starts.
@@ -144,6 +148,63 @@ struct BridgeSettings: Codable, Equatable {
     var napReadyNoAddressMinutes = 0
     /// The quick choices, in minutes.
     var napLengths = [20, 30, 45, 60, 90, 120]
+
+    // MARK: Wind-down (v0.4.3 item 5)
+
+    /// Off until the phone side is set up.
+    var windDownEnabled = false
+    /// Go to bed = tomorrow's first alarm − this.
+    var sleepGoalMinutes = 390
+    var windDownMinutes = 60
+    /// Getting home late: at least this long free before wind-down starts…
+    var freeAfterHomeMinutes = 30
+    /// …and at least this much wind-down (bedtime moves later instead).
+    var minimumWindDownMinutes = 30
+    /// The warning before wind-down; 0 is off.
+    var windDownWarningMinutes = 5
+    /// The warning's "Later" button.
+    var windDownLaterMinutes = 15
+    var notInBedReminders = true
+    var reminderFirstMinutes = 10
+    var reminderEveryMinutes = 10
+    var reminderStopMinutes = 60
+    /// RUN_PLAN_PREVIEW this long before the wind-down the shift calendar gives…
+    var planCheckBeforeMinutes = 120
+    /// …or at this time ("HH:mm") when only an appointment might decide tomorrow.
+    var planCheckFallback = "18:00"
+    /// Wind-down for your own alarm on a day off.
+    var windDownOwnAlarm = true
+    /// "Start wind-down now" shows from this long before go to bed (also on When options show).
+    var startWindDownHours = 2
+
+    // MARK: Notifications
+
+    /// Each notification's level by NotificationKind key; one not here uses its default.
+    var notificationLevels: [String: String] = [:]
+
+    // MARK: Shortcuts & controls (v0.4.3 item 16)
+
+    /// Quick actions per moment ("daytime", "evening", "morning"); a moment not here uses its defaults.
+    var quickActions: [String: [String]] = [:]
+    /// The Wind-down control opens the app first instead of acting directly.
+    var windDownControlOpensApp = false
+    /// The Nap control naps with the first quick length straight away instead of opening the nap screen.
+    var napControlNapsNow = false
+    /// The Next alarm widget always opens Tonight instead of what matters now.
+    var widgetTapAlwaysTonight = false
+
+    // MARK: Weekly summary (v0.4.3 item 15)
+
+    var weeklySummaryEnabled = true
+    /// 0 = Monday … 6 = Sunday.
+    var weeklySummaryWeekday = 6
+    var weeklySummaryTime = "18:00"
+
+    // MARK: Plug in your phone (v0.4.3 item 10)
+
+    /// At bedtime (and go to bed with wind-down on): under this battery and not charging, a reminder.
+    var chargeWarningEnabled = true
+    var chargeWarningThreshold = 30
 
     // MARK: Your own alarm's backstops (v0.4.1 item 14)
 
@@ -238,6 +299,19 @@ struct BridgeSettings: Codable, Equatable {
 }
 
 extension BridgeSettings {
+    /// Sent with every message, so Home Assistant always has the current wind-down settings.
+    var windDownForHomeAssistant: [String: Any] {
+        [
+            "enabled": windDownEnabled, "sleep_goal_minutes": sleepGoalMinutes, "length_minutes": windDownMinutes,
+            "free_minutes": freeAfterHomeMinutes, "minimum_minutes": minimumWindDownMinutes,
+            "warning_minutes": windDownWarningMinutes, "later_minutes": windDownLaterMinutes,
+            "reminders": notInBedReminders, "reminder_first_minutes": reminderFirstMinutes,
+            "reminder_every_minutes": reminderEveryMinutes, "reminder_stop_minutes": reminderStopMinutes,
+            "preview_before_minutes": planCheckBeforeMinutes, "preview_fallback": planCheckFallback,
+            "own_alarm": windDownOwnAlarm, "start_hours": startWindDownHours,
+        ]
+    }
+
     /// The settings a plan depends on (shifts, alarm series, timings, drive, weather, calendars,
     /// home), so Tonight can tell the plan changed after the alarms were set (v0.4.1 item 10).
     var planFingerprint: String {
@@ -370,6 +444,7 @@ final class SettingsStore {
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         settings = defaults.data(forKey: Self.key).flatMap(Self.decode) ?? BridgeSettings()
+        HomeAssistantLinks.everyMessage = Self.everyMessage(settings)
     }
 
     /// Lays saved values over the defaults, so settings added in a later version don't
@@ -387,12 +462,36 @@ final class SettingsStore {
         if let data = try? JSONEncoder().encode(settings) {
             defaults.set(data, forKey: Self.key)
         }
+        HomeAssistantLinks.everyMessage = Self.everyMessage(settings)
+        UserDefaults.standard.set(settings.notificationLevels, forKey: NotificationKind.savedKey)
+        // The controls and the widget's tap read these from the shared snapshot (v0.4.3 item 16).
+        var snapshot = NextAlarmSnapshot.load()
+        snapshot.windDownControlOpensApp = settings.windDownControlOpensApp
+        snapshot.napControlNapsNow = settings.napControlNapsNow
+        snapshot.widgetTapAlwaysTonight = settings.widgetTapAlwaysTonight
+        snapshot.startWindDownHours = settings.startWindDownHours
+        snapshot.save()
+        ControlRefresh.reload()
+    }
+
+    /// Wind-down settings (v0.4.3 item 5) and when this install expires (item 9).
+    static func everyMessage(_ settings: BridgeSettings) -> [String: Any] {
+        var message: [String: Any] = [
+            "wind_down_settings": settings.windDownForHomeAssistant,
+            "charge_warning": ["enabled": settings.chargeWarningEnabled, "threshold": settings.chargeWarningThreshold],
+            "weekly_summary": ["enabled": settings.weeklySummaryEnabled, "weekday": settings.weeklySummaryWeekday, "time": settings.weeklySummaryTime],
+            "notification_levels": NotificationKind.forHomeAssistant(settings),
+        ]
+        if let expires = AppExpiry.iso { message["app_expires"] = expires }
+        return message
     }
 }
 
 enum WeatherSource: String, Codable, CaseIterable, Identifiable {
     case homeAssistant
     case openMeteo
+    /// WeatherKit, with the paid Developer Program.
+    case apple
 
     var id: String { rawValue }
 
@@ -400,6 +499,7 @@ enum WeatherSource: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .homeAssistant: "Home Assistant"
         case .openMeteo: "Open-Meteo (free)"
+        case .apple: "Apple Weather"
         }
     }
 }

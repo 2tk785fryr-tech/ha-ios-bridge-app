@@ -5,11 +5,18 @@ import UserNotifications
 final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = self
-        LocationQuestions.registerCategory()
+        LocationQuestions.registerCategories()
         return true
     }
 
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+        // "Tomorrow changed … Re-plan?" (v0.4.3 item 4): opens the preview, which changes nothing
+        // until you confirm.
+        if response.notification.request.content.categoryIdentifier == PlanChangeNotice.category,
+           response.actionIdentifier != UNNotificationDismissActionIdentifier {
+            await MainActor.run { _ = UIApplication.shared.open(PlanChangeNotice.replanURL) }
+            return
+        }
         guard response.notification.request.content.categoryIdentifier == LocationQuestions.category,
               let eventID = response.notification.request.content.userInfo["eventID"] as? String else { return }
 
@@ -29,6 +36,13 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         guard answered else { return }
         // Either answer changes the wake-up time (real drive, or none), so plan again.
         _ = try? await BedtimeCoordinator.shared.planAndSchedule(settings: SettingsStore.shared.settings)
+    }
+
+    /// Quick actions on the app icon (v0.4.3 item 16) arrive through this scene delegate.
+    func application(_ application: UIApplication, configurationForConnecting connectingSceneSession: UISceneSession, options: UIScene.ConnectionOptions) -> UISceneConfiguration {
+        let configuration = UISceneConfiguration(name: nil, sessionRole: connectingSceneSession.role)
+        configuration.delegateClass = QuickActionSceneDelegate.self
+        return configuration
     }
 
     /// Show it even while the app is open.

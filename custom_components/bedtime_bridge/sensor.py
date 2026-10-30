@@ -66,6 +66,18 @@ def _rung_attributes(s: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _wind(s: dict[str, Any]) -> dict[str, Any]:
+    return s.get("wind_down") or {}
+
+
+def _last_night(s: dict[str, Any]) -> dict[str, Any]:
+    """Tonight once you're in bed, else the last night kept in history."""
+    if _wind(s).get("went_to_bed"):
+        return _wind(s)
+    history = s.get("wind_down_history") or []
+    return history[-1] if history else {}
+
+
 def _next_rung(s: dict[str, Any]) -> str | None:
     now = dt_util.utcnow()
     ahead = [(when, rung) for rung, v in (_ladder(s).get("times") or {}).items() if (when := _time(v)) and when > now]
@@ -171,6 +183,65 @@ SENSORS = (
         },
         # The house backstop's own times (old template until the cutover) come from the bridge.
         bridge_attributes=lambda bridge: {"house_backstop": bridge.house_backstop()},
+    ),
+    # Wind-down (v0.4.3 item 5).
+    BridgeSensorDescription(
+        key="wind_down_status",
+        translation_key="wind_down_status",
+        device_class=SensorDeviceClass.ENUM,
+        options=["scheduled", "winding_down", "bedtime", "cancelled", "off"],
+        icon="mdi:weather-night",
+        value=lambda s: _wind(s).get("status") or "off",
+        attributes=lambda s: {
+            "first_alarm": _wind(s).get("first_alarm"),
+            "source": _wind(s).get("source"),
+            "appointments_checked": _wind(s).get("checked", True),
+            "reminders_sent": _wind(s).get("reminders_sent") or 0,
+            "reminders_stopped": bool(_wind(s).get("reminders_stopped")),
+        },
+    ),
+    BridgeSensorDescription(
+        key="wind_down",
+        translation_key="wind_down",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        value=lambda s: _time(_wind(s).get("wind_down")),
+    ),
+    BridgeSensorDescription(
+        key="go_to_bed",
+        translation_key="go_to_bed",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        value=lambda s: _time(_wind(s).get("go_to_bed")),
+    ),
+    BridgeSensorDescription(
+        key="went_to_bed",
+        translation_key="went_to_bed",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        value=lambda s: _time(_last_night(s).get("went_to_bed")),
+    ),
+    BridgeSensorDescription(
+        key="bed_off_target",
+        translation_key="bed_off_target",
+        device_class=SensorDeviceClass.DURATION,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTime.MINUTES,
+        value=lambda s: _last_night(s).get("minutes_off"),
+    ),
+    # v0.4.3 item 15: the week, sent Sunday evening (by default).
+    BridgeSensorDescription(
+        key="weekly_summary",
+        translation_key="weekly_summary",
+        icon="mdi:calendar-week",
+        value=lambda s: ((s.get("weekly_summary") or {}).get("text") or "")[:255] or None,
+        attributes=lambda s: {k: v for k, v in (s.get("weekly_summary") or {}).items() if k != "text"},
+    ),
+    # v0.4.3 item 9: free-team installs stop opening after 7 days.
+    BridgeSensorDescription(
+        key="app_expires",
+        translation_key="app_expires",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        icon="mdi:cellphone-key",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value=lambda s: _time(s.get("app_expires")),
     ),
     BridgeSensorDescription(
         key="last_event",

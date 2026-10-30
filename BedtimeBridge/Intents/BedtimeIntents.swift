@@ -267,6 +267,12 @@ enum PhoneCommand: String, AppEnum {
     case leaveCheck = "RUN_LEAVE_CHECK"
     case napStart = "RUN_NAP_START"
     case napEnd = "RUN_NAP_END"
+    // v0.4.3 item 5
+    case planPreview = "RUN_PLAN_PREVIEW"
+    case windDown = "RUN_WIND_DOWN"
+    case windDownCancel = "RUN_WIND_DOWN_CANCEL"
+    // v0.4.3 item 14
+    case morningUpdate = "RUN_MORNING_UPDATE"
 
     static var typeDisplayRepresentation: TypeDisplayRepresentation = "Phone Command"
     static var caseDisplayRepresentations: [PhoneCommand: DisplayRepresentation] = [
@@ -278,6 +284,10 @@ enum PhoneCommand: String, AppEnum {
         .leaveCheck: "Leave check (RUN_LEAVE_CHECK)",
         .napStart: "Nap start (RUN_NAP_START)",
         .napEnd: "Nap end (RUN_NAP_END)",
+        .planPreview: "Preview tomorrow (RUN_PLAN_PREVIEW)",
+        .windDown: "Wind down on (RUN_WIND_DOWN)",
+        .windDownCancel: "Wind down off (RUN_WIND_DOWN_CANCEL)",
+        .morningUpdate: "Morning update (RUN_MORNING_UPDATE)",
     ]
 }
 
@@ -322,6 +332,21 @@ struct ReportShortcutRanIntent: AppIntent {
     }
 }
 
+/// RUN_PLAN_PREVIEW (v0.4.3 item 5): plans tomorrow in the background without setting any
+/// alarms, and tells Home Assistant the first alarm for tonight's wind-down.
+struct PreviewTomorrowIntent: AppIntent {
+    static var title: LocalizedStringResource = "Preview Tomorrow"
+    static var description = IntentDescription(
+        "Works out tomorrow's wake-up without setting alarms and sends the first alarm, cause, event and leave-by to Home Assistant for the wind-down."
+    )
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ReturnsValue<WakePlanEntity> {
+        let plan = try await BedtimeCoordinator.shared.previewTomorrow(settings: SettingsStore.shared.settings)
+        return .result(value: WakePlanEntity(plan: plan))
+    }
+}
+
 struct BedtimeBridgeShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
@@ -335,6 +360,49 @@ struct BedtimeBridgeShortcuts: AppShortcutsProvider {
             phrases: ["Cancel my \(.applicationName) alarms"],
             shortTitle: "Cancel Alarms",
             systemImageName: "alarm.waves.left.and.right"
+        )
+        // v0.4.3 item 11
+        AppShortcut(
+            intent: NapIntent(),
+            phrases: ["Nap \(\.$length) with \(.applicationName)", "Start a \(.applicationName) nap", "Nap with \(.applicationName)"],
+            shortTitle: "Nap",
+            systemImageName: "powersleep"
+        )
+        AppShortcut(
+            intent: NoAlarmsTomorrowIntent(),
+            phrases: ["No alarms tomorrow in \(.applicationName)", "No \(.applicationName) alarms tomorrow"],
+            shortTitle: "No Alarms Tomorrow",
+            systemImageName: "alarm.slash"
+        )
+        AppShortcut(
+            intent: SleepLaterIntent(),
+            phrases: ["Sleep later \(\.$amount) with \(.applicationName)", "Sleep later with \(.applicationName)"],
+            shortTitle: "Sleep Later",
+            systemImageName: "clock.arrow.circlepath"
+        )
+        AppShortcut(
+            intent: StartWindDownIntent(),
+            phrases: ["Start wind-down in \(.applicationName)", "Start winding down with \(.applicationName)"],
+            shortTitle: "Start Wind-Down",
+            systemImageName: "moon.zzz"
+        )
+        AppShortcut(
+            intent: CancelWindDownIntent(),
+            phrases: ["Cancel wind-down in \(.applicationName)"],
+            shortTitle: "Cancel Wind-Down",
+            systemImageName: "moon.zzz.fill"
+        )
+        AppShortcut(
+            intent: AddLeaveIntent(),
+            phrases: ["Add leave in \(.applicationName)"],
+            shortTitle: "Add Leave",
+            systemImageName: "beach.umbrella"
+        )
+        AppShortcut(
+            intent: AddWakeUpEventIntent(),
+            phrases: ["Add a wake-up event in \(.applicationName)"],
+            shortTitle: "Add Wake-Up Event",
+            systemImageName: "calendar.badge.plus"
         )
     }
 }

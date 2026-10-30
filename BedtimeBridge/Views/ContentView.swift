@@ -27,13 +27,27 @@ struct ContentView: View {
     @State private var morningContext: MorningContext?
     @State private var morningContextLoaded = false
     @State private var sheet: Sheet?
+    /// Cancel wind-down: a plain confirm (v0.4.3 item 5).
+    @State private var confirmCancelWindDown = false
 
     private enum Sheet: Identifiable {
         case temporary, dayOff, skipToTime, nap, napChange, sleepLater, editAlarms
         case changeMorning(MorningChangePhase)
+        /// v0.4.3 item 1: what a manual set would do, before anything is set.
+        case preview(PlanPreview)
+        /// v0.4.3 item 3, for that morning.
+        case noAlarms(Date)
+        /// v0.4.3 items 12 and 13.
+        case addLeave, addWakeUp
+        /// v0.4.3 item 15, from the weekly notification.
+        case weeklySummary
         var id: String {
-            if case .changeMorning(let phase) = self { return "changeMorning-\(phase.rawValue)" }
-            return String(describing: self)
+            switch self {
+            case .changeMorning(let phase): "changeMorning-\(phase.rawValue)"
+            case .preview(let preview): "preview-\(preview.id)"
+            case .noAlarms: "noAlarms"
+            default: String(describing: self)
+            }
         }
     }
 
@@ -47,6 +61,11 @@ struct ContentView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     header
+
+                    // Free-team installs stop opening after 7 days (v0.4.3 item 9).
+                    if let expiry = AppExpiry.banner(expires: AppExpiry.date) {
+                        WarningBanner(text: expiry.text, systemImage: "hammer", tint: expiry.urgent ? Theme.danger : Theme.warning.text)
+                    }
 
                     if coordinator.isNapping {
                         NappingCard(alarms: coordinator.napAlarms, status: coordinator.napStatus,
@@ -80,7 +99,7 @@ struct ContentView: View {
                             WarningBanner(text: "+\(weather.minutes) min for \(weather.reason)", systemImage: "cloud.rain")
                         }
                         if plan.source == .appointment, let appointment = plan.appointment, let wake = plan.wakeTime {
-                            MorningTimeline(appointment: appointment, weather: plan.weather, wake: wake, bufferMinutes: settings.arrivalBufferMinutes).with(backstopInfo(leaveBy: plan.leaveBy(settings: settings), firstDayBack: plan.firstDayBack ?? false, replacedShift: plan.replacedShift))
+                            MorningTimeline(appointment: appointment, weather: plan.weather, wake: wake, bufferMinutes: settings.arrivalBufferMinutes).with(backstopInfo(leaveBy: plan.leaveBy(settings: settings), firstDayBack: plan.firstDayBack ?? false, replacedShift: plan.replacedShift)).with(bedtime: bedtimeTimes(plan))
                         }
                         if let short = plan.getReadyShortfall(settings: settings), short.earlierWake > .now {
                             GetReadyCard(minutes: short.minutes, wanted: settings.getReadyMinutes, leaveBy: short.leaveBy, earlierWake: short.earlierWake) {
@@ -88,7 +107,7 @@ struct ContentView: View {
                             }
                         }
                         if plan.source == .shift, let shift = plan.shift, let commute = plan.commute, let wake = plan.wakeTime {
-                            MorningTimeline(shift: shift, commute: commute, weather: plan.weather, wake: wake, bufferMinutes: settings.workArrivalBufferMinutes, getReadyGoal: settings.getReadyMinutes).with(backstopInfo(leaveBy: plan.leaveBy(settings: settings), firstDayBack: plan.firstDayBack ?? false, replacedShift: plan.replacedShift))
+                            MorningTimeline(shift: shift, commute: commute, weather: plan.weather, wake: wake, bufferMinutes: settings.workArrivalBufferMinutes, getReadyGoal: settings.getReadyMinutes).with(backstopInfo(leaveBy: plan.leaveBy(settings: settings), firstDayBack: plan.firstDayBack ?? false, replacedShift: plan.replacedShift)).with(bedtime: bedtimeTimes(plan))
                         }
                         ForEach(plan.missingLocations, id: \.eventID) { appointment in
                             MissingLocationCard(appointment: appointment) { location in
@@ -201,6 +220,7 @@ struct ContentView: View {
             .toolbar(.hidden, for: .navigationBar)
             .onAppear {
                 coordinator.watchCalendar()
+                coordinator.dropLeaveRemindersIfEventGone(settings: store.settings)
                 refreshScheduled()
             }
             // The bedtime shortcut (or a phone command) may have set or cleared alarms while the
@@ -210,12 +230,23 @@ struct ContentView: View {
                 let before = scheduled
                 refreshScheduled()
                 if scheduled != before { plan = coordinator.lastAppliedPlan }
-                Task { await coordinator.recheckDriveOnOpen(settings: store.settings) }
+                coordinator.dropLeaveRemindersIfEventGone(settings: store.settings)
+                Task {
+                    await coordinator.recheckDriveOnOpen(settings: store.settings)
+                    await coordinator.updateMorningActivity(settings: store.settings)
+                }
             }
             // bedtimebridge://replan, from Home Assistant's "plan out of date" and
             // "missing plan" notifications.
             .onOpenURL { url in
-                if url.host == "replan" { run(schedule: true) }
+                // Opens the preview; nothing changes until you confirm (v0.4.3 item 4).
+                if url.host == "replan" { preview(replan: true) }
+                // bedtimebridge://summary, from the weekly notification (v0.4.3 item 15).
+                if url.host == "summary" { sheet = .weeklySummary }
+                // Quick actions, controls and the widget's tap (v0.4.3 item 16).
+                if url.host == "action", let action = QuickAction(rawValue: url.lastPathComponent) { open(action) }
+                if url.host == "tonight" { sheet = nil }
+                if url.host == "now" { openWhatMattersNow() }
                 // bedtimebridge://pair?…, tapped on the integration's pairing screen.
                 if url.host == "pair" {
                     pairingMessage = HomeAssistantLinks.pair(with: url)
@@ -241,6 +272,34 @@ struct ContentView: View {
                     SleepLaterSheet(settings: store.settings, done: refreshScheduled)
                 case .editAlarms:
                     EditAlarmsSheet(settings: store.settings, done: refreshScheduled)
+                case .preview(let preview):
+                    PlanPreviewSheet(preview: preview, alarmsSet: !coordinator.setAlarmTimes().isEmpty,
+                                     backstops: { backstopInfo(leaveBy: $0.leaveBy(settings: preview.settings), firstDayBack: $0.firstDayBack ?? false, replacedShift: $0.replacedShift) },
+                                     bedtime: bedtimeTimes(preview.plan)) {
+                        setPreviewed(preview)
+                    }
+                case .weeklySummary:
+                    WeeklySummaryView(settings: store.settings)
+                case .addLeave:
+                    AddLeaveSheet(settings: store.settings) { refreshScheduled() }
+                case .addWakeUp:
+                    // Afterwards the preview opens with the new plan.
+                    AddWakeUpEventSheet(settings: store.settings) {
+                        Task { @MainActor in
+                            try? await Task.sleep(for: .milliseconds(600))
+                            preview(replan: false)
+                        }
+                    }
+                case .noAlarms(let morning):
+                    NoAlarmsSheet(morning: morning, shift: coordinator.shiftOnCalendar(morning: morning, settings: store.settings)) { sleepIn in
+                        do {
+                            try await coordinator.noAlarmsTomorrow(morning: morning, sleepIn: sleepIn, settings: store.settings)
+                            plan = try? await coordinator.buildPlan(settings: store.settings)
+                        } catch {
+                            errorMessage = error.localizedDescription
+                        }
+                        refreshScheduled()
+                    }
                 case .changeMorning(let phase):
                     let wake = coordinator.currentWake(settings: store.settings)
                     ChangeMorningFlow(phase: phase, currentWake: wake ?? .now, wakeKnown: wake != nil, settings: store.settings, done: refreshScheduled)
@@ -258,7 +317,8 @@ struct ContentView: View {
                         title: "Day off alarm",
                         note: "Next shows your morning, where you can change single alarms and the backstops before setting them.",
                         settings: settings,
-                        backstopsDefault: morningContext?.ladderStatus == "idle_leave" ? settings.ownBackstopsLeave : settings.ownBackstopsDayOff
+                        backstopsDefault: morningContext?.ladderStatus == "idle_leave" || coordinator.calendar.isLeave(on: .now.addingTimeInterval(86400), settings: settings)
+                            ? settings.ownBackstopsLeave : settings.ownBackstopsDayOff
                     ) { replacement in setDayOff(replacement) }
                 case .skipToTime:
                     OwnAlarmSheet(
@@ -280,6 +340,12 @@ struct ContentView: View {
                     refreshScheduled()
                 }
             }
+            .confirmationDialog("Cancel tonight's wind-down?", isPresented: $confirmCancelWindDown, titleVisibility: .visible) {
+                Button("Cancel wind-down", role: .destructive) { windDown("cancel") }
+                Button("Keep it", role: .cancel) {}
+            } message: {
+                Text("The winding-down helper goes off, and there's no go to bed notification or reminders tonight.")
+            }
             .alert(pairingMessage ?? "", isPresented: Binding(get: { pairingMessage != nil }, set: { if !$0 { pairingMessage = nil } })) {
                 Button("OK", role: .cancel) {}
             }
@@ -298,6 +364,16 @@ struct ContentView: View {
                     .foregroundStyle(Theme.text)
             }
             Spacer()
+            // Add a wake-up event (v0.4.3 item 13), beside Upcoming events and Settings.
+            Button { sheet = .addWakeUp } label: {
+                Image(systemName: "calendar.badge.plus")
+                    .font(.system(size: 19, weight: .medium))
+                    .foregroundStyle(Theme.accentIcon)
+                    .frame(width: 44, height: 44)
+                    .background(Theme.surface, in: Circle())
+                    .overlay(Circle().stroke(Theme.border, lineWidth: 1))
+            }
+            .accessibilityLabel("Add a wake-up event")
             NavigationLink {
                 UpcomingEventsView()
             } label: {
@@ -368,9 +444,25 @@ struct ContentView: View {
         if let plan, plan.hasAlarm, !isSet(plan) { i.planReady = (plan.alarmTimes.count, plan.wakeTime) }
         i.tomorrow = plan?.wakeTime ?? plan?.firstAlarm
         i.napEnabled = store.settings.napEnabled && store.settings.alarmStyle == .app
+        i.undo = coordinator.availableUndo(now: now)?.status(alarmsSet: set.count)
+        i.tomorrowHasAlarm = plan?.hasAlarm == true
+        if store.settings.windDownEnabled {
+            i.windDown = coordinator.windDown
+            i.startWindDownHours = store.settings.startWindDownHours
+        }
         let hour = Calendar.current.component(.hour, from: now)
         i.evening = hour >= 17 || hour < 4
         return i
+    }
+
+    /// Wind-down and go to bed for this plan's morning: Home Assistant's when it has the same
+    /// first alarm (it knows when you got home), otherwise worked out here.
+    private func bedtimeTimes(_ plan: WakePlan) -> (windDown: Date, goToBed: Date)? {
+        guard store.settings.windDownEnabled, let first = plan.firstAlarm, first > .now else { return nil }
+        let w = coordinator.windDown
+        if let ha = w.firstAlarm, abs(ha.timeIntervalSince(first)) < 60, let wind = w.windDown, let bed = w.goToBed { return (wind, bed) }
+        let times = WindDownTimes.compute(firstAlarm: first, settings: store.settings)
+        return (times.windDown, times.goToBed)
     }
 
     private var barMorning: Date? { scheduled.first ?? plan?.firstAlarm }
@@ -403,7 +495,24 @@ struct ContentView: View {
     private func perform(_ action: BarAction) {
         barSlider = nil
         switch action {
-        case .setAlarms, .replan: run(schedule: true)
+        case .setAlarms: preview(replan: false)
+        case .replan: preview(replan: true)
+        case .undo:
+            Task {
+                do {
+                    try await coordinator.undo(settings: store.settings)
+                    plan = coordinator.lastAppliedPlan
+                } catch {
+                    errorMessage = error.localizedDescription
+                }
+                refreshScheduled()
+            }
+        case .noAlarmsTomorrow: sheet = .noAlarms(coordinator.noAlarmsMorning(plan: plan))
+        case .startWindDown: windDown("start")
+        case .cancelWindDown: confirmCancelWindDown = true
+        case .stopReminders: windDown("stop_reminders")
+        case .addLeave: sheet = .addLeave
+        case .addWakeUpEvent: sheet = .addWakeUp
         case .previewPlan: run(schedule: false)
         case .nap: sheet = .nap
         case .changeNap: sheet = .napChange
@@ -488,6 +597,80 @@ struct ContentView: View {
         return "Plan and set alarms"
     }
 
+    /// A quick action or control opens the app on that screen; protected actions still need the
+    /// slide-and-hold, in the bar or at the screen's commit step (v0.4.3 item 16).
+    private func open(_ action: QuickAction) {
+        sheet = nil
+        switch action {
+        case .nap: sheet = .nap
+        case .previewTomorrow: run(schedule: false)
+        case .addWakeUpEvent: sheet = .addWakeUp
+        case .addLeave: sheet = .addLeave
+        case .sleepLater: sheet = .sleepLater
+        case .noAlarmsTomorrow: perform(.noAlarmsTomorrow)
+        case .startWindDown: perform(.startWindDown)
+        case .wakeLater: perform(.wakeLater)
+        case .upEarlyOrEnd:
+            let first = coordinator.alarmSeries.min()
+            barSlider = first.map { $0 > .now } ?? true ? .upEarly : .endAlarms
+        case .backToBed: barSlider = .backToBed
+        }
+    }
+
+    /// The widget's tap: the stop screen while snoozing, otherwise Tonight (which shows the
+    /// morning after the alarms).
+    private func openWhatMattersNow() {
+        sheet = nil
+        if let snoozing = coordinator.snoozingAlarmID() { stoppingAlarm = SnoozedAlarm(id: snoozing) }
+    }
+
+    /// Wind-down actions run in Home Assistant (v0.4.3 item 5).
+    private func windDown(_ action: String) {
+        isWorking = true
+        errorMessage = nil
+        Task {
+            defer { isWorking = false }
+            do {
+                try await coordinator.windDownAction(action, settings: store.settings)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            refreshScheduled()
+        }
+    }
+
+    /// A manual "Plan and set alarms" shows what it would set first (v0.4.3 item 1).
+    private func preview(replan: Bool) {
+        isWorking = true
+        errorMessage = nil
+        Task {
+            defer { isWorking = false }
+            do {
+                let made = try await coordinator.previewForSet(settings: store.settings)
+                plan = made.plan
+                sheet = .preview(PlanPreview(plan: made.plan, settings: made.settings, replan: replan))
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            refreshScheduled()
+        }
+    }
+
+    private func setPreviewed(_ preview: PlanPreview) {
+        isWorking = true
+        errorMessage = nil
+        Task {
+            defer { isWorking = false }
+            do {
+                try await coordinator.setPreviewed(preview.plan, settings: preview.settings)
+                plan = preview.plan
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            refreshScheduled()
+        }
+    }
+
     private func run(schedule: Bool) {
         isWorking = true
         errorMessage = nil
@@ -506,6 +689,7 @@ struct ContentView: View {
 
     private func refreshScheduled() {
         scheduled = coordinator.scheduledAlarmTimes()
+        defer { QuickActions.update(barInputs, settings: store.settings) }
         skippedMorning = coordinator.skippedMorning
         skipReplacement = coordinator.skipReplacement
         temporaryAlarms = coordinator.temporaryAlarms
@@ -519,6 +703,15 @@ struct ContentView: View {
         Task {
             morningContext = await coordinator.morningContext(firstAlarm: nil, settings: store.settings)
             morningContextLoaded = true
+            // Home Assistant's plan_out_of_date: say what changed, if tomorrow did (v0.4.3 item 4).
+            if morningContext?.planOutdated == true {
+                _ = await coordinator.checkPlanStillMatches(settings: store.settings)
+            }
+            // During wind-down, tomorrow's plan already previewed (not set), and its Live Activity.
+            if store.settings.windDownEnabled, coordinator.windDown.status == .windingDown {
+                if plan == nil { plan = try? await coordinator.buildPlan(settings: store.settings) }
+                await BedtimeActivities.syncWindDown(coordinator.windDown)
+            }
         }
         refreshUpcoming()
     }
@@ -626,9 +819,86 @@ struct ContentView: View {
     private func addLocation(_ location: String, to appointment: AppointmentCandidate) async {
         do {
             try coordinator.addLocation(location, to: appointment)
-            run(schedule: true)
+            preview(replan: false)
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+}
+
+// MARK: Preview before a manual set (v0.4.3 items 1 and 4)
+
+struct PlanPreview: Identifiable {
+    let id = UUID()
+    let plan: WakePlan
+    let settings: BridgeSettings
+    /// Opened from Re-plan: a plan with no alarm offers [Clear alarms].
+    let replan: Bool
+}
+
+/// The alarm times, reason, morning and backstops, with [Set alarms] (or [Clear alarms]) and
+/// Cancel. A plain button: setting only adds alarms, and Re-plan's Clear is what you asked for.
+private struct PlanPreviewSheet: View {
+    let preview: PlanPreview
+    let alarmsSet: Bool
+    let backstops: (WakePlan) -> BackstopInfo?
+    var bedtime: (windDown: Date, goToBed: Date)?
+    let confirm: () -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    private var plan: WakePlan { preview.plan }
+    private var settings: BridgeSettings { preview.settings }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    PlanCard(plan: plan, bubbles: AlarmBubble.preview(plan.alarmTimes, wake: plan.wakeTime),
+                             header: AlarmStatus(kind: .notSet, text: "Preview · not set"))
+                    if let weather = plan.weather {
+                        WarningBanner(text: "+\(weather.minutes) min for \(weather.reason)", systemImage: "cloud.rain")
+                    }
+                    if plan.source == .appointment, let appointment = plan.appointment, let wake = plan.wakeTime {
+                        MorningTimeline(appointment: appointment, weather: plan.weather, wake: wake, bufferMinutes: settings.arrivalBufferMinutes).with(backstops(plan)).with(bedtime: bedtime)
+                    } else if plan.source == .shift, let shift = plan.shift, let commute = plan.commute, let wake = plan.wakeTime {
+                        MorningTimeline(shift: shift, commute: commute, weather: plan.weather, wake: wake, bufferMinutes: settings.workArrivalBufferMinutes, getReadyGoal: settings.getReadyMinutes).with(backstops(plan)).with(bedtime: bedtime)
+                    } else if plan.hasAlarm, let info = backstops(plan) {
+                        BackstopsCard(info: info)
+                    }
+                    ForEach(plan.warnings, id: \.self) { warning in
+                        Label(warning, systemImage: "info.circle")
+                            .font(.footnote)
+                            .foregroundStyle(Theme.warning.text)
+                    }
+                }
+                .padding(20)
+            }
+            .background(Theme.ground.ignoresSafeArea())
+            .safeAreaInset(edge: .bottom) {
+                VStack(spacing: 10) {
+                    if plan.hasAlarm || (preview.replan && alarmsSet) {
+                        Button {
+                            confirm()
+                            dismiss()
+                        } label: {
+                            Text(plan.hasAlarm ? "Set alarms" : "Clear alarms")
+                                .font(.system(size: 17, weight: .bold))
+                                .foregroundStyle(.white)
+                                .frame(maxWidth: .infinity, minHeight: 54)
+                                .background(plan.hasAlarm ? Theme.accent : Theme.danger, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        }
+                    }
+                    Button("Cancel") { dismiss() }
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Theme.accentText)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
+                .background(Theme.ground)
+            }
+            .navigationTitle(preview.replan ? "Re-plan" : "Set alarms?")
+            .navigationBarTitleDisplayMode(.inline)
         }
     }
 }
@@ -865,10 +1135,18 @@ private struct MorningTimeline: View {
     var getReadyGoal = 0
     /// The three backstops, in time order with the rest (v0.4.1 item 8).
     var backstops: BackstopInfo?
+    /// Tonight's wind-down and go to bed, above the wake-up (v0.4.3 item 5).
+    var bedtime: (windDown: Date, goToBed: Date)?
 
     func with(_ backstops: BackstopInfo?) -> MorningTimeline {
         var copy = self
         copy.backstops = backstops
+        return copy
+    }
+
+    func with(bedtime: (windDown: Date, goToBed: Date)?) -> MorningTimeline {
+        var copy = self
+        copy.bedtime = bedtime
         return copy
     }
 
@@ -912,6 +1190,10 @@ private struct MorningTimeline: View {
                 .padding(.bottom, backstops == nil ? 12 : 4)
             if let backstops {
                 BackstopStatusLine(info: backstops).padding(.bottom, 12)
+            }
+            if let bedtime {
+                TimelineStep(title: "Wind-down", value: WakePlanner.format(bedtime.windDown), dot: .ring(Theme.textMuted))
+                TimelineStep(title: "Go to bed", value: WakePlanner.format(bedtime.goToBed), dot: .filled(Theme.textMuted))
             }
             TimelineStep(title: "Wake up", value: WakePlanner.format(wake), dot: .filled(Theme.accent), bold: true)
             if !hasLocation {
@@ -1103,7 +1385,7 @@ private struct StatusCard: View {
     }
 
     private var weatherText: String {
-        guard settings.checksWeather, settings.weatherSource == .openMeteo || link != nil else { return "Not checked" }
+        guard settings.checksWeather, settings.weatherSource != .homeAssistant || link != nil else { return "Not checked" }
         if let weather = plan?.weather { return "+\(weather.minutes) min, \(weather.reason)" }
         return plan == nil ? "Checked when you plan" : "No extra time"
     }
@@ -1546,6 +1828,25 @@ private struct BottomBarView: View {
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Theme.accent, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            }
+        case .undo(let text):
+            let parts = text.components(separatedBy: " · ")
+            HStack(spacing: 10) {
+                Text(parts.first ?? text)
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(Theme.good)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                Text("·").foregroundStyle(Theme.textFaint)
+                Button { slider = .undo } label: {
+                    Text("Undo")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(Theme.amber)
+                        .padding(.horizontal, 14)
+                        .frame(height: 36)
+                        .overlay(Capsule().stroke(Theme.amber.opacity(0.6), lineWidth: 1))
+                }
+                .accessibilityHint("Puts back the alarms from before")
             }
         case .status(let text, let tone):
             Text(text)
