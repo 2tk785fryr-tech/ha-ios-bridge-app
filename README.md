@@ -22,7 +22,7 @@
   &nbsp;
   <img src="docs/images/tonight-morning.png" width="200" alt="Morning timeline with leave-by and drive time">
   &nbsp;
-  <img src="docs/images/slide-to-stop.gif" width="200" alt="Slide to stop a snoozed alarm">
+  <img src="docs/images/slide-and-hold.gif" width="200" alt="Slide and hold to confirm a protected action">
 </p>
 
 Bedtime Bridge takes over the parts of a bedtime shortcut that Shortcuts does badly: reading
@@ -33,6 +33,7 @@ chain of calendar, maps and alarm actions. A companion Home Assistant integratio
 helpers your automations can use.
 
 - [A quick tour](#a-quick-tour)
+- [What's in the app](#whats-in-the-app): [bottom bar](#the-bottom-bar) · [wind-down](#wind-down) · [nap](#nap) · [mornings with no alarms](#mornings-with-no-alarms) · [weekly summary](#weekly-summary) · [widgets, Live Activities, controls and Siri](#widgets-live-activities-controls-and-siri) · [notifications](#notifications)
 - [How it fits together](#how-it-fits-together)
 - [How planning works](#how-planning-works)
 - [Alarms and snooze](#alarms-and-snooze)
@@ -45,6 +46,8 @@ helpers your automations can use.
 
 ## A quick tour
 
+All pictures are from the simulator with made-up calendar events.
+
 <table>
   <tr>
     <td width="33%" align="center"><img src="docs/images/tonight.png" width="240" alt="Tonight"></td>
@@ -52,31 +55,138 @@ helpers your automations can use.
     <td width="33%" align="center"><img src="docs/images/upcoming-events.png" width="240" alt="Upcoming events"></td>
   </tr>
   <tr>
-    <td valign="top"><b>Tonight.</b> The next shift or appointment, the wake-up time it needs, and the whole alarm series. Preview first, or set the alarms in one tap.</td>
-    <td valign="top"><b>Your morning.</b> Wake up, get ready, leave by, arrive early, start: with the live drive time and any extra time for bad weather.</td>
-    <td valign="top"><b>Upcoming events.</b> Next week's appointments that have no location or no "wake up" note, so you can fix them before the night they matter.</td>
+    <td valign="top"><b>Tonight.</b> The next shift or appointment, the wake-up time it needs, and the whole alarm series. Preview it, then set it from the bar; bedtime sets it hands-free.</td>
+    <td valign="top"><b>Your morning.</b> Wake up, get ready, the three house backstops, leave by, arrive early, start: with the drive time for that hour and any extra time for bad weather.</td>
+    <td valign="top"><b>Upcoming events.</b> Next week's appointments with no location or no "wake up" note, so you can fix them before the night they matter.</td>
   </tr>
   <tr>
     <td align="center"><img src="docs/images/ignore-event.gif" width="240" alt="Swipe to ignore an event"></td>
-    <td align="center"><img src="docs/images/skip.png" width="240" alt="Skip a morning"></td>
-    <td align="center"><img src="docs/images/temporary-alarm.png" width="240" alt="Temporary alarm"></td>
+    <td align="center"><img src="docs/images/more-menu.png" width="240" alt="The ⋯ list"></td>
+    <td align="center"><img src="docs/images/slide-and-hold.gif" width="240" alt="Slide and hold"></td>
   </tr>
   <tr>
     <td valign="top"><b>Swipe to ignore.</b> An event that needs no wake-up or no location moves to the Ignored tab. Swipe right there to undo.</td>
-    <td valign="top"><b>Skip a morning.</b> Sleep in, or wake at a different time. Skipping the night before also turns off the house's wake failsafes.</td>
-    <td valign="top"><b>Temporary alarms.</b> One extra wake-up (take the trash out, make a call) that leaves your regular alarms, Sleep In and Awake For Day alone.</td>
+    <td valign="top"><b>The bar and ⋯.</b> The bottom bar changes with the moment; ⋯ holds everything else. Amber items are protected.</td>
+    <td valign="top"><b>Slide and hold.</b> Protected actions swap the bar for a slider: slide to the end and hold for 5 seconds. Letting go early does nothing.</td>
   </tr>
   <tr>
-    <td align="center"><img src="docs/images/settings-pages.png" width="240" alt="Settings"></td>
-    <td align="center"><img src="docs/images/drive-time.png" width="240" alt="Drive time settings"></td>
-    <td align="center"><img src="docs/images/bad-weather.png" width="240" alt="Bad weather settings"></td>
+    <td align="center"><img src="docs/images/skip.png" width="240" alt="Skip a morning"></td>
+    <td align="center"><img src="docs/images/nap.png" width="240" alt="Nap"></td>
+    <td align="center"><img src="docs/images/weekly-summary.gif" width="240" alt="Weekly summary"></td>
   </tr>
   <tr>
-    <td valign="top"><b>Settings.</b> Shifts, get-ready time and home up front; everything else grouped into pages.</td>
-    <td valign="top"><b>Drive time.</b> Apple Maps for free, or TomTom and Google with your own keys. Use one, or the longest of all of them. Google's worst case is always shown.</td>
-    <td valign="top"><b>Bad weather.</b> Forecast from Home Assistant or Open-Meteo. Each condition gets the default extra time, its own amount, or none.</td>
+    <td valign="top"><b>Skip a morning.</b> Sleep in, or wake at a different time. Skipping the night before also turns off the house's wake failsafes. Undo from the card.</td>
+    <td valign="top"><b>Nap.</b> Tap a length and the alarms are set. Lengths that would run into something later today are greyed out.</td>
+    <td valign="top"><b>Your week.</b> This week so far and the 8 before it: bedtime against the target, snoozes, backstops, mornings changed, naps.</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/images/settings.png" width="240" alt="Settings"></td>
+    <td align="center"><img src="docs/images/mornings-settings.png" width="240" alt="Mornings settings"></td>
+    <td align="center"><img src="docs/images/notifications.png" width="240" alt="Notification levels"></td>
+  </tr>
+  <tr>
+    <td valign="top"><b>Settings.</b> Shifts up front, everything else in pages. Every page shows each setting's default and has its own reset.</td>
+    <td valign="top"><b>Mornings.</b> Get-ready time and arriving early, and what happens on <a href="#mornings-with-no-alarms">mornings with no alarms</a>.</td>
+    <td valign="top"><b>Notifications.</b> Each one Normal, Time-sensitive or Critical (Critical for the ones Home Assistant sends).</td>
   </tr>
 </table>
+
+## What's in the app
+
+### The bottom bar
+
+The bar at the bottom of Tonight shows what matters right now and the one or two things you'd
+do next: *Plan and set alarms* in the evening, *3 alarms set* with *Sleep later* once they're
+set, *I'm up early* before the first alarm, *Snoozing · rings 4:34* with *End alarms*,
+*Napping · up at 2:47* with *End nap*, *Winding down · bed 9:50*, *I'm awake* on a morning
+with no alarms. Everything else is in **⋯**, the same list every time with what doesn't apply
+hidden.
+
+It changes on time by itself while the app is open (5:00 PM, wind-down, go to bed, an alarm
+passing, the morning windows closing, Undo running out), not just when you touch it.
+
+**Protected actions** (End alarms, Not ready for bed, Back to bed, Skip, Sleep later, End nap,
+No alarms tomorrow, Undo, I'm awake and others) are amber, and swap the bar for a
+**slide-and-hold**: slide to the end and hold for 5 seconds while a ring fills.
+
+<p align="center"><img src="docs/images/im-awake-bar.png" width="320" alt="I'm awake in the bar on a morning with no alarms"></p>
+
+### Wind-down
+
+<img src="docs/images/wind-down.png" width="220" align="right" alt="Wind-down settings">
+
+Settings → Wind-down (off until the phone side is set up). From tomorrow's first alarm and your
+sleep goal, Home Assistant works out wind-down and go to bed (first alarm 4:20 → wind-down 8:50
+PM, bed 9:50 PM). It warns you 5 minutes before (with *15 min later* and *Cancel*), starts
+wind-down (the Winding down helper and the Wind Down On - App shortcut: Focus, Night Shift,
+Reduce White Point), says when it's time for bed (critical) and reminds you if you're still up.
+Getting home late moves bedtime later rather than cutting wind-down short. *Start wind-down now*
+shows in the bar in the hours before. Into bed (bedroom door closed and bed occupied) ends it.
+
+<br clear="right">
+
+### Nap
+
+Settings → Nap (off by default) adds a **Nap** button. Tap a length and its alarms are set
+straight away (2 alarms, 10 min apart). Anything later today (a shift, an appointment with its
+drive, your next alarm) greys out the lengths that would run into it, with the longest nap that
+fits. At home, Home Assistant turns a napping helper on and runs your nap Focus shortcuts. Nap
+alarms behave like temporary alarms: no wake routines, no Good Morning, no backstops. *End nap*
+(or stopping its last alarm) clears it from the screen at once.
+
+### Mornings with no alarms
+
+Sleep In on, no alarms, and you get up when you get up. At home, and only on such a morning
+(Settings → Mornings → *Mornings with no alarms*):
+
+1. **Leaving the bedroom disarms.** Out of bed, through the bedroom door, down the hall (the
+   hallway presence sensors in the integration's options): Home Assistant sends `RUN_DISARM` and
+   nothing else changes. Letting the dog out the patio door is safe from there.
+2. **Back in bed re-arms** (`RUN_ARM_STAY`) after the same time as after a temporary alarm.
+3. **Up for the day?** From 8:00 AM, once you've been up 15 minutes or the phone comes off the
+   charger, Home Assistant asks, with *Good morning* and *Back to bed*. No answer and still up 10
+   minutes later, it goes ahead: Sleep In off, Awake For Day on, `RUN_GOOD_MORNING` (Sleep Focus
+   off, the announcement).
+4. **I'm awake** does the same straight away: in the bar and ⋯, the Siri phrase *"I'm awake in
+   Bedtime Bridge"*, and the **I'm awake** control (Lock Screen, Control Center, Action button).
+
+The earliest time, the up-for and wait minutes and the whole thing on/off are in the app.
+
+### Weekly summary
+
+<img src="docs/images/weekly-summary.png" width="220" align="right" alt="This week so far">
+
+Home Assistant keeps track of each night and morning. Settings → Weekly summary → **See your
+week** shows this week so far, and the arrows go back through the 8 weeks before it: when you
+went to bed against the target, nights tracked, mornings, snoozes a morning, backstops fired,
+mornings changed (with the reasons) and naps. Weeks start on the day and at the time set there
+(Sunday 6:00 PM by default), when a notification and a Home Assistant sensor sum up the week
+that just ended.
+
+<br clear="right">
+
+### Widgets, Live Activities, controls and Siri
+
+- **Next Alarm widget** in every size: the Lock Screen (rectangular, circular, inline), small
+  (next alarm, or "Bed in…" during wind-down), medium (the next alarm and the next four things:
+  wind-down, go to bed, alarms, leave-by), and large and extra large (the night and morning as a
+  timeline).
+- **Live Activities:** "Bed in 42 min · first alarm 4:20" during wind-down, and "Leave in 25 min
+  · 5:45" after the first stop (drive, worst case, weather, next backstop). With an Apple push key
+  in the integration's options, Home Assistant starts, updates and ends them by push, without
+  the app running (`docs/ha-handoffs-v0.4.4.md`).
+- **Controls** for the Lock Screen, Control Center and the Action button: Nap, Wind-down (start or
+  cancel), Tonight and I'm awake.
+- **Quick actions** on the app icon (long-press), chosen in Settings → Shortcuts & controls.
+- **Siri:** plan, cancel, nap, no alarms tomorrow, sleep later, start or cancel wind-down, add
+  leave, add a wake-up event, I'm awake.
+
+### Notifications
+
+Settings → Notifications sets each one to Normal, Time-sensitive (comes through Focus) or Critical
+(sounds on silent; only for the ones Home Assistant sends, with Critical Alerts allowed for the
+Home Assistant app). Defaults: *Time for bed* critical; *Still up*, *Plug in your phone*, the
+leave-by reminders and *Tomorrow changed* time-sensitive; the rest normal.
 
 ## How it fits together
 
@@ -157,8 +267,6 @@ Settings → Alarms chooses one of two styles:
 | Sound | **iPhone alarm** (default), or one of six sounds that ship with the app: Sunrise (builds slowly), Chimes, Marimba, Harp, Classic beeps, Pulse. Settings → Alarms, with a play button to hear each. | Whatever you pick in the Clock app. |
 | After Stop | **Keeps the later alarms until you're up** (default; see below), rechecks traffic for the leave-by reminder. | Whatever your shortcut does. |
 
-<p align="center"><img src="docs/images/slide-to-stop.gif" width="220" alt="Slide to stop while snoozing"></p>
-
 **Stop keeps the rest until you're up.** Turning off the first alarm, switching the lights off
 and falling back asleep is how Wake Deadline Backstop came to exist. So by default, Stop only
 cancels the later alarms once Home Assistant confirms you're up: the bedroom door opened
@@ -180,12 +288,7 @@ alarm could both fire. Also delete the Clock alarms the old shortcut toggled.
 Plans change after bedtime. The Tonight screen (and matching Shortcuts actions) covers the
 common cases without touching Home Assistant by hand.
 
-<table>
-  <tr>
-    <td width="50%" align="center"><img src="docs/images/skip.png" width="260" alt="Skip Monday's wake-up"></td>
-    <td width="50%" align="center"><img src="docs/images/temporary-alarm.png" width="260" alt="Temporary alarm sheet"></td>
-  </tr>
-</table>
+<p align="center"><img src="docs/images/skip.png" width="260" alt="Saturday's wake-up skipped"></p>
 
 **Skip a morning.** *Skip Monday's wake-up* asks what you want instead:
 - **Sleep in:** the alarms are cancelled, Sleep In turns on, and the shift override is set to
@@ -227,76 +330,24 @@ scheduled, then shows what the phone really holds, read back from the system: **
 4:20 4:25 4:30**, or **Couldn't set 1 of 3 alarms** in red. The Lock Screen widget shows the same
 count ("3 alarms set · Leave by 6:26").
 
-**Setting up?** `docs/setup.md` has every step for v0.4.2 – 0.4.5 in order.
+**Setting up?** `docs/setup.md` has every step for v0.4.2 – 0.4.6 in order; each version's
+Home Assistant side is in `docs/ha-handoffs-v*.md`.
 
-**New in 0.4.4:** with an Apple push key in the integration's options, Home Assistant starts,
-updates and ends the wind-down and morning Live Activities by push, without the app running
-(`docs/ha-handoffs-v0.4.4.md`). The app's own leave-by reminders, "Tomorrow changed" and the Nap
-control's notice are time-sensitive, so they come through Focus. **Settings → Notifications**
-sets each notification to Normal, Time-sensitive or Critical (Critical for the ones Home
-Assistant sends). **Apple Weather** is a third forecast source (Settings → Bad weather), next to
-Home Assistant and Open-Meteo. Get-ready time and arriving early moved to **Settings → Mornings**,
-and the home address to **Settings → Home**. Home Assistant can **re-check the drive itself** at
-each leave check (Apple Maps, TomTom, Google or the longest), so the checks work with the phone
-asleep; the app's own drive times are unchanged. The **Next Alarm widget** comes in every size:
-small (next alarm, or "Bed in…" during wind-down), medium (next alarm plus the next four things:
-wind-down, go to bed, alarms, leave-by), and large and extra large (the whole night and morning as
-a timeline).
-
-**New in v0.4.3:**
-- **Set alarms asks first:** a manual Plan and set alarms shows a preview with Set alarms and
-  Cancel; Undo stays in the bar until bedtime runs. Bedtime and the Plan Wake Alarms action stay
-  hands-free.
+**More you can change after bedtime:**
+- **Set alarms asks first:** a manual *Plan and set alarms* shows a preview with Set alarms and
+  Cancel; **Undo** stays in the bar until bedtime runs.
 - **No alarms tomorrow**, any time before the morning, with a Sleep In switch. A shift still on
   the calendar keeps its backstops.
 - **Calendar changed:** "Tomorrow changed: Days shift deleted. Your 4:20 alarms are still set.
   Re-plan?" Nothing moves until you confirm.
-- **Wind-down** (Settings → Wind-down, off until set up): from tomorrow's first alarm, Home
-  Assistant warns you, starts wind-down (Winding down helper, Wind Down On - App), says when
-  it's time for bed (critical) and reminds you if you're still up. Getting home late moves bedtime
-  later rather than cutting wind-down short.
-- **Morning Live Activity:** "Leave in 25 min · 5:45" with the drive, worst case, weather and
-  the next backstop.
-- **Resets** (Settings → Reset), **defaults shown** on every settings page, and a **Reset this
-  page** on each.
-- **Siri and Shortcuts:** Nap, No alarms tomorrow, Sleep later, Start/Cancel wind-down, Add leave,
-  Add a wake-up event.
-- **Leave titles and Add leave; Add a wake-up event** (the circle button at the top).
-- **Weekly summary**, **Plug in your phone**, **quick actions** on the app icon, **controls** for
-  the Lock Screen, Control Center and Action button.
-
-**New in v0.4.2:**
-- **Bottom bar:** changes with the moment (evening, alarms set, up early, snoozing, up, napping,
-  plans changed). It has one ⋯ list for everything else. Protected actions (End alarms, Not
-  ready for bed, Back to bed, Skip, Sleep later and others) swap the bar for a slide-and-hold.
-- **Alarm card:** each alarm's bubble shows its real state. Green is set, yellow pulsing is
-  snoozing, red crossed-out is off, and red dashed is not set. The rings stay until the morning
-  is over.
-- **Nap** (Settings → Nap, off by default): tap a length and the alarms are set. Lengths that
-  would run into something later today are greyed out, with the reason and the longest nap that
-  fits. Home Assistant turns a napping helper on at home and runs your nap Focus shortcuts.
-- **When options show** (Settings → Alarms): one page for when I'm up early, Not ready for bed
-  and Back to bed appear. Back to bed now ends 3 h after the wake-up or the last stop.
-- **Start new alarms this far from now:** how far ahead Wake at a different time starts (default
-  6 h).
-- **Leave checks** keep going after a snow delay or a sleep-longer change.
-
-**New in v0.4.1:**
-- **Change this morning** asks the reason first, then whether to shift just the alarms or the
-  entire wake-up (snow delay). The confirm screen shows the backstops before and after, and choices
-  past the late backstop are off.
-- **Sleep later** from Tonight before bed moves the alarms later, with **Back to planned**.
-- **Edit alarms:** move, add or remove any single alarm once they're set, including one that's
-  snoozing. Moving or removing it ends its snooze. If nothing is still snoozing, the bedroom fades
-  back down.
-- **Your morning** on the main screen shows the three house backstops and where their times come
-  from.
-- **Wake at a different time** (day off, skip) rounds its default time, then shows a preview where
-  you can add an alarm before, between or after the others and edit the backstops. Your own alarm's
-  backstops are off by default on days off and leave, with a switch.
-- A **"wake up" appointment** on a work morning replaces the shift's alarms when it starts before
-  the shift ends. Settings → Appointments explains the keyword and lists what's marked.
-- The reason line reads in plain words ("Reason for alarm: Days shift").
+- **Change this morning** (reason first, then just the alarms or the whole wake-up for a snow
+  delay; the confirm screen shows the backstops before and after), **Sleep later** with *Back to
+  planned*, and **Edit alarms** to move, add or remove any single one.
+- **Wake at a different time** (day off, skip) shows a preview where you can add alarms and edit
+  the backstops.
+- **Add a wake-up event** (the round button at the top) and **Add leave**, straight into your
+  calendar.
+- **Plug in your phone** at bedtime when the battery is low and it isn't charging.
 
 ## Home Assistant integration (recommended)
 
@@ -325,6 +376,11 @@ Bedtime Bridge. Or copy `custom_components/bedtime_bridge` into your config fold
 | Curtains open after sunrise | 15 min |
 | Re-arm after back in bed for / Bedtime again after back in bed for | 5 min / 15 min |
 | Check these when I'm away | garage door, entry doors and front lock, when they exist |
+| Napping helper, Winding down helper, Bedroom door sensor | `input_boolean.napping`, `input_boolean.winding_down`, your bedroom door |
+| Hallway presence | the presence sensors just outside the bedroom ([mornings with no alarms](#mornings-with-no-alarms)) |
+| Phone battery level / state | the Companion app's battery sensors (Plug in your phone, and off the charger) |
+| Apple push key (.p8) and Key ID | for Live Activities by push |
+| Drive times from | Phone (default), Apple Maps, TomTom, Google or Longest, with their keys |
 
 The last step shows two addresses and a **pairing link**:
 - **Anywhere:** with Home Assistant Cloud (Nabu Casa), a `https://hooks.nabu.casa/…` cloudhook,
@@ -354,13 +410,17 @@ private. Deleting the integration also deletes its Nabu Casa cloudhook.
 | `sensor.bedtime_bridge_last_plan` | When the phone last planned. Attribute: error, if the last attempt failed |
 | Ladder early / deadline / late (`sensor.bedtime_bridge_ladder_*`; older installs keep `_safety_net_*` ids) | The leave-by backstop ladder: 50 / 35 / 20 min before leave-by (15 min earlier on a first day back). `unavailable` when not armed. See [Safety nets](#safety-nets) |
 | `sensor.bedtime_bridge_ladder_status` | `armed`, `done`, `idle_override_off`, `idle_leave`, `idle_uncovered`, `idle_no_shift` or `fault`. Attributes: reason, morning, next rung |
+| `sensor.bedtime_bridge_wind_down_status`, `_wind_down`, `_go_to_bed`, `_went_to_bed`, `_bed_off_target` | Tonight's wind-down: status, times, and when you actually got into bed |
+| `sensor.bedtime_bridge_weekly_summary` | The week that just ended, as text. Attributes: the numbers |
+| `sensor.bedtime_bridge_app_expires` | When this install of the app stops opening |
 | `number.bedtime_bridge_get_ready_time`, `_arrive_early`, `_snooze_length`, `_bad_weather_extra_time_setting`, `_leave_by_reminder_lead`, `_days_lead_time`, `_swings_lead_time` | **Settings you can change in HA.** They start out matching the app after its first plan. After that, HA's value wins each time the app runs. |
 
 **Events:** `bedtime_bridge` with `type` (`planned`, `snoozed`, `stopped`, `cancelled`,
 `leave_by`) plus `alarm_cause`, `alarm_time`, `alarm_times`, `label`, `leave_by` and
 `snooze_count`. `planned` also carries `alarms_set` (true only when the app's alarms are scheduled). Also fired: `bedtime`, `plan_failed` (with `error`), `plan_outdated`
 (with `reason`), `skipped` / `unskipped`, `temporary_snoozed` / `temporary_stopped`,
-`temporary_rearmed`, `bedtime_undone` and `bedtime_rerun`. Test alarms add `test: true`. With *helpers only*, or while you're away,
+`temporary_rearmed`, `bedtime_undone`, `bedtime_rerun`, and on mornings with no alarms
+`left_bedroom` (`disarmed`) and `good_morning` (`by_hand`, `disarmed`, `sent`). Test alarms add `test: true`. With *helpers only*, or while you're away,
 snoozed/stopped aren't fired.
 
 **Helpers or blueprints, your choice:**
@@ -398,10 +458,14 @@ automation (iOS 27) runs the matching shortcut:
 
 | Marker | Sent when | Run this |
 |---|---|---|
-| `RUN_DISARM` | A temporary alarm (disarm mode) is stopped, or *Not going to sleep yet* | Your disarm shortcut |
-| `RUN_ARM_STAY` | You've been back in bed long enough after a temporary alarm | Your arm-stay shortcut |
+| `RUN_DISARM` | A temporary alarm (disarm mode) is stopped, *Not going to sleep yet*, or leaving the bedroom on a morning with no alarms | Your disarm shortcut |
+| `RUN_ARM_STAY` | You've been back in bed long enough after a temporary alarm or a trip out on a morning with no alarms | Your arm-stay shortcut |
 | `RUN_BACK_TO_BED` | *Back to bed* after you're up (moving or cancelling this morning's alarms) | Back To Bed - App: MorningState back to sleeping, arm stay, Sleep Focus on |
-| `RUN_GOOD_MORNING` | The first stop of a wake-up while you're home (Wake Mike too runs once per wake-up) | Good Morning (curtains, house alarm, briefing) |
+| `RUN_GOOD_MORNING` | The first stop of a wake-up while you're home (Wake Mike too runs once per wake-up); on a morning with no alarms, *Up for the day?* or *I'm awake* | Good Morning (curtains, house alarm, briefing) |
+| `RUN_PLAN_PREVIEW` | Before wind-down, to check tomorrow | Preview Tomorrow - App |
+| `RUN_WIND_DOWN` / `RUN_CANCEL_WIND_DOWN` | Wind-down starts / is cancelled | Wind Down On - App / Wind Down Off - App |
+| `RUN_NAP_START` / `RUN_NAP_END` | A nap starts / ends | Nap Start - App / Nap End - App |
+| `RUN_MORNING_UPDATE` | The morning Live Activity's refresh, when there's no push key | Morning Update - App |
 | `RUN_BEDTIME` | Back in bed after *Not going to sleep yet* (and the existing bedtime nudge) | The bedtime shortcut |
 | `RUN_LEAVE_CHECK` | Each leave reminder, while you're home (v0.4.1) | Bedtime Bridge **Check Drive and Remind** (no shortcut needed) |
 
@@ -509,12 +573,11 @@ and Sleep In.
 
 ## Lock Screen widget
 
-Add **Next Alarm** from the Lock Screen widget gallery (Bedtime Bridge). It shows the next
-alarm time, why it's set ("Days shift", "Dentist", "Day off"), and leave-by on appointment
-mornings. While snoozing it shows the snooze time instead. After the last alarm it keeps showing
-"Leave by" and the event until 30 minutes past it (Settings → Drive time). Sizes: rectangular (time, reason,
-leave-by), circular (time) and the inline line above the clock. There's also a small
-Home Screen widget.
+Add **Next Alarm** from the widget gallery (Bedtime Bridge); every size is there (see
+[widgets](#widgets-live-activities-controls-and-siri)). It shows the next alarm time, why it's
+set ("Days shift", "Dentist", "Day off"), and leave-by on shift and appointment mornings. While
+snoozing it shows the snooze time instead. After the last alarm it keeps showing "Leave by" and
+the event until 30 minutes past it (Settings → Drive time).
 
 The app updates it whenever alarms change (plan, snooze, stop, cancel). It moves on to the next
 alarm by itself as each one passes. In Clock app mode it shows the planned times but can't
@@ -532,8 +595,8 @@ see Clock snoozes. The app and widget share data through the App Group
   stop an alarm and when you open it that morning. Without Home Assistant the bedtime reminders
   still arrive, 2 min after each time, marked "not re-checked". They stop once you've left, 15 min
   after leave-by, or when the morning is changed or skipped.
-- **Bad weather.** Uses an hourly forecast, from Home Assistant (`weather.forecast_home`) or
-  the free **Open-Meteo** service (Settings → Bad weather → *Forecast from*). Each condition can
+- **Bad weather.** Uses an hourly forecast, from Home Assistant (`weather.forecast_home`), the
+  free **Open-Meteo** service, or **Apple Weather** (Settings → Bad weather → *Forecast from*). Each condition can
   use the default extra time, its own amount (snow: 30 min), or be off. It reads the forecast
   from your first alarm until you need to be there. If a condition that's on shows up (by
   default snow, sleet, hail, heavy rain and thunderstorms, or rain at freezing), it adds that
@@ -573,6 +636,8 @@ them; re-render after editing a design.
 | **Report Shortcut Ran** | Last step of a shortcut a [phone command](#phone-commands) runs, so Home Assistant clears that command's notification. |
 | **Check Drive and Remind** | Run by the `RUN_LEAVE_CHECK` automation: re-checks this morning's drive, notifies when to leave, tells Home Assistant the new leave-by. |
 | **Get Drive Time** | Drive minutes from home to a place, arriving by a given time. Useful in other shortcuts. |
+| **Nap**, **No Alarms Tomorrow**, **Sleep Later**, **Start / Cancel Wind-Down**, **Add Leave**, **Add a Wake-Up Event**, **I'm Awake** | The same as in the app, for Siri and your own shortcuts. |
+| **Preview Tomorrow**, **Morning Update** | Run by the `RUN_PLAN_PREVIEW` and `RUN_MORNING_UPDATE` automations. |
 
 ## Alarm cause
 
@@ -693,12 +758,14 @@ BedtimeBridge/
     DriveTime/  Apple Maps, TomTom and Google drive-time providers
   Intents/    Shortcuts actions, Snooze/Stop button actions, Wake Plan result type
   Views/      main screen and settings
-BedtimeBridgeWidgets/  Lock Screen "Next Alarm" widget and the snooze-countdown Live Activity
+BedtimeBridgeWidgets/  "Next Alarm" widget (every size), the snooze, wind-down and morning Live Activities,
+                       and the Lock Screen / Control Center controls
 Shared/       Nightfall theme, alarm metadata and widget snapshot used by the app and the widgets
 BedtimeBridgeTests/
 custom_components/bedtime_bridge/  Home Assistant integration (HACS)
   brand/      integration icon and logo (rendered from design/icons/crescent.svg)
 blueprints/automation/bedtime_bridge/  "Bedtime Bridge alarm event" blueprint
 tests/ha/     integration tests
+docs/         setup guide, Home Assistant hand-offs per version, shortcuts, specs, README pictures
 BedtimeBridge.xcodeproj  Xcode project (open this)
 ```
