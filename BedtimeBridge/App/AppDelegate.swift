@@ -5,11 +5,18 @@ import UserNotifications
 final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = self
-        LocationQuestions.registerCategory()
+        LocationQuestions.registerCategories()
         return true
     }
 
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+        // "Tomorrow changed … Re-plan?" (v0.4.3 item 4): opens the preview, which changes nothing
+        // until you confirm.
+        if response.notification.request.content.categoryIdentifier == PlanChangeNotice.category,
+           response.actionIdentifier != UNNotificationDismissActionIdentifier {
+            await MainActor.run { _ = UIApplication.shared.open(PlanChangeNotice.replanURL) }
+            return
+        }
         guard response.notification.request.content.categoryIdentifier == LocationQuestions.category,
               let eventID = response.notification.request.content.userInfo["eventID"] as? String else { return }
 

@@ -114,9 +114,11 @@ final class BedtimeCoordinator {
     }
 
     /// A skipped morning plans nothing, or your own time if you picked one.
-    private func adjustedForSkip(_ plan: WakePlan, settings: BridgeSettings) -> WakePlan {
+    /// "No alarms tomorrow" (v0.4.3 item 3) plans nothing for its morning the same way.
+    private func adjustedForSkip(_ plan: WakePlan, settings: BridgeSettings, keepingCleared: Bool = true) -> WakePlan {
         if let replacement = skipReplacement { return manualPlan(replacement, settings: settings) }
-        return PlanAdjustments.skipping(plan, morning: skippedMorning)
+        let skipped = PlanAdjustments.skipping(plan, morning: skippedMorning)
+        return keepingCleared ? PlanAdjustments.skipping(skipped, morning: clearedMorning, noAlarms: true) : skipped
     }
 
     private func manualPlan(_ replacement: SkipReplacement, settings: BridgeSettings) -> WakePlan {
@@ -511,6 +513,163 @@ final class BedtimeCoordinator {
         await report(.cancelled, data: [:], settings: settings)
     }
 
+    // MARK: Manual set, Undo and No alarms tomorrow (v0.4.3 items 1–3)
+
+    /// Plans for the preview a manual set shows first (item 1): the same plan bedtime would
+    /// set, and the settings it was made with. Changes nothing.
+    func previewForSet(settings: BridgeSettings) async throws -> (plan: WakePlan, settings: BridgeSettings) {
+        let result: (WakePlan, BridgeSettings)
+        do {
+            result = try await makePlan(settings: settings, now: .now)
+        } catch {
+            guard let fallback = await fallbackPlan(settings: settings, error: error) else { throw error }
+            result = fallback
+        }
+        // A manual set overrides "No alarms tomorrow", so the preview shows what it would set.
+        return (adjustedForSkip(result.0, settings: result.1, keepingCleared: false), result.1)
+    }
+
+    /// [Set alarms] (or [Clear alarms]) on the preview: sets exactly the previewed plan and
+    /// keeps what was there for Undo.
+    func setPreviewed(_ plan: WakePlan, settings: BridgeSettings) async throws {
+        let before = undoBaseline(kind: .set)
+        clearedMorning = nil
+        try await apply(plan, settings: settings)
+        saveUndo(before, left: setAlarmTimes())
+    }
+
+    private static let clearedMorningKey = "clearedMorning.v1"
+
+    /// "No alarms tomorrow" (item 3): that morning plans no alarms, as a skip does, but Home
+    /// Assistant's ladder still follows the calendar. Forgotten once the morning has passed.
+    private(set) var clearedMorning: Date? {
+        get {
+            guard let day = UserDefaults.standard.object(forKey: Self.clearedMorningKey) as? Date,
+                  day >= Calendar.current.startOfDay(for: .now) else { return nil }
+            return day
+        }
+        set { UserDefaults.standard.set(newValue.map { Calendar.current.startOfDay(for: $0) }, forKey: Self.clearedMorningKey) }
+    }
+
+    /// The morning "No alarms tomorrow" is for: the set alarms' morning, else the next plan's,
+    /// else tomorrow.
+    func noAlarmsMorning(plan: WakePlan?, now: Date = .now) -> Date {
+        setAlarmTimes().first { $0 > now } ?? plan?.firstAlarm
+            ?? Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: now))!
+    }
+
+    /// The shift still on the calendar that morning, for the confirm ("Days at 6:30 is still
+    /// on your calendar, so the backstops stay on").
+    func shiftOnCalendar(morning: Date, settings phoneSettings: BridgeSettings) -> (cause: String, start: Date)? {
+        let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
+        let day = Calendar.current.startOfDay(for: morning)
+        guard EKEventStore.authorizationStatus(for: .event) == .fullAccess,
+              let end = Calendar.current.date(byAdding: .day, value: 1, to: day) else { return nil }
+        for event in calendar.events(from: day, to: end, calendarIDs: settings.shiftCalendarIDs) {
+            if let rule = WakePlanner.matchingRule(forTitle: event.title ?? "", rules: settings.shiftRules) {
+                return (rule.keyword, event.startDate)
+            }
+        }
+        return nil
+    }
+
+    /// Clears that morning's regular alarms (temporary and nap alarms stay); Home Assistant gets
+    /// `cancelled` with Sleep In, and its ladder follows the calendar.
+    func noAlarmsTomorrow(morning: Date, sleepIn: Bool, settings phoneSettings: BridgeSettings) async throws {
+        let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
+        let before = undoBaseline(kind: .noAlarms)
+        try alarms.cancelAll(keeping: keptAlarms)
+        leaveReminder.clear()
+        lastAppliedPlan = nil
+        alarmSeries = []
+        morningChangeReason = nil
+        plannedBeforeSleepLater = nil
+        storedPattern = nil
+        calendarChangedSinceSet = false
+        clearedMorning = morning
+        updateWidget { $0 = NextAlarmSnapshot(alarmStyle: settings.alarmStyle.rawValue, temporaryAlarms: temporaryAlarms.map(\.time)) }
+        lastCause = AlarmCause.none
+        await report(.cancelled, data: ["sleep_in": sleepIn, "morning": Self.iso(morning)], settings: settings)
+        saveUndo(before, left: [])
+    }
+
+    private static let undoKey = "undoRecord.v1"
+    private static let undoPlanKey = "undoRecord.plan"
+    /// The full plan from before, while the app stays open (the record rebuilds a simpler one).
+    private var undoPlan: WakePlan?
+
+    private(set) var undoRecord: UndoRecord? {
+        get { UserDefaults.standard.data(forKey: Self.undoKey).flatMap { try? JSONDecoder().decode(UndoRecord.self, from: $0) } }
+        set { UserDefaults.standard.set(newValue.flatMap { try? JSONEncoder().encode($0) }, forKey: Self.undoKey) }
+    }
+
+    /// Undo for the bottom bar, while it still applies (item 2).
+    func availableUndo(now: Date = .now) -> UndoRecord? {
+        guard let record = undoRecord,
+              record.available(currentTimes: setAlarmTimes(), bedtimeRanAt: bedtimeRanAt, now: now) else { return nil }
+        return record
+    }
+
+    private func undoBaseline(kind: UndoRecord.Kind) -> UndoRecord {
+        let plan = lastAppliedPlan
+        let times = setAlarmTimes()
+        undoPlan = times.isEmpty ? nil : plan
+        return UndoRecord(
+            kind: kind, previousTimes: times, previousWake: plan?.wakeTime ?? NextAlarmSnapshot.load().wakeTime,
+            previousSource: plan?.source ?? (times.isEmpty ? .none : .manual),
+            previousReason: plan?.reason ?? NextAlarmSnapshot.load().reason ?? "Your alarms",
+            previousCause: plan?.cause ?? lastCause, previousCleared: clearedMorning, leftTimes: [], savedAt: .now
+        )
+    }
+
+    private func saveUndo(_ record: UndoRecord, left: [Date]) {
+        var record = record
+        record.leftTimes = left
+        record.savedAt = .now
+        undoRecord = record
+    }
+
+    /// Puts back exactly what was there before the manual set or No alarms tomorrow: the
+    /// previous alarms (Home Assistant gets them as a plan, so Sleep In follows), or none.
+    func undo(settings phoneSettings: BridgeSettings) async throws {
+        guard let record = availableUndo() else { return }
+        let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
+        undoRecord = nil
+        if var previous = undoPlan ?? record.previousPlan {
+            previous.alarmTimes = record.previousTimes.sorted()
+            clearedMorning = record.previousCleared
+            try await apply(previous, settings: settings)
+        } else {
+            try await cancelAlarms(settings: settings)
+            clearedMorning = record.previousCleared
+        }
+        undoPlan = nil
+    }
+
+    // MARK: Calendar changed after the alarms were set (v0.4.3 item 4)
+
+    private static let changeNotifiedKey = "planChangeNotified.v1"
+
+    /// Plans again in the background and, if tomorrow no longer matches what's set, says so by
+    /// notification with a Re-plan action. Never moves or removes alarms itself.
+    func checkPlanStillMatches(settings: BridgeSettings) async -> String? {
+        let set = setAlarmTimes().filter { $0 > .now }
+        guard !set.isEmpty, let new = try? await buildPlan(settings: settings) else { return nil }
+        let snapshot = NextAlarmSnapshot.load()
+        guard let text = PlanChange.describe(set: set, setCause: lastAppliedPlan?.cause ?? snapshot.cause,
+                                             setLabel: lastAppliedPlan?.appointment?.title ?? (snapshot.label.isEmpty ? nil : snapshot.label), new: new) else {
+            // A change that leaves tomorrow as it is (another day's event): nothing to offer.
+            calendarChangedSinceSet = false
+            return nil
+        }
+        calendarChangedSinceSet = true
+        if UserDefaults.standard.string(forKey: Self.changeNotifiedKey) != text {
+            UserDefaults.standard.set(text, forKey: Self.changeNotifiedKey)
+            await PlanChangeNotice.post(text)
+        }
+        return text
+    }
+
     /// Sets (or clears) alarms, the leave-by reminder and the HA sensor for a plan.
     private func apply(_ plan: WakePlan, settings: BridgeSettings) async throws {
         lastAppliedPlan = plan
@@ -534,6 +693,8 @@ final class BedtimeCoordinator {
         storedPattern = plan.hasAlarm ? SeriesPattern.from(series: plan.alarmTimes, wake: plan.wakeTime, fallback: settings) : nil
         morningChangeReason = nil
         calendarChangedSinceSet = false
+        UserDefaults.standard.removeObject(forKey: Self.changeNotifiedKey)
+        PlanChangeNotice.clear()
         setFingerprint = settings.planFingerprint
         stoppedThisWakeUp = false
         recordShortfall(planned: planned, actual: actual)
@@ -896,6 +1057,8 @@ final class BedtimeCoordinator {
                 self.dropLeaveRemindersIfEventGone(settings: SettingsStore.shared.settings)
                 guard !self.alarmSeries.isEmpty else { return }
                 self.calendarChangedSinceSet = true
+                // Say what changed, by notification; never move the alarms (v0.4.3 item 4).
+                Task { _ = await self.checkPlanStillMatches(settings: SettingsStore.shared.settings) }
             }
         }
     }

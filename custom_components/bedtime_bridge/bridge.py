@@ -1542,8 +1542,12 @@ class BedtimeBridge:
         self._changed()
 
     async def _cancelled(self, data: dict[str, Any]) -> None:
+        """Alarms cleared. "No alarms tomorrow" (v0.4.3 item 3) sends sleep_in; the ladder then
+        follows the calendar alone (armed while a covered shift is on it)."""
         self.state.update(empty_state())
-        self._event(MSG_CANCELLED)
+        if "sleep_in" in data:
+            await self._set_sleep_in(bool(data["sleep_in"]))
+        self._event(MSG_CANCELLED, sleep_in=data.get("sleep_in"), morning=data.get("morning"))
 
     async def _bedtime(self, data: dict[str, Any]) -> dict[str, Any]:
         """Starts the bedtime routine by turning on its helper, only when you're home."""

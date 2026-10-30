@@ -11,8 +11,8 @@ enum LocationQuestions {
     static let noneAction = "NO_LOCATION_NEEDED"
     private static let prefix = "missing-location-"
 
-    /// Registered at launch so the notification shows its buttons.
-    static func registerCategory() {
+    /// Registered at launch (with the app's other categories) so the notification shows its buttons.
+    static var notificationCategory: UNNotificationCategory {
         let add = UNTextInputNotificationAction(
             identifier: addAction,
             title: "Add location",
@@ -21,8 +21,12 @@ enum LocationQuestions {
             textInputPlaceholder: "Address or place name"
         )
         let none = UNNotificationAction(identifier: noneAction, title: "No location needed", options: [])
-        let category = UNNotificationCategory(identifier: category, actions: [add, none], intentIdentifiers: [], options: [])
-        UNUserNotificationCenter.current().setNotificationCategories([category])
+        return UNNotificationCategory(identifier: category, actions: [add, none], intentIdentifiers: [], options: [])
+    }
+
+    /// Every category the app's notifications use; setting them replaces any registered before.
+    static func registerCategories() {
+        UNUserNotificationCenter.current().setNotificationCategories([notificationCategory, PlanChangeNotice.notificationCategory])
     }
 
     static func ask(about appointments: [AppointmentCandidate]) async {
