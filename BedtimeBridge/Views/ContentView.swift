@@ -187,14 +187,6 @@ struct ContentView: View {
                         .editing(settings: store.settings, edited: refreshScheduled)
                     } else if skippedMorning == nil, scheduled.isEmpty, plan?.hasAlarm != true {
                         DayOffCard { sheet = .dayOff }
-                        // Tomorrow has nothing: a wake-up event may be missing (v0.4.3 item 13).
-                        Button { sheet = .addWakeUp } label: {
-                            Label("Add a wake-up event", systemImage: "calendar.badge.plus")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(Theme.accentText)
-                                .frame(maxWidth: .infinity, minHeight: 44)
-                                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.border, lineWidth: 1))
-                        }
                     }
 
                     if store.settings.alarmStyle == .app {
@@ -359,6 +351,16 @@ struct ContentView: View {
                     .foregroundStyle(Theme.text)
             }
             Spacer()
+            // Add a wake-up event (v0.4.3 item 13), beside Upcoming events and Settings.
+            Button { sheet = .addWakeUp } label: {
+                Image(systemName: "calendar.badge.plus")
+                    .font(.system(size: 19, weight: .medium))
+                    .foregroundStyle(Theme.accentIcon)
+                    .frame(width: 44, height: 44)
+                    .background(Theme.surface, in: Circle())
+                    .overlay(Circle().stroke(Theme.border, lineWidth: 1))
+            }
+            .accessibilityLabel("Add a wake-up event")
             NavigationLink {
                 UpcomingEventsView()
             } label: {

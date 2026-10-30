@@ -361,5 +361,48 @@ struct BedtimeBridgeShortcuts: AppShortcutsProvider {
             shortTitle: "Cancel Alarms",
             systemImageName: "alarm.waves.left.and.right"
         )
+        // v0.4.3 item 11
+        AppShortcut(
+            intent: NapIntent(),
+            phrases: ["Nap \(\.$length) with \(.applicationName)", "Start a \(.applicationName) nap", "Nap with \(.applicationName)"],
+            shortTitle: "Nap",
+            systemImageName: "powersleep"
+        )
+        AppShortcut(
+            intent: NoAlarmsTomorrowIntent(),
+            phrases: ["No alarms tomorrow in \(.applicationName)", "No \(.applicationName) alarms tomorrow"],
+            shortTitle: "No Alarms Tomorrow",
+            systemImageName: "alarm.slash"
+        )
+        AppShortcut(
+            intent: SleepLaterIntent(),
+            phrases: ["Sleep later \(\.$amount) with \(.applicationName)", "Sleep later with \(.applicationName)"],
+            shortTitle: "Sleep Later",
+            systemImageName: "clock.arrow.circlepath"
+        )
+        AppShortcut(
+            intent: StartWindDownIntent(),
+            phrases: ["Start wind-down in \(.applicationName)", "Start winding down with \(.applicationName)"],
+            shortTitle: "Start Wind-Down",
+            systemImageName: "moon.zzz"
+        )
+        AppShortcut(
+            intent: CancelWindDownIntent(),
+            phrases: ["Cancel wind-down in \(.applicationName)"],
+            shortTitle: "Cancel Wind-Down",
+            systemImageName: "moon.zzz.fill"
+        )
+        AppShortcut(
+            intent: AddLeaveIntent(),
+            phrases: ["Add leave in \(.applicationName)"],
+            shortTitle: "Add Leave",
+            systemImageName: "beach.umbrella"
+        )
+        AppShortcut(
+            intent: AddWakeUpEventIntent(),
+            phrases: ["Add a wake-up event in \(.applicationName)"],
+            shortTitle: "Add Wake-Up Event",
+            systemImageName: "calendar.badge.plus"
+        )
     }
 }
