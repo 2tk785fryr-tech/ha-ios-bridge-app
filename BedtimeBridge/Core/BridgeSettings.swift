@@ -177,6 +177,11 @@ struct BridgeSettings: Codable, Equatable {
     /// "Start wind-down now" shows from this long before go to bed (also on When options show).
     var startWindDownHours = 2
 
+    // MARK: Notifications
+
+    /// Each notification's level by NotificationKind key; one not here uses its default.
+    var notificationLevels: [String: String] = [:]
+
     // MARK: Shortcuts & controls (v0.4.3 item 16)
 
     /// Quick actions per moment ("daytime", "evening", "morning"); a moment not here uses its defaults.
@@ -458,6 +463,7 @@ final class SettingsStore {
             defaults.set(data, forKey: Self.key)
         }
         HomeAssistantLinks.everyMessage = Self.everyMessage(settings)
+        UserDefaults.standard.set(settings.notificationLevels, forKey: NotificationKind.savedKey)
         // The controls and the widget's tap read these from the shared snapshot (v0.4.3 item 16).
         var snapshot = NextAlarmSnapshot.load()
         snapshot.windDownControlOpensApp = settings.windDownControlOpensApp
@@ -474,6 +480,7 @@ final class SettingsStore {
             "wind_down_settings": settings.windDownForHomeAssistant,
             "charge_warning": ["enabled": settings.chargeWarningEnabled, "threshold": settings.chargeWarningThreshold],
             "weekly_summary": ["enabled": settings.weeklySummaryEnabled, "weekday": settings.weeklySummaryWeekday, "time": settings.weeklySummaryTime],
+            "notification_levels": NotificationKind.forHomeAssistant(settings),
         ]
         if let expires = AppExpiry.iso { message["app_expires"] = expires }
         return message
@@ -483,6 +490,8 @@ final class SettingsStore {
 enum WeatherSource: String, Codable, CaseIterable, Identifiable {
     case homeAssistant
     case openMeteo
+    /// WeatherKit, with the paid Developer Program.
+    case apple
 
     var id: String { rawValue }
 
@@ -490,6 +499,7 @@ enum WeatherSource: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .homeAssistant: "Home Assistant"
         case .openMeteo: "Open-Meteo (free)"
+        case .apple: "Apple Weather"
         }
     }
 }

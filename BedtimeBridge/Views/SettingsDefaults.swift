@@ -114,7 +114,8 @@ enum DurationText {
 
 /// Which settings each page shows, for "Reset this page to defaults" (v0.4.3 item 8).
 enum SettingsPages {
-    static let main = ["shiftRules", "getReadyMinutes", "workArrivalBufferMinutes", "wakeEarlyToGetReady", "homeAddress"]
+    static let main = ["shiftRules"]
+    static let morningsHome = ["getReadyMinutes", "workArrivalBufferMinutes", "wakeEarlyToGetReady", "homeAddress"]
     static let alarms = ["chargeWarningEnabled", "chargeWarningThreshold", "alarmStyle", "alarmCount", "alarmSpacingMinutes", "wakeTimeIs", "snoozeMinutes", "alarmSound", "stopBehavior", "lookAheadHours"]
     static let ownAlarms = ["newAlarmHoursAhead", "ownAlarmRoundingMinutes", "ownAlarmPickerSnaps", "ownAlarmCount", "ownAlarmSpacingMinutes", "ownAlarmWakeIs", "ownBackstopsDayOff", "ownBackstopsLeave", "ownEarlyMinutes", "ownDeadlineMinutes", "ownLateMinutes", "ownBackstopsFull"]
     static let optionWindows = ["endAlarmsEarlyHours", "notReadyForBedHours", "backToBedHours", "startWindDownHours"]
@@ -127,8 +128,9 @@ enum SettingsPages {
     static let weather = ["weatherSource", "weatherEntity", "weatherExtraMinutes", "badWeatherConditions", "weatherConditionMinutes", "addTimeWhenFreezing"]
     static let calendars = ["shiftCalendarIDs", "appointmentCalendarIDs", "newEventsCalendarID"]
     static let leave = ["leaveTitles"]
+    static let notifications = ["notificationLevels"]
     static let shortcuts = ["quickActions", "windDownControlOpensApp", "napControlNapsNow", "widgetTapAlwaysTonight"]
     static let weekly = ["weeklySummaryEnabled", "weeklySummaryWeekday", "weeklySummaryTime"]
 
-    static let all = [main, alarms, ownAlarms, optionWindows, morningChange, nap, windDown, appointments, driveTime, homeAssistant, weather, calendars, leave, weekly, shortcuts]
+    static let all = [main, morningsHome, alarms, ownAlarms, optionWindows, morningChange, nap, windDown, appointments, driveTime, homeAssistant, weather, calendars, leave, weekly, shortcuts, notifications]
 }

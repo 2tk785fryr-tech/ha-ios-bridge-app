@@ -1385,7 +1385,7 @@ private struct StatusCard: View {
     }
 
     private var weatherText: String {
-        guard settings.checksWeather, settings.weatherSource == .openMeteo || link != nil else { return "Not checked" }
+        guard settings.checksWeather, settings.weatherSource != .homeAssistant || link != nil else { return "Not checked" }
         if let weather = plan?.weather { return "+\(weather.minutes) min, \(weather.reason)" }
         return plan == nil ? "Checked when you plan" : "No extra time"
     }

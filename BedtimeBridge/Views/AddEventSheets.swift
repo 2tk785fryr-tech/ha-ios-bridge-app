@@ -168,3 +168,26 @@ struct LeaveSettings: View {
         .sheet(isPresented: $adding) { AddLeaveSheet(settings: settings) {} }
     }
 }
+
+/// Apple's mark and its legal page, required wherever Apple Weather data is used.
+struct AppleWeatherAttribution: View {
+    @State private var attribution: (markURL: URL, legalURL: URL)?
+
+    var body: some View {
+        HStack {
+            if let attribution {
+                AsyncImage(url: attribution.markURL) { image in
+                    image.resizable().scaledToFit()
+                } placeholder: {
+                    Text(" Weather").font(.footnote)
+                }
+                .frame(height: 14)
+                Spacer()
+                Link("Data sources", destination: attribution.legalURL).font(.footnote)
+            } else {
+                Text(" Weather").font(.footnote).foregroundStyle(Theme.textMuted)
+            }
+        }
+        .task { attribution = await AppleWeatherForecast.attribution() }
+    }
+}

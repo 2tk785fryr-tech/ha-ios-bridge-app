@@ -722,9 +722,12 @@ class WindDown:
             data["actions"] = actions
         if url:
             data["url"] = url
-        if critical:
+        # Settings → Notifications in the app picks each one's level; the flags are the defaults.
+        default = "critical" if critical else "time_sensitive" if time_sensitive else "normal"
+        level = (self.bridge.state.get("notification_levels") or {}).get(tag, default)
+        if level == "critical":
             data["push"] = {"sound": {"name": "default", "critical": 1, "volume": 1.0}, "interruption-level": "critical"}
-        elif time_sensitive:
+        elif level == "time_sensitive":
             data["push"] = {"interruption-level": "time-sensitive"}
         try:
             await self.hass.services.async_call(target[0], target[1], {"title": title, "message": message, "data": data})

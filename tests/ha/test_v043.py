@@ -467,3 +467,19 @@ async def test_fix_morning_updates_work_the_next_morning_too(hass, ladder, hass_
         await at(hass, freezer, local("05:21", day=day))
         await at(hass, freezer, local("07:05", day=day))
     assert messages(notes).count("RUN_MORNING_UPDATE") >= 4, "both mornings got their updates"
+
+
+# MARK: Notification levels (Settings → Notifications)
+
+
+async def test_levels_from_the_app_override_the_defaults(hass, ladder, hass_client_no_auth, freezer):
+    notes = await wind_setup(hass, ladder)
+    plan_msg = days_plan()
+    plan_msg["data"]["notification_levels"] = {"wind_down_bed": "time_sensitive", "wind_down_warning": "critical"}
+    await send(hass_client_no_auth, plan_msg)
+    await at(hass, freezer, local("20:45", day=27))
+    warning = [c for c in notes if (c.data.get("message") or "").startswith("Wind-down at")][0]
+    assert warning.data["data"]["push"]["interruption-level"] == "critical"
+    await at(hass, freezer, local("21:50", day=27))
+    bed = [c for c in notes if (c.data.get("message") or "").startswith("Time for bed")][0]
+    assert bed.data["data"]["push"] == {"interruption-level": "time-sensitive"}, "go to bed is no longer critical"

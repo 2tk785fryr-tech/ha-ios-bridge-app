@@ -358,6 +358,10 @@ class BedtimeBridge:
         # Every message may carry the app's wind-down settings (v0.4.3 item 5) and when this
         # install of the app stops opening (item 9).
         self.wind_down.adopt_settings(data.get("wind_down_settings"))
+        if isinstance(data.get("notification_levels"), dict):
+            self.state["notification_levels"] = {
+                k: v for k, v in data["notification_levels"].items() if v in ("normal", "time_sensitive", "critical")
+            }
         if isinstance(data.get("charge_warning"), dict):
             self.state["charge_warning"] = data["charge_warning"]
         if isinstance(data.get("weekly_summary"), dict) and data["weekly_summary"] != self.state.get("weekly_settings"):

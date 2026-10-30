@@ -40,6 +40,7 @@ enum LocationQuestions {
             content.categoryIdentifier = category
             content.userInfo = ["eventID": eventID]
             content.sound = nil  // you're probably dozing off; it waits on the Lock Screen
+            content.interruptionLevel = NotificationKind.missingLocation.interruptionLevel
             // Same identifier per event, so re-planning replaces rather than stacks.
             try? await center.add(UNNotificationRequest(identifier: prefix + eventID, content: content, trigger: nil))
         }

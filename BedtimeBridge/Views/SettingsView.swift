@@ -36,28 +36,10 @@ struct SettingsView: View {
             }
 
             Section {
-                DefaultStepper(value: $store.settings.getReadyMinutes, in: 0...240, step: 5, defaultValue: BridgeSettings().getReadyMinutes, note: { "\($0) min" }) { "Get ready: \($0) min" }
-                DefaultStepper(value: $store.settings.workArrivalBufferMinutes, in: 0...60, step: 5, defaultValue: BridgeSettings().workArrivalBufferMinutes, note: { "\($0) min" }) { "Arrive at work early: \($0) min" }
-                DefaultToggle(title: "Wake early enough to get ready", isOn: $store.settings.wakeEarlyToGetReady, defaultValue: BridgeSettings().wakeEarlyToGetReady)
-            } header: {
-                Text("Mornings")
-            } footer: {
-                Text("When a shift's event has a location, Tonight shows when to leave to arrive this early. If the drive or bad weather leaves less than the get-ready time, you're warned and can wake earlier for that night; with the switch on, shift alarms move earlier by themselves. Appointments always plan the get-ready time.")
-            }
-
-            Section {
-                HomeAddressField(address: $store.settings.homeAddress)
-            } header: {
-                Text("Home")
-            } footer: {
-                Text("Where drives to appointments start. Blank uses your current location (Apple Maps only).")
-            }
-
-            ResetPageSection(detail: "Shifts, Mornings and Home go back to their defaults (Days and Swings, no home address). The pages below keep theirs.") {
-                store.settings.resetToDefaults(SettingsPages.main)
-            }
-
-            Section {
+                SettingsLink(title: "Mornings & home", icon: "sunrise",
+                             value: "Get ready \(settings.getReadyMinutes) min" + (settings.homeAddress.isEmpty ? "" : " · home set")) {
+                    MorningsHomeSettings(settings: $store.settings)
+                }
                 SettingsLink(title: "Alarms", icon: "alarm", value: "\(settings.alarmCount) alarms, \(settings.alarmSpacingMinutes) min apart") {
                     SettingsPage(title: "Alarms") { AlarmSettingsSection(settings: $store.settings) }
                 }
@@ -108,6 +90,9 @@ struct SettingsView: View {
                 SettingsLink(title: "Calendars", icon: "calendar", value: calendarSummary(settings)) {
                     CalendarsPage(settings: $store.settings)
                 }
+                SettingsLink(title: "Notifications", icon: "bell.badge", value: "") {
+                    NotificationSettings(settings: $store.settings)
+                }
                 SettingsLink(title: "Shortcuts & controls", icon: "square.grid.2x2", value: "") {
                     ShortcutsSettings(settings: $store.settings)
                 }
@@ -120,6 +105,10 @@ struct SettingsView: View {
                 SettingsLink(title: "Reset", icon: "arrow.counterclockwise", value: "") {
                     ResetSettings(settings: $store.settings)
                 }
+            }
+
+            ResetPageSection(detail: "Your shifts go back to the defaults (Days and Swings). The pages above keep theirs.") {
+                store.settings.resetToDefaults(SettingsPages.main)
             }
         }
     }
@@ -135,6 +124,37 @@ struct SettingsView: View {
     private func calendarSummary(_ settings: BridgeSettings) -> String {
         let count = settings.shiftCalendarIDs.union(settings.appointmentCalendarIDs).count
         return settings.shiftCalendarIDs.isEmpty && settings.appointmentCalendarIDs.isEmpty ? "All" : "\(count) chosen"
+    }
+}
+
+/// Settings → Mornings & home: get-ready time, arriving early, and where drives start.
+private struct MorningsHomeSettings: View {
+    @Binding var settings: BridgeSettings
+
+    var body: some View {
+        SettingsPage(title: "Mornings & home") {
+            Section {
+                DefaultStepper(value: $settings.getReadyMinutes, in: 0...240, step: 5, defaultValue: BridgeSettings().getReadyMinutes, note: { "\($0) min" }) { "Get ready: \($0) min" }
+                DefaultStepper(value: $settings.workArrivalBufferMinutes, in: 0...60, step: 5, defaultValue: BridgeSettings().workArrivalBufferMinutes, note: { "\($0) min" }) { "Arrive at work early: \($0) min" }
+                DefaultToggle(title: "Wake early enough to get ready", isOn: $settings.wakeEarlyToGetReady, defaultValue: BridgeSettings().wakeEarlyToGetReady)
+            } header: {
+                Text("Mornings")
+            } footer: {
+                Text("When a shift's event has a location, Tonight shows when to leave to arrive this early. If the drive or bad weather leaves less than the get-ready time, you're warned and can wake earlier for that night; with the switch on, shift alarms move earlier by themselves. Appointments always plan the get-ready time.")
+            }
+
+            Section {
+                HomeAddressField(address: $settings.homeAddress)
+            } header: {
+                Text("Home")
+            } footer: {
+                Text("Where drives to appointments start. Blank uses your current location (Apple Maps only).")
+            }
+
+            ResetPageSection(detail: "Get ready, arrive early, wake early and the home address go back to their defaults (no home address).") {
+                settings.resetToDefaults(SettingsPages.morningsHome)
+            }
+        }
     }
 }
 
@@ -903,6 +923,8 @@ private struct WeatherSection: View {
             "From this Home Assistant weather entity, e.g. weather.forecast_home. Needs Home Assistant set up."
         case .openMeteo:
             "Free, no key or Home Assistant needed: the hourly forecast for your home address (your current location if it's blank). Weather data by Open-Meteo.com."
+        case .apple:
+            "Apple Weather's hourly forecast for your home address (your current location if it's blank). No key or Home Assistant needed."
         }
     }
 
@@ -920,6 +942,9 @@ private struct WeatherSection: View {
                 ForEach(WeatherSource.allCases) { Text($0.displayName).tag($0) }
             } label: {
                 WithDefault(text: "Forecast from", defaultText: settings.weatherSource == BridgeSettings().weatherSource ? nil : BridgeSettings().weatherSource.displayName)
+            }
+            if settings.weatherSource == .apple {
+                AppleWeatherAttribution()
             }
             if settings.weatherSource == .homeAssistant {
                 if usesIntegration {

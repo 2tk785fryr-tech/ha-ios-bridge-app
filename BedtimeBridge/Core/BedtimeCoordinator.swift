@@ -662,7 +662,7 @@ final class BedtimeCoordinator {
         let limit = await napLimit(settings: settings)
         let content = UNMutableNotificationContent()
         // You pressed the control expecting a nap: say at once if it didn't happen.
-        content.interruptionLevel = .timeSensitive
+        content.interruptionLevel = NotificationKind.napControl.interruptionLevel
         if NapPlanner.fits(minutes: minutes, now: .now, count: settings.napAlarmCount, spacing: settings.napSpacingMinutes, limit: limit) {
             do {
                 try await startNap(minutes: minutes, settings: settings)
@@ -1771,6 +1771,12 @@ final class BedtimeCoordinator {
             return { [travel] in
                 let place = try await Self.weatherLocation(homeAddress: settings.homeAddress, travel: travel)
                 return (try await OpenMeteoForecast().hourly(at: place), "°C")
+            }
+        case .apple:
+            return { [travel] in
+                let place = try await Self.weatherLocation(homeAddress: settings.homeAddress, travel: travel)
+                let forecast = try await AppleWeatherForecast().hourly(at: place)
+                return (forecast.hours, forecast.temperatureUnit)
             }
         }
     }

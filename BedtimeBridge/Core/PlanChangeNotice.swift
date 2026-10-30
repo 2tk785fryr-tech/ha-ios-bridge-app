@@ -23,7 +23,7 @@ enum PlanChangeNotice {
         content.categoryIdentifier = category
         content.sound = .default
         // Alarms that may be wrong for tomorrow: through Focus.
-        content.interruptionLevel = .timeSensitive
+        content.interruptionLevel = NotificationKind.planChanged.interruptionLevel
         // One at a time: a newer change replaces the older notice.
         try? await center.add(UNNotificationRequest(identifier: identifier, content: content, trigger: nil))
     }
