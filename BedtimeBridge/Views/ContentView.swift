@@ -1,3 +1,4 @@
+import AlarmKit
 import EventKit
 import SwiftUI
 
@@ -15,9 +16,14 @@ struct ContentView: View {
     @State private var stoppingAlarm: SnoozedAlarm?
     @State private var skipReplacement: SkipReplacement?
     @State private var temporaryAlarms: [TemporaryAlarm] = []
+    /// The nap's alarms, kept here so ending a nap redraws the screen (they aren't in `scheduled`).
+    @State private var napAlarms: [NapAlarm] = []
+    @State private var napStatus: String?
     @State private var morningEnd: MorningEnd?
     @State private var backToBed = false
     @State private var notReadyForBed = false
+    /// The minute the screen last redrew for (v0.4.6 item 3); the bar reads it, so a tick redraws.
+    @State private var tick = Date.now
     /// A protected action waiting for its slide-and-hold in the bottom bar (v0.4.2 item 6).
     @State private var barSlider: BarAction?
     @State private var menuOpen = false
@@ -67,8 +73,8 @@ struct ContentView: View {
                         WarningBanner(text: expiry.text, systemImage: "hammer", tint: expiry.urgent ? Theme.danger : Theme.warning.text)
                     }
 
-                    if coordinator.isNapping {
-                        NappingCard(alarms: coordinator.napAlarms, status: coordinator.napStatus,
+                    if !napAlarms.isEmpty {
+                        NappingCard(alarms: napAlarms, status: napStatus,
                                     ring: { coordinator.ring(forAlarm: $0.id, at: $0.time) }) {
                             Task {
                                 await coordinator.endNap(settings: store.settings)
@@ -222,6 +228,20 @@ struct ContentView: View {
                 coordinator.watchCalendar()
                 coordinator.dropLeaveRemindersIfEventGone(settings: store.settings)
                 refreshScheduled()
+            }
+            // Any alarm set, ringing, stopped or cancelled, here or from the Lock Screen: a nap's
+            // last alarm stopped clears the Napping card straight away (v0.4.6 item 1).
+            .task {
+                for await _ in AlarmManager.shared.alarmUpdates { refreshScheduled() }
+            }
+            // Redraw at each minute while open, so the bar changes on time (v0.4.6 item 3).
+            .task(id: scenePhase) {
+                guard scenePhase == .active else { return }
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(ScreenClock.secondsToNextMinute(.now)))
+                    if Task.isCancelled { return }
+                    minuteTick()
+                }
             }
             // The bedtime shortcut (or a phone command) may have set or cleared alarms while the
             // app was in the background: show what's set now, not the plan from before.
@@ -422,11 +442,11 @@ struct ContentView: View {
 
     /// The moment the bottom bar is for (v0.4.2 item 6).
     private var barInputs: BottomBar.Inputs {
-        let now = Date.now
+        let now = max(tick, Date.now)
         let snapshot = NextAlarmSnapshot.load()
         let set = store.settings.alarmStyle == .app ? coordinator.setAlarmTimes() : []
         var i = BottomBar.Inputs(now: now)
-        i.napUpAt = coordinator.napAlarms.first?.time
+        i.napUpAt = napAlarms.first?.time
         i.snoozing = morningBubbles.contains { if case .snoozing = $0.ring { true } else { false } }
         i.snoozingUntil = snapshot.snoozedUntil
         if !set.isEmpty, let title = primaryAction.buttonTitle {
@@ -450,8 +470,7 @@ struct ContentView: View {
             i.windDown = coordinator.windDown
             i.startWindDownHours = store.settings.startWindDownHours
         }
-        let hour = Calendar.current.component(.hour, from: now)
-        i.evening = hour >= 17 || hour < 4
+        i.evening = ScreenClock.isEvening(now)
         return i
     }
 
@@ -687,12 +706,42 @@ struct ContentView: View {
         }
     }
 
+    /// The phone-side state the screen shows, to tell whether a minute changed anything.
+    private var windows: ScreenClock.Windows {
+        ScreenClock.Windows(napAlarms: napAlarms.map(\.id), alarmsSet: scheduled, upEarly: morningEnd != nil,
+                            backToBed: backToBed, notReadyForBed: notReadyForBed, sleepLater: sleepLater,
+                            undo: coordinator.availableUndo(now: tick) != nil, evening: ScreenClock.isEvening(tick))
+    }
+
+    /// A minute passed: redraw (the bar's times and wind-down states read `tick`), and refresh
+    /// fully when a window opened or closed, an alarm's time passed or Undo's moment did.
+    private func minuteTick() {
+        let before = windows
+        let last = tick
+        tick = .now
+        let now = ScreenClock.Windows(
+            napAlarms: coordinator.napAlarms.map(\.id), alarmsSet: coordinator.scheduledAlarmTimes(),
+            upEarly: coordinator.morningEnd(settings: store.settings) != nil,
+            backToBed: coordinator.backToBedAvailable(settings: store.settings),
+            notReadyForBed: coordinator.notReadyForBedAvailable(settings: store.settings),
+            sleepLater: coordinator.sleepLaterAvailable(settings: store.settings),
+            undo: coordinator.availableUndo(now: tick) != nil, evening: ScreenClock.isEvening(tick))
+        let moments = ScreenClock.moments(alarms: scheduled + napAlarms.map(\.time),
+                                          windDown: store.settings.windDownEnabled ? coordinator.windDown : nil,
+                                          startWindDownHours: store.settings.startWindDownHours)
+        let passed = ScreenClock.passed(moments, from: last, to: tick)
+        if now != before || passed { refreshScheduled() }
+    }
+
     private func refreshScheduled() {
+        tick = .now
         scheduled = coordinator.scheduledAlarmTimes()
         defer { QuickActions.update(barInputs, settings: store.settings) }
         skippedMorning = coordinator.skippedMorning
         skipReplacement = coordinator.skipReplacement
         temporaryAlarms = coordinator.temporaryAlarms
+        napAlarms = coordinator.napAlarms
+        napStatus = coordinator.napStatus
         morningEnd = coordinator.morningEnd(settings: store.settings)
         backToBed = coordinator.backToBedAvailable(settings: store.settings)
         notReadyForBed = coordinator.notReadyForBedAvailable(settings: store.settings)
