@@ -1,4 +1,4 @@
-# Setting up v0.4.2 – 0.4.4: everything, in order
+# Setting up v0.4.2 – 0.4.5: everything, in order
 
 Everything you need to do by hand for the features added since v0.4.1 (nap, wind-down, Live
 Activities by push, drive times in Home Assistant, the new notifications), in the order to do it.
@@ -13,7 +13,8 @@ the paid account, good until 30 Oct 2027).
 ## Part 1: Home Assistant
 
 ### 1. Update the integration
-- [ ] **HACS → Bedtime Bridge → Update** to **0.4.4** (it includes 0.4.2 and 0.4.3).
+- [ ] **HACS → Bedtime Bridge → Update** to **0.4.5** (it includes 0.4.2 – 0.4.4). Not 0.4.4:
+      0.4.5 has the `RUN_CANCEL_WIND_DOWN` command the new Wind Down Off shortcut uses.
 - [ ] **Settings → System → Restart Home Assistant.** On restart it installs `h2`, which the
       Live Activity pushes need.
 
