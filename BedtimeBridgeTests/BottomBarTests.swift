@@ -85,3 +85,16 @@ final class BottomBarTests: XCTestCase {
         XCTAssertEqual(BarAction.skip.knob, .clock)
     }
 }
+
+/// Reported 30 Oct: after End nap the bar kept "End nap". The screen now refreshes its own copy
+/// of the nap; with no nap alarms left the bar is back to the normal states.
+final class NapEndedBarTests: XCTestCase {
+    func testNoNapNoNapBar() {
+        var i = BottomBar.Inputs()
+        i.napUpAt = Date().addingTimeInterval(1200)
+        XCTAssertEqual(BottomBar.make(i).buttons, [.endNap, .changeNap])
+        i.napUpAt = nil
+        XCTAssertFalse(BottomBar.make(i).buttons.contains(.endNap))
+        XCTAssertFalse(BottomBar.menu(i, alarmStyleApp: true, morningKnown: false).contains(.endNap))
+    }
+}

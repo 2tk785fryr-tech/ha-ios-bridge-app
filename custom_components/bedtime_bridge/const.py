@@ -52,6 +52,8 @@ CONF_MAPS_KEY = "maps_key"
 CONF_MAPS_KEY_ID = "maps_key_id"
 CONF_TOMTOM_KEY = "tomtom_key"
 CONF_GOOGLE_KEY = "google_key"
+# v0.4.6 item 2: hallway presence outside the bedroom (out of bed → door → hallway = up).
+CONF_HALLWAY_SENSORS = "hallway_sensors"
 
 # What Snooze/Stop on the phone do in Home Assistant.
 WAKE_BOTH = "both"
@@ -77,6 +79,12 @@ SUGGESTED = {
     CONF_PHONE_BATTERY: "sensor.mikes_iphone_battery_level",
     CONF_PHONE_BATTERY_STATE: "sensor.mikes_iphone_battery_state",
 }
+# v0.4.6 item 2, when they exist.
+SUGGESTED_HALLWAY = [
+    "binary_sensor.hallway_master_presence",
+    "binary_sensor.aqara_presence_multisensor_fp300_occupancy",
+    "binary_sensor.upstairs_occupancy",
+]
 # Checked for the away bedtime summary ("Everything at home is good"), when they exist.
 SUGGESTED_HOME_CHECKS = [
     "cover.garage_garage_door_door",
@@ -122,6 +130,9 @@ COMMANDS = (
 # The wind-down warning's buttons (mobile_app_notification_action).
 WIND_DOWN_ACTION_LATER = "BEDTIME_BRIDGE_WIND_DOWN_LATER"
 WIND_DOWN_ACTION_CANCEL = "BEDTIME_BRIDGE_WIND_DOWN_CANCEL"
+# Up for the day? (v0.4.6 item 2).
+AWAKE_ACTION_GOOD_MORNING = "BEDTIME_BRIDGE_GOOD_MORNING"
+AWAKE_ACTION_BACK_TO_BED = "BEDTIME_BRIDGE_BACK_TO_BED"
 # Leave checks stop this long after leave-by.
 LEAVE_CHECK_TAIL_MINUTES = 15
 # Item 3 stops what's already running (until v0.5 fires the ladder itself): these automations
@@ -215,6 +226,8 @@ MSG_RESET = "reset"
 # Live Activity push tokens (and the morning lines Home Assistant can't work out) from the app.
 MSG_LIVE_ACTIVITY = "live_activity"
 MSG_WIND_DOWN = "wind_down"
+# v0.4.6 item 2: I'm awake (app, Siri, controls) on a morning with no alarms.
+MSG_AWAKE = "awake"
 EVENT_RERUN = "bedtime_rerun"
 EVENT_REARMED = "temporary_rearmed"
 # The bed sensor drops out for up to ~19 s while you're in it; "empty" must last longer.

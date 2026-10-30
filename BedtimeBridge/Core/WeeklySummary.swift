@@ -14,6 +14,8 @@ struct WeeklySummary: Codable, Equatable {
     var changeReasons: [String] = []
     var naps = 0
     var napMinutes = 0
+    /// This week so far, since the last cut-off (v0.4.6 item 5).
+    var current = false
 
     init() {}
 
@@ -36,6 +38,15 @@ struct WeeklySummary: Codable, Equatable {
         changeReasons = reply["change_reasons"] as? [String] ?? []
         naps = reply["naps"] as? Int ?? 0
         napMinutes = reply["nap_minutes"] as? Int ?? 0
+        current = reply["current"] as? Bool ?? false
+    }
+
+    /// "Oct 25 – now" for this week so far, "Oct 18 – Oct 25" for an earlier one.
+    var rangeText: String? {
+        guard let from else { return nil }
+        let day = Date.FormatStyle.dateTime.month(.abbreviated).day()
+        if current { return "\(from.formatted(day)) – now" }
+        return to.map { "\(from.formatted(day)) – \($0.formatted(day))" }
     }
 
     /// "12 min after target", "on target", "8 min before target"
@@ -50,5 +61,20 @@ struct WeeklySummary: Codable, Equatable {
     static var cached: WeeklySummary? {
         get { UserDefaults.standard.data(forKey: key).flatMap { try? JSONDecoder().decode(WeeklySummary.self, from: $0) } }
         set { UserDefaults.standard.set(try? JSONEncoder().encode(newValue), forKey: key) }
+    }
+
+    private static let weeksKey = "weeklySummaries.v1"
+
+    /// This week so far, then up to 8 earlier weeks, newest first (v0.4.6 item 5).
+    static var cachedWeeks: [WeeklySummary] {
+        get { UserDefaults.standard.data(forKey: weeksKey).flatMap { try? JSONDecoder().decode([WeeklySummary].self, from: $0) } ?? [] }
+        set { UserDefaults.standard.set(try? JSONEncoder().encode(newValue), forKey: weeksKey) }
+    }
+
+    /// Where the screen opens: the week that just ended from the weekly notification, this week
+    /// so far otherwise.
+    static func startIndex(_ weeks: [WeeklySummary], justEnded: Bool) -> Int {
+        guard justEnded, weeks.first?.current == true, weeks.count > 1 else { return 0 }
+        return 1
     }
 }

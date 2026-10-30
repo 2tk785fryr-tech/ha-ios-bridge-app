@@ -145,7 +145,35 @@ private struct MorningsSettings: View {
                 Text("When a shift's event has a location, Tonight shows when to leave to arrive this early. If the drive or bad weather leaves less than the get-ready time, you're warned and can wake earlier for that night; with the switch on, shift alarms move earlier by themselves. Appointments always plan the get-ready time.")
             }
 
+            // v0.4.6 item 2.
+            Section {
+                DefaultToggle(title: "Disarm, re-arm and good morning", isOn: $settings.noAlarmMorningEnabled, defaultValue: BridgeSettings().noAlarmMorningEnabled)
+                if settings.noAlarmMorningEnabled {
+                    LabeledContent {
+                        DatePicker("", selection: earliest, displayedComponents: .hourAndMinute).labelsHidden()
+                    } label: {
+                        WithDefault(text: "Good morning from", defaultText: settings.noAlarmEarliest == BridgeSettings().noAlarmEarliest ? nil : "8:00 AM")
+                    }
+                    DefaultStepper(value: $settings.noAlarmUpMinutes, in: 5...60, step: 5, defaultValue: BridgeSettings().noAlarmUpMinutes, note: { "\($0) min" }) { "Up for: \($0) min" }
+                    DefaultStepper(value: $settings.noAlarmWaitMinutes, in: 1...30, defaultValue: BridgeSettings().noAlarmWaitMinutes, note: { "\($0) min" }) { "Ask first, then go ahead after: \($0) min" }
+                }
+            } header: {
+                Text("Mornings with no alarms")
+            } footer: {
+                Text("At home, on a morning with no alarms: out of bed, through the bedroom door and down the hall disarms the house (nothing else changes), and it re-arms once you're back in bed. From the time above, once you've been up this long or the phone comes off the charger, Home Assistant asks Up for the day?, and runs good morning (Sleep In off, Awake For Day on, Good Morning) if you don't answer. I'm awake in the bar, Siri or a control does it straight away.")
+            }
+
             ResetPageSection { settings.resetToDefaults(SettingsPages.mornings) }
+        }
+    }
+
+    private var earliest: Binding<Date> {
+        Binding {
+            let parts = settings.noAlarmEarliest.split(separator: ":").compactMap { Int($0) }
+            return Calendar.current.date(bySettingHour: parts.first ?? 8, minute: parts.count > 1 ? parts[1] : 0, second: 0, of: .now) ?? .now
+        } set: { date in
+            let c = Calendar.current.dateComponents([.hour, .minute], from: date)
+            settings.noAlarmEarliest = String(format: "%02d:%02d", c.hour ?? 8, c.minute ?? 0)
         }
     }
 }

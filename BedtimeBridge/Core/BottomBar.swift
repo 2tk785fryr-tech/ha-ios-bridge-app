@@ -11,6 +11,8 @@ enum BarAction: String, CaseIterable, Identifiable {
     case startWindDown, cancelWindDown, stopReminders
     /// v0.4.3 items 12 and 13.
     case addLeave, addWakeUpEvent
+    /// v0.4.6 item 2: good morning on a morning with no alarms.
+    case imAwake
 
     var id: String { rawValue }
 
@@ -18,7 +20,7 @@ enum BarAction: String, CaseIterable, Identifiable {
     var isProtected: Bool {
         switch self {
         case .notReadyForBed, .notGoingToSleep, .upEarly, .endAlarms, .sleepLater, .endNap, .changeNap,
-             .wakeLater, .changeMorning, .backToBed, .skip, .undo, .noAlarmsTomorrow:
+             .wakeLater, .changeMorning, .backToBed, .skip, .undo, .noAlarmsTomorrow, .imAwake:
             true
         default:
             false
@@ -34,7 +36,7 @@ enum BarAction: String, CaseIterable, Identifiable {
     var knob: Knob {
         switch self {
         case .endAlarms, .endNap, .noAlarmsTomorrow: .stop
-        case .notReadyForBed, .notGoingToSleep, .upEarly, .backToBed: .moon
+        case .notReadyForBed, .notGoingToSleep, .upEarly, .backToBed, .imAwake: .moon
         default: .clock
         }
     }
@@ -66,6 +68,7 @@ enum BarAction: String, CaseIterable, Identifiable {
         case .stopReminders: "Stop bedtime reminders"
         case .addLeave: "Add leave"
         case .addWakeUpEvent: "Add a wake-up event"
+        case .imAwake: "I'm awake"
         }
     }
 
@@ -82,6 +85,7 @@ enum BarAction: String, CaseIterable, Identifiable {
         case .skip: "Skip \(day)'s wake-up and sleep in"
         case .undo: "Undo: put back the alarms from before"
         case .noAlarmsTomorrow: "Turn tomorrow's alarms off"
+        case .imAwake: "Good morning: Sleep In off, wake the house"
         default: title(day: day)
         }
     }
@@ -130,6 +134,8 @@ struct BottomBar: Equatable {
         /// Tonight's wind-down from Home Assistant (v0.4.3 item 5).
         var windDown: WindDownState?
         var startWindDownHours = 2
+        /// A morning with no alarms, from Home Assistant (v0.4.6 item 2).
+        var awakeOffered = false
     }
 
     /// Wind-down's states (9 before, 10 during, 11 after go to bed and not in bed).
@@ -188,6 +194,9 @@ struct BottomBar: Equatable {
             return BottomBar(top: .status("✓ " + count, .good), buttons: i.sleepLaterWindow ? [.sleepLater, .noAlarmsTomorrow] : [.noAlarmsTomorrow, .editAlarms])
         }
         let nap: [BarAction] = i.napEnabled ? [.nap] : []
+        if NoAlarmMorning.barOffers(offered: i.awakeOffered, alarmsSet: i.alarmsSet, napping: false, evening: i.evening) {
+            return BottomBar(top: .main(.imAwake, "I'm awake · good morning"), buttons: nap + [.previewPlan])
+        }
         if i.evening {
             if let plan = i.planReady, plan.count > 0 {
                 let up = plan.up.map { " · up \(format($0))" } ?? ""
@@ -215,6 +224,7 @@ struct BottomBar: Equatable {
             if w.status == .scheduled || w.status == .windingDown { items.append(.cancelWindDown) }
             if (w.status == .bedtime || w.status == .windingDown) && !w.bedtimeRan && !w.remindersStopped { items.append(.stopReminders) }
         }
+        if i.awakeOffered && i.alarmsSet == 0 && i.napUpAt == nil { items.append(.imAwake) }
         if alarmStyleApp { items.append(.addTemporary) }
         items += [.addWakeUpEvent, .addLeave]
         items.append(.settings)

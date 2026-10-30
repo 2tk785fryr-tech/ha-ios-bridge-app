@@ -7,7 +7,7 @@ final class SiriIntentTests: XCTestCase {
     func testEveryNewActionHasASiriPhraseWithinAppleLimit() {
         let shortcuts = BedtimeBridgeShortcuts.appShortcuts
         XCTAssertLessThanOrEqual(shortcuts.count, 10, "Apple allows 10 App Shortcuts")
-        XCTAssertEqual(shortcuts.count, 9)
+        XCTAssertEqual(shortcuts.count, 10, "v0.4.6 item 2 added I'm awake")
     }
 
     func testSleepLaterAmounts() {

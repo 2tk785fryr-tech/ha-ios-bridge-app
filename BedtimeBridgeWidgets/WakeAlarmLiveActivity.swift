@@ -11,6 +11,7 @@ struct BedtimeBridgeWidgets: WidgetBundle {
         NapControl()
         WindDownControl()
         TonightControl()
+        ImAwakeControl()
     }
 }
 

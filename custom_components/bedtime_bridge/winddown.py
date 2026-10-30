@@ -622,7 +622,8 @@ class WindDown:
             "night": s.get("night"), "go_to_bed": s.get("go_to_bed"), "went_to_bed": s.get("went_to_bed"),
             "minutes_off": s.get("minutes_off"), "cancelled": s.get("status") == "cancelled",
         })
-        del history[:-60]
+        # 9 weeks of nights: this week and 8 earlier ones (v0.4.6 item 5).
+        del history[:-64]
 
     # MARK: Bedroom and presence
 

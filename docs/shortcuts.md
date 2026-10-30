@@ -12,9 +12,9 @@ or home IDs.
 | Trigger | Runs |
 | --- | --- |
 | Home Assistant push `RUN_BEDTIME` (Bedtime Nudge, or the integration after *Not going to sleep yet*) | I'm Ready For Bed - App |
-| Home Assistant push `RUN_GOOD_MORNING` (integration, when a regular alarm is stopped at home) | Good Morning - App |
-| Home Assistant push `RUN_DISARM` (temporary alarm in disarm mode stopped; *Not going to sleep yet*) | Set Disarm |
-| Home Assistant push `RUN_ARM_STAY` (back in bed after a temporary alarm) | Set Arm Stay |
+| Home Assistant push `RUN_GOOD_MORNING` (integration, when a regular alarm is stopped at home; on a morning with no alarms, *Up for the day?* or *I'm awake*, 0.4.6) | Good Morning - App |
+| Home Assistant push `RUN_DISARM` (temporary alarm in disarm mode stopped; *Not going to sleep yet*; leaving the bedroom on a morning with no alarms, 0.4.6) | Set Disarm |
+| Home Assistant push `RUN_ARM_STAY` (back in bed after a temporary alarm, or after leaving the bedroom on a morning with no alarms) | Set Arm Stay |
 | Home Assistant push `RUN_BACK_TO_BED` (v0.4: *Back to bed* after you're up) | Back To Bed - App |
 | Home Assistant push `RUN_LEAVE_CHECK` (v0.4.1: at each leave reminder) | Bedtime Bridge **Check Drive and Remind** (no shortcut needed) |
 | Home Assistant push `RUN_NAP_START` (v0.4.2: a nap started, home or away) | Nap Start - App |
