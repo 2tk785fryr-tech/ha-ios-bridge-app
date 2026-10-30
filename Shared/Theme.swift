@@ -32,6 +32,11 @@ enum Theme {
     static let snoozing = Color(hex: 0xFDE047)
     /// Protected actions in the bottom bar and ⋯ (v0.4.2 item 6).
     static let amber = Color(hex: 0xFBBF24)
+    /// The Nap button when nothing is set (v0.4.7 item 8): an orange well apart from the amber
+    /// of protected actions, with dark text.
+    static let nap = (fill: Color(hex: 0xFF7A3D), text: Color(hex: 0x2A1105))
+    /// The outline of the second row's buttons (v0.4.7 item 8).
+    static let buttonOutline = Color(hex: 0x6D4AFF).opacity(0.75)
 }
 
 /// Sora (SIL Open Font License, Shared/Fonts/OFL.txt) for times and titles; body text stays

@@ -19,6 +19,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import async_track_point_in_utc_time, async_track_state_change_event
 from homeassistant.util import dt as dt_util
 
+from . import timefmt
 from .const import (
     CMD_PLAN_PREVIEW,
     CMD_WIND_DOWN,
@@ -88,13 +89,13 @@ def compute(
 
 
 def short(when: datetime) -> str:
-    """8:50"""
-    return dt_util.as_local(when).strftime("%-I:%M")
+    """8:50 (20:50 on a 24-hour clock, v0.4.7 item 10)"""
+    return timefmt.short(when)
 
 
 def long(when: datetime) -> str:
-    """7:00 AM"""
-    return dt_util.as_local(when).strftime("%-I:%M %p")
+    """7:00 AM (07:00 on a 24-hour clock)"""
+    return timefmt.long(when)
 
 
 class WindDown:

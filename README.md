@@ -33,7 +33,7 @@ chain of calendar, maps and alarm actions. A companion Home Assistant integratio
 helpers your automations can use.
 
 - [A quick tour](#a-quick-tour)
-- [What's in the app](#whats-in-the-app): [bottom bar](#the-bottom-bar) · [wind-down](#wind-down) · [nap](#nap) · [mornings with no alarms](#mornings-with-no-alarms) · [weekly summary](#weekly-summary) · [widgets, Live Activities, controls and Siri](#widgets-live-activities-controls-and-siri) · [notifications](#notifications)
+- [What's in the app](#whats-in-the-app): [bottom bar](#the-bottom-bar) · [wind-down](#wind-down) · [nap](#nap) · [mornings with no alarms](#mornings-with-no-alarms) · [vacations](#vacations) · [weekly summary](#weekly-summary) · [widgets, Live Activities, controls and Siri](#widgets-live-activities-controls-and-siri) · [notifications](#notifications) · [settings](#settings-pages)
 - [How it fits together](#how-it-fits-together)
 - [How planning works](#how-planning-works)
 - [Alarms and snooze](#alarms-and-snooze)
@@ -102,6 +102,12 @@ set, *I'm up early* before the first alarm, *Snoozing · rings 4:34* with *End a
 with no alarms. Everything else is in **⋯**, the same list every time with what doesn't apply
 hidden.
 
+With **nothing set and nothing coming** (on opening, or after a preview finds no shift or
+event), the bar gets a second row: *Set alarms for a time* in violet and *Nap* in orange, then
+*Temporary alarm*, *Preview plan* and ⋯.
+
+<p align="center"><img src="docs/images/nothing-set-bar.png" width="320" alt="The bar with nothing set: Set alarms for a time, Nap, Temporary alarm, Preview plan"></p>
+
 It changes on time by itself while the app is open (5:00 PM, wind-down, go to bed, an alarm
 passing, the morning windows closing, Undo running out), not just when you touch it.
 
@@ -152,6 +158,18 @@ Sleep In on, no alarms, and you get up when you get up. At home, and only on suc
 
 The earliest time, the up-for and wait minutes and the whole thing on/off are in the app.
 
+### Vacations
+
+Settings → **Vacations** (it was Leave). An all-day event titled with one of your *Vacation
+titles* (yours can stay "Leave") is a vacation: no shift alarms, the backstops off, and on
+mornings with no alarms Home Assistant turns Sleep In on. There's an **Add** for each title
+(in Settings, in ⋯, and from Siri, which asks which one), with an **I'm travelling** switch:
+drives and the weather then come from where you are. The page lists the vacations coming up;
+tap one to move it, shorten it (back early) or delete it. The evening before your first shift
+afterwards, a reminder: "Back to work tomorrow: Days at 6:30 AM, first alarm 4:20 AM". Weeks with
+vacation days are marked in the weekly summary, and its notification is skipped while you're
+away. For a sick day, delete that day's shift.
+
 ### Weekly summary
 
 <img src="docs/images/weekly-summary.png" width="220" align="right" alt="This week so far">
@@ -181,12 +199,31 @@ that just ended.
 - **Siri:** plan, cancel, nap, no alarms tomorrow, sleep later, start or cancel wind-down, add
   leave, add a wake-up event, I'm awake.
 
+### Settings pages
+
+<img src="docs/images/alarms-settings.png" width="220" align="right" alt="Settings → Alarms">
+
+- **Alarms** opens with where alarms come from, then **Appointment & event alarms** (how many,
+  how far apart, whether the wake-up time is the first or last; shifts can use these too) and
+  **Your own alarms** (the series for a time you pick, including the *Set Wake-Up Alarms*
+  action), then snooze, sound and the rest.
+- **Clock:** Phone setting, 12-hour or 24-hour, for the app, the widgets, the Live Activities and
+  Home Assistant's notifications.
+- **Morning weather** on Tonight shows the forecast itself ("Rain, 52° at 5:50 · +15 min…", or
+  "Clear, 38° at 8:00 AM · no extra time"): at leave time with a commute, at wake-up with alarms
+  but no event, at *Good morning from* with no alarms.
+
+<br clear="right">
+
 ### Notifications
 
 Settings → Notifications sets each one to Normal, Time-sensitive (comes through Focus) or Critical
 (sounds on silent; only for the ones Home Assistant sends, with Critical Alerts allowed for the
 Home Assistant app). Defaults: *Time for bed* critical; *Still up*, *Plug in your phone*, the
-leave-by reminders and *Tomorrow changed* time-sensitive; the rest normal.
+leave-by reminders and *Tomorrow changed* time-sensitive; the rest normal. When Home Assistant
+does the leave checks, the phone keeps one **backup reminder at leave time** ("Leave by 5:48 · not
+re-checked") in case Home Assistant is down; its check withdraws the backup with a silent push.
+Critical for the app's own notifications waits on Apple (`docs/critical-alerts-request.md`).
 
 ## How it fits together
 
@@ -345,7 +382,7 @@ Home Assistant side is in `docs/ha-handoffs-v*.md`.
   planned*, and **Edit alarms** to move, add or remove any single one.
 - **Wake at a different time** (day off, skip) shows a preview where you can add alarms and edit
   the backstops.
-- **Add a wake-up event** (the round button at the top) and **Add leave**, straight into your
+- **Add a wake-up event** (the round button at the top) and **Add <vacation>**, straight into your
   calendar.
 - **Plug in your phone** at bedtime when the battery is low and it isn't charging.
 
@@ -359,7 +396,10 @@ a private webhook instead of an admin token, and everything shows up in Home Ass
 **Bedtime Bridge** → restart HA. Then go to Settings → Devices & services → Add integration →
 Bedtime Bridge. Or copy `custom_components/bedtime_bridge` into your config folder.
 
-**Setup screen:**
+**Setup:** adding the integration asks only who you are, home only, the notify service, phone
+commands, what snooze and stop do, and your shift types; everything else starts from its default.
+Afterwards **Configure** is a menu of pages (You and home, Wake-up, Bedroom and bed, Bedtime and
+wind-down, Shifts and calendar, Phone, Backstops, Keys), each saving its own options:
 
 | Option | Default |
 |---|---|
@@ -626,7 +666,7 @@ them; re-render after editing a design.
 | Action | Use |
 |---|---|
 | **Plan Wake-Up Alarms** | The main step. Returns a *Wake Plan*: `Has Alarm`, `Wake-Up Time`, `First Alarm`, `Alarm Times`, `Alarm Dates`, `Needs Clock Alarms`, `Alarm Cause`, `Reason`, `Warnings`, `Home Assistant JSON`. Turn off *Set Alarms* to preview only. If nothing needs an alarm, it also clears the app's old alarms. |
-| **Set Wake-Up Alarms** | The day-off path. Give it your wake-up time and it sets the usual alarm series around it (ending at it by default). A time already past today rolls to tomorrow. |
+| **Set Wake-Up Alarms** | The day-off path. Give it your wake-up time and it sets *Your own alarms* from it (starting at it by default). A time already past today rolls to tomorrow. |
 | **Cancel Wake-Up Alarms** | Clears every alarm the app has set and the leave-by reminder. |
 | **Set Temporary Alarm** | One extra alarm at a time, with *House Alarm*: disarm then re-arm, or keep armed. See [temporary alarms](#changing-tonights-plan). |
 | **Undo Bedtime** | *Not going to sleep yet*: regular alarms off, house disarmed, Awake For Day on, Sleep In off; bedtime runs again once you're back in bed. |
@@ -636,7 +676,7 @@ them; re-render after editing a design.
 | **Report Shortcut Ran** | Last step of a shortcut a [phone command](#phone-commands) runs, so Home Assistant clears that command's notification. |
 | **Check Drive and Remind** | Run by the `RUN_LEAVE_CHECK` automation: re-checks this morning's drive, notifies when to leave, tells Home Assistant the new leave-by. |
 | **Get Drive Time** | Drive minutes from home to a place, arriving by a given time. Useful in other shortcuts. |
-| **Nap**, **No Alarms Tomorrow**, **Sleep Later**, **Start / Cancel Wind-Down**, **Add Leave**, **Add a Wake-Up Event**, **I'm Awake** | The same as in the app, for Siri and your own shortcuts. |
+| **Nap**, **No Alarms Tomorrow**, **Sleep Later**, **Start / Cancel Wind-Down**, **Add Vacation**, **Add a Wake-Up Event**, **I'm Awake** | The same as in the app, for Siri and your own shortcuts. |
 | **Preview Tomorrow**, **Morning Update** | Run by the `RUN_PLAN_PREVIEW` and `RUN_MORNING_UPDATE` automations. |
 
 ## Alarm cause

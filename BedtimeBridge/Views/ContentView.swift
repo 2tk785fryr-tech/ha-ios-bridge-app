@@ -22,6 +22,9 @@ struct ContentView: View {
     @State private var morningEnd: MorningEnd?
     @State private var backToBed = false
     @State private var notReadyForBed = false
+    /// A quiet look at tomorrow on opening found no shift or event (v0.4.7 item 8), so the bar
+    /// can offer Set alarms for a time without a preview first.
+    @State private var nothingAhead = false
     /// The minute the screen last redrew for (v0.4.6 item 3); the bar reads it, so a tick redraws.
     @State private var tick = Date.now
     /// A protected action waiting for its slide-and-hold in the bottom bar (v0.4.2 item 6).
@@ -44,7 +47,9 @@ struct ContentView: View {
         /// v0.4.3 item 3, for that morning.
         case noAlarms(Date)
         /// v0.4.3 items 12 and 13.
-        case addLeave, addWakeUp
+        /// v0.4.7 item 6: Add <title>; nil asks which title.
+        case addLeave(String?)
+        case addWakeUp
         /// v0.4.3 item 15, from the weekly notification.
         case weeklySummary
         var id: String {
@@ -193,11 +198,13 @@ struct ContentView: View {
                             undoBedtime()
                         }
                         .editing(settings: store.settings, edited: refreshScheduled)
-                    } else if skippedMorning == nil, scheduled.isEmpty, plan?.hasAlarm != true {
+                    } else if skippedMorning == nil, scheduled.isEmpty, plan?.hasAlarm != true, !nothingSetBar {
                         DayOffCard { sheet = .dayOff }
                     }
 
-                    if store.settings.alarmStyle == .app {
+                    // With nothing set, Add a temporary alarm is in the bar (v0.4.7 item 8); the card
+                    // stays while temporary alarms are set, to show them.
+                    if store.settings.alarmStyle == .app, !(nothingSetBar && temporaryAlarms.isEmpty) {
                         TemporaryAlarmsCard(alarms: temporaryAlarms, ring: { coordinator.ring(forAlarm: $0.id, at: $0.time) }) {
                             sheet = .temporary
                         } remove: { id in
@@ -225,7 +232,9 @@ struct ContentView: View {
             .safeAreaInset(edge: .bottom) { actions }
             .toolbar(.hidden, for: .navigationBar)
             .onAppear {
+                lookAhead()
                 coordinator.watchCalendar()
+                Task { await coordinator.scheduleBackToWork(settings: store.settings) }
                 coordinator.dropLeaveRemindersIfEventGone(settings: store.settings)
                 refreshScheduled()
             }
@@ -247,6 +256,7 @@ struct ContentView: View {
             // app was in the background: show what's set now, not the plan from before.
             .onChange(of: scenePhase) { _, phase in
                 guard phase == .active else { return }
+                lookAhead()
                 let before = scheduled
                 refreshScheduled()
                 if scheduled != before { plan = coordinator.lastAppliedPlan }
@@ -300,8 +310,11 @@ struct ContentView: View {
                     }
                 case .weeklySummary:
                     WeeklySummaryView(settings: store.settings, justEnded: true)
-                case .addLeave:
-                    AddLeaveSheet(settings: store.settings) { refreshScheduled() }
+                case .addLeave(let title):
+                    AddLeaveSheet(settings: store.settings, title: title) {
+                        refreshScheduled()
+                        Task { await coordinator.scheduleBackToWork(settings: store.settings) }
+                    }
                 case .addWakeUp:
                     // Afterwards the preview opens with the new plan.
                     AddWakeUpEventSheet(settings: store.settings) {
@@ -440,6 +453,25 @@ struct ContentView: View {
         )
     }
 
+    /// On opening (or coming back) with nothing set and no preview on screen, plans tomorrow
+    /// quietly, as a preview would, without showing it or setting anything (v0.4.7 item 8). No
+    /// shift or event: the bar offers Set alarms for a time and Nap straight away.
+    private func lookAhead() {
+        guard plan == nil, skippedMorning == nil, coordinator.scheduledAlarmTimes().isEmpty else { return }
+        Task {
+            let peek = try? await coordinator.buildPlan(settings: store.settings)
+            nothingAhead = Self.nothingAhead(peek)
+        }
+    }
+
+    /// A quiet plan that has no alarm means nothing is coming; one that couldn't be made says nothing.
+    static func nothingAhead(_ peek: WakePlan?) -> Bool {
+        peek.map { !$0.hasAlarm } ?? false
+    }
+
+    /// The bar holds Set alarms for a time and Add a temporary alarm (v0.4.7 item 8).
+    private var nothingSetBar: Bool { !BottomBar.make(barInputs).actionRow.isEmpty }
+
     /// The moment the bottom bar is for (v0.4.2 item 6).
     private var barInputs: BottomBar.Inputs {
         let now = max(tick, Date.now)
@@ -472,6 +504,8 @@ struct ContentView: View {
         }
         i.evening = ScreenClock.isEvening(now)
         i.awakeOffered = NoAlarmMorning.offered
+        i.nothingFound = plan.map { !$0.hasAlarm } ?? (nothingAhead && set.isEmpty)
+        i.alarmStyleApp = store.settings.alarmStyle == .app
         return i
     }
 
@@ -503,7 +537,11 @@ struct ContentView: View {
         .background(Theme.ground)
         .sheet(isPresented: $menuOpen) {
             BarMenu(items: BottomBar.menu(barInputs, alarmStyleApp: store.settings.alarmStyle == .app, morningKnown: barMorning != nil && skippedMorning == nil),
-                    day: barDay) { action in
+                    day: barDay, vacationTitles: store.settings.leaveTitles.isEmpty ? ["Leave"] : store.settings.leaveTitles,
+                    addVacation: { title in
+                        menuOpen = false
+                        sheet = .addLeave(title)
+                    }) { action in
                 menuOpen = false
                 // Protected actions from ⋯ take over the bar too.
                 if action.isProtected && !action.opensScreen { barSlider = action } else { perform(action) }
@@ -531,7 +569,7 @@ struct ContentView: View {
         case .startWindDown: windDown("start")
         case .cancelWindDown: confirmCancelWindDown = true
         case .stopReminders: windDown("stop_reminders")
-        case .addLeave: sheet = .addLeave
+        case .addLeave: sheet = .addLeave(nil)
         case .addWakeUpEvent: sheet = .addWakeUp
         case .previewPlan: run(schedule: false)
         case .nap: sheet = .nap
@@ -556,6 +594,7 @@ struct ContentView: View {
         case .skip: if let morning = barMorning { skip(morning, then: .sleepIn) }
         case .addTemporary: sheet = .temporary
         case .settings: showSettings = true
+        case .setAlarmsForTime: sheet = .dayOff
         case .imAwake:
             Task {
                 let outcome = await coordinator.imAwake(settings: store.settings)
@@ -631,7 +670,7 @@ struct ContentView: View {
         case .nap: sheet = .nap
         case .previewTomorrow: run(schedule: false)
         case .addWakeUpEvent: sheet = .addWakeUp
-        case .addLeave: sheet = .addLeave
+        case .addLeave: sheet = .addLeave(nil)
         case .sleepLater: sheet = .sleepLater
         case .noAlarmsTomorrow: perform(.noAlarmsTomorrow)
         case .startWindDown: perform(.startWindDown)
@@ -1006,13 +1045,13 @@ private struct BigTime: View {
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(date.formatted(.dateTime.hour(.defaultDigits(amPM: .omitted)).minute()))
+            Text(date.formatted(.dateTime.hour(.defaultDigits(amPM: .omitted)).minute().locale(ClockStyle.locale)))
                 .font(.sora(fixed: 88, .light))
                 .tracking(-2)
                 .foregroundStyle(Theme.accentText)
                 .minimumScaleFactor(0.6)
                 .lineLimit(1)
-            Text(date.formatted(.dateTime.hour(.defaultDigits(amPM: .abbreviated))).filter { $0.isLetter })
+            Text(date.formatted(.dateTime.hour(.defaultDigits(amPM: .abbreviated)).locale(ClockStyle.locale)).filter { $0.isLetter })
                 .font(.sora(fixed: 24, .medium))
                 .foregroundStyle(Theme.textMuted)
         }
@@ -1442,8 +1481,10 @@ private struct StatusCard: View {
 
     private var weatherText: String {
         guard settings.checksWeather, settings.weatherSource != .homeAssistant || link != nil else { return "Not checked" }
-        if let weather = plan?.weather { return "+\(weather.minutes) min, \(weather.reason)" }
-        return plan == nil ? "Checked when you plan" : "No extra time"
+        // The plain forecast first (v0.4.7 item 5), then what it does to the morning.
+        let forecast = plan?.forecast.map { $0.text() + " · " } ?? ""
+        if let weather = plan?.weather { return forecast + "+\(weather.minutes) min, \(weather.reason)" }
+        return plan == nil ? "Checked when you plan" : forecast + "no extra time"
     }
 }
 
@@ -1775,7 +1816,7 @@ struct AlarmBubbleView: View {
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
         VStack(spacing: 4) {
-            Text(bubble.time.formatted(.dateTime.hour(.defaultDigits(amPM: .omitted)).minute()))
+            Text(bubble.time.formatted(.dateTime.hour(.defaultDigits(amPM: .omitted)).minute().locale(ClockStyle.locale)))
                 .font(.system(size: 15, weight: bubble.isWake ? .bold : .semibold))
                 .strikethrough(isOff)
                 .foregroundStyle(bubble.isWake ? .white : Theme.textSoft)
@@ -1816,6 +1857,7 @@ private struct BottomBarView: View {
     let menu: () -> Void
 
     private static let topHeight: CGFloat = 56
+    private static let statusHeight: CGFloat = 24
     private static let rowHeight: CGFloat = 52
     private static let spacing: CGFloat = 10
 
@@ -1849,26 +1891,29 @@ private struct BottomBarView: View {
                     .frame(height: 72)
                     .id(action)
                 }
+            } else if !bar.actionRow.isEmpty {
+                // Nothing set (v0.4.7 item 8): a small status line, the filled actions, then the
+                // outlined buttons.
+                VStack(spacing: Self.spacing) {
+                    top
+                        .frame(maxWidth: .infinity, minHeight: Self.statusHeight, maxHeight: Self.statusHeight)
+                    HStack(spacing: 10) {
+                        ForEach(bar.actionRow) { action in filled(action) }
+                    }
+                    .frame(height: Self.rowHeight)
+                    buttonRow(outline: Theme.buttonOutline)
+                }
             } else {
                 VStack(spacing: Self.spacing) {
                     top
                         .frame(maxWidth: .infinity, minHeight: Self.topHeight, maxHeight: Self.topHeight)
-                    HStack(spacing: 10) {
-                        ForEach(bar.buttons) { action in button(action) }
-                        Button(action: menu) {
-                            Image(systemName: "ellipsis")
-                                .font(.system(size: 18, weight: .bold))
-                                .foregroundStyle(Theme.accentText)
-                                .frame(width: Self.rowHeight, height: Self.rowHeight)
-                                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Theme.border, lineWidth: 1))
-                        }
-                        .accessibilityLabel("More")
-                    }
-                    .frame(height: Self.rowHeight)
+                    buttonRow(outline: Theme.border)
                 }
             }
         }
-        .frame(height: Self.topHeight + Self.rowHeight + Self.spacing)
+        .frame(height: bar.actionRow.isEmpty || slider != nil
+               ? Self.topHeight + Self.rowHeight + Self.spacing
+               : Self.statusHeight + 2 * Self.rowHeight + 2 * Self.spacing)
         .disabled(working)
     }
 
@@ -1913,17 +1958,49 @@ private struct BottomBarView: View {
         }
     }
 
-    private func button(_ action: BarAction) -> some View {
+    private func buttonRow(outline: Color) -> some View {
+        HStack(spacing: 10) {
+            ForEach(bar.buttons) { action in button(action, outline: outline) }
+            Button(action: menu) {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(Theme.accentText)
+                    .frame(width: Self.rowHeight, height: Self.rowHeight)
+                    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(outline, lineWidth: 1))
+            }
+            .accessibilityLabel("More")
+        }
+        .frame(height: Self.rowHeight)
+    }
+
+    private func button(_ action: BarAction, outline: Color) -> some View {
         let tint = action.isProtected ? Theme.amber : Theme.accentText
+        // The nothing-set bar's second row is short on room (v0.4.7 item 8).
+        let title = action == .addTemporary && !bar.actionRow.isEmpty ? "Temporary alarm" : action.title(day: day)
         return Button { tap(action) } label: {
-            Text(action.title(day: day))
+            Text(title)
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(tint)
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
                 .frame(maxWidth: .infinity, minHeight: Self.rowHeight)
-                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(action.isProtected ? Theme.amber.opacity(0.6) : Theme.border, lineWidth: 1))
+                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(action.isProtected ? Theme.amber.opacity(0.6) : outline, lineWidth: 1))
         }
+    }
+
+    /// Set alarms for a time in violet, Nap in orange (v0.4.7 item 8).
+    private func filled(_ action: BarAction) -> some View {
+        let nap = action == .nap
+        return Button { tap(action) } label: {
+            Label(action.title(day: day), systemImage: nap ? "powersleep" : "alarm")
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(nap ? Theme.nap.text : .white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(nap ? Theme.nap.fill : Theme.accent, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+        .frame(maxWidth: nap ? 120 : .infinity)
     }
 
     private func tap(_ action: BarAction) {
@@ -1960,11 +2037,27 @@ private struct BottomBarView: View {
 private struct BarMenu: View {
     let items: [BarAction]
     let day: String
+    /// One Add per vacation title (v0.4.7 item 6).
+    let vacationTitles: [String]
+    let addVacation: (String) -> Void
     let choose: (BarAction) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(items) { action in
+                if action == .addLeave {
+                    ForEach(vacationTitles, id: \.self) { title in
+                        Button { addVacation(title) } label: {
+                            Text("Add \(title)")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(Theme.text)
+                                .frame(maxWidth: .infinity, minHeight: 46, alignment: .leading)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        Divider().overlay(Theme.divider)
+                    }
+                } else {
                 Button { choose(action) } label: {
                     HStack {
                         Text(action.title(day: day))
@@ -1980,13 +2073,14 @@ private struct BarMenu: View {
                 }
                 .buttonStyle(.plain)
                 if action != items.last { Divider().overlay(Theme.divider) }
+                }
             }
         }
         .padding(.horizontal, 20)
         .padding(.top, 24)
         .frame(maxHeight: .infinity, alignment: .top)
         .background(Theme.surface.ignoresSafeArea())
-        .presentationDetents([.height(CGFloat(items.count) * 47 + 60)])
+        .presentationDetents([.height(CGFloat(items.count + max(vacationTitles.count - 1, 0)) * 47 + 60)])
         .presentationDragIndicator(.visible)
     }
 }

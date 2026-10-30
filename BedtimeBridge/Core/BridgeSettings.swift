@@ -1,4 +1,5 @@
 import Foundation
+import WidgetKit
 import Observation
 
 /// When to wake for one shift type, keyed by a word in the event title. Each shift can have
@@ -207,6 +208,11 @@ struct BridgeSettings: Codable, Equatable {
     var awakeForHomeAssistant: [String: Any] {
         ["enabled": noAlarmMorningEnabled, "earliest": noAlarmEarliest, "up_minutes": noAlarmUpMinutes, "wait_minutes": noAlarmWaitMinutes]
     }
+
+    // MARK: Clock (v0.4.7 item 10)
+
+    /// Times as the phone shows them, or always 12- or 24-hour (Home Assistant's texts too).
+    var clockStyle: ClockStyle = .phone
 
     // MARK: Weekly summary (v0.4.3 item 15)
 
@@ -486,6 +492,10 @@ final class SettingsStore {
         snapshot.widgetTapAlwaysTonight = settings.widgetTapAlwaysTonight
         snapshot.startWindDownHours = settings.startWindDownHours
         snapshot.save()
+        if ClockStyle.current != settings.clockStyle {
+            ClockStyle.current = settings.clockStyle
+            WidgetCenter.shared.reloadAllTimelines()
+        }
         ControlRefresh.reload()
     }
 
@@ -494,6 +504,8 @@ final class SettingsStore {
         var message: [String: Any] = [
             "wind_down_settings": settings.windDownForHomeAssistant,
             "awake_settings": settings.awakeForHomeAssistant,
+            // v0.4.7 item 10: how Home Assistant writes times in its notifications.
+            "clock_24h": settings.clockStyle.uses24Hour(),
             "charge_warning": ["enabled": settings.chargeWarningEnabled, "threshold": settings.chargeWarningThreshold],
             "weekly_summary": ["enabled": settings.weeklySummaryEnabled, "weekday": settings.weeklySummaryWeekday, "time": settings.weeklySummaryTime],
             "notification_levels": NotificationKind.forHomeAssistant(settings),

@@ -51,7 +51,7 @@ struct WithDefault: View {
 
     var body: some View {
         if let defaultText {
-            Text("\(text) ") + Text("· default \(defaultText)").font(.caption).foregroundStyle(Theme.textFaint)
+            Text("\(text) \(Text("· default \(defaultText)").font(.caption).foregroundStyle(Theme.textFaint))")
         } else {
             Text(text)
         }
@@ -117,7 +117,9 @@ enum SettingsPages {
     static let main = ["shiftRules"]
     static let mornings = ["getReadyMinutes", "workArrivalBufferMinutes", "wakeEarlyToGetReady", "noAlarmMorningEnabled", "noAlarmEarliest", "noAlarmUpMinutes", "noAlarmWaitMinutes"]
     static let home = ["homeAddress"]
-    static let alarms = ["chargeWarningEnabled", "chargeWarningThreshold", "alarmStyle", "alarmCount", "alarmSpacingMinutes", "wakeTimeIs", "snoozeMinutes", "alarmSound", "stopBehavior", "lookAheadHours"]
+    static let alarms = ["chargeWarningEnabled", "chargeWarningThreshold", "alarmStyle", "snoozeMinutes", "alarmSound", "stopBehavior", "lookAheadHours"]
+    /// v0.4.7 item 7.
+    static let appointmentAlarms = ["alarmCount", "alarmSpacingMinutes", "wakeTimeIs"]
     static let ownAlarms = ["newAlarmHoursAhead", "ownAlarmRoundingMinutes", "ownAlarmPickerSnaps", "ownAlarmCount", "ownAlarmSpacingMinutes", "ownAlarmWakeIs", "ownBackstopsDayOff", "ownBackstopsLeave", "ownEarlyMinutes", "ownDeadlineMinutes", "ownLateMinutes", "ownBackstopsFull"]
     static let optionWindows = ["endAlarmsEarlyHours", "notReadyForBedHours", "backToBedHours", "startWindDownHours"]
     static let morningChange = ["morningReasons", "earlyBackstopGapMinutes"]
@@ -132,6 +134,7 @@ enum SettingsPages {
     static let notifications = ["notificationLevels"]
     static let shortcuts = ["quickActions", "windDownControlOpensApp", "napControlNapsNow", "widgetTapAlwaysTonight"]
     static let weekly = ["weeklySummaryEnabled", "weeklySummaryWeekday", "weeklySummaryTime"]
+    static let clock = ["clockStyle"]
 
-    static let all = [main, mornings, home, alarms, ownAlarms, optionWindows, morningChange, nap, windDown, appointments, driveTime, homeAssistant, weather, calendars, leave, weekly, shortcuts, notifications]
+    static let all = [main, mornings, home, alarms, appointmentAlarms, ownAlarms, clock, optionWindows, morningChange, nap, windDown, appointments, driveTime, homeAssistant, weather, calendars, leave, weekly, shortcuts, notifications]
 }

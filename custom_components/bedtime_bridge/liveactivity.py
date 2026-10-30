@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util import dt as dt_util
 
+from . import timefmt
 from .const import CONF_APNS_KEY, CONF_APNS_KEY_ID, CONF_WEATHER
 
 if TYPE_CHECKING:
@@ -100,7 +101,7 @@ def weather_lines(hours: list[dict[str, Any]], leave_by: datetime, now: datetime
     if main not in WET and dry is not None:
         wet = next(((t, h) for t, h in ahead[dry:] if h.get("condition") in WET), None)
         if wet:
-            hour = dt_util.as_local(wet[0]).strftime("%-I %p")
+            hour = timefmt.hour(wet[0])
             day += f" · {condition_name(wet[1]['condition']).lower()} after {hour}"
     return drive, day
 
@@ -127,13 +128,13 @@ class ApnsClient:
         return token
 
     async def send(self, device_token: str, body: dict[str, Any], *, environment: str, topic: str,
-                   priority: int = 10) -> int:
+                   priority: int = 10, push_type: str = "liveactivity") -> int:
         import httpx  # noqa: PLC0415
 
         url = f"{HOSTS.get(environment, HOSTS['production'])}/3/device/{device_token}"
         headers = {
             "authorization": f"bearer {self._token()}",
-            "apns-push-type": "liveactivity",
+            "apns-push-type": push_type,
             "apns-topic": topic,
             "apns-priority": str(priority),
         }
@@ -181,7 +182,10 @@ class LiveActivities:
                 s[key] = data[key]
         kind = data.get("kind")
         environment = data.get("environment") or "production"
-        if kind == "start" and data.get("token"):
+        if kind == "device" and data.get("token"):
+            # The app's own token, for silent pushes (v0.4.7 item 2).
+            s["device"] = {"token": data["token"], "environment": environment}
+        elif kind == "start" and data.get("token"):
             s["start"] = {"token": data["token"], "environment": environment}
         elif kind in ("windDown", "morning"):
             tokens = s.setdefault("tokens", {})
@@ -196,6 +200,17 @@ class LiveActivities:
         return {"live_activity_pushes": self.configured}
 
     # MARK: Sending
+
+    async def leave_checked(self) -> bool:
+        """A silent push telling the app Home Assistant's leave check went out, so it withdraws
+        its leave-time backup reminder (v0.4.7 item 2)."""
+        client, device = self.client(), self.s.get("device") or {}
+        if client is None or not device.get("token"):
+            return False
+        status = await client.send(device["token"], {"aps": {"content-available": 1}, "bedtime_bridge": "leave_checked"},
+                                   environment=device.get("environment") or "production", topic=self.s["bundle_id"],
+                                   priority=5, push_type="background")
+        return status == 200
 
     async def _push(self, kind: str, event: str, state: dict[str, Any], *, title: str, stale: datetime | None = None,
                     alert: dict[str, str] | None = None) -> bool:
@@ -233,7 +248,7 @@ class LiveActivities:
         """Winding down: "Bed in 42 min · first alarm 4:20" (started by push if the app isn't running)."""
         state = content_state("windDown", goToBed=go_to_bed, firstAlarm=first_alarm)
         return await self._push("windDown", "update", state, title="Wind-down", stale=go_to_bed,
-                                alert={"title": "Winding down", "body": f"Bed at {dt_util.as_local(go_to_bed).strftime('%-I:%M')}"})
+                                alert={"title": "Winding down", "body": f"Bed at {timefmt.short(go_to_bed)}"})
 
     async def end_wind_down(self) -> bool:
         return await self._push("windDown", "end", content_state("windDown"), title="Wind-down")
@@ -260,7 +275,7 @@ class LiveActivities:
         )
         title = state.get("label") or "Leave by"
         return await self._push("morning", "update", content, title=title, stale=leave_by + MORNING_TAIL,
-                                alert={"title": f"Leave by {dt_util.as_local(leave_by).strftime('%-I:%M')}", "body": title})
+                                alert={"title": f"Leave by {timefmt.short(leave_by)}", "body": title})
 
     async def end_morning(self) -> bool:
         return await self._push("morning", "end", content_state("morning"), title="Leave by")

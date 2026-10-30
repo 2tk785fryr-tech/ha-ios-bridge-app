@@ -418,30 +418,46 @@ final class BedtimeCoordinator {
         if startsFromHere {
             extraWarnings.append("You're away, so drives start from where you are.")
         }
+        // A travelling vacation (v0.4.7 item 6d): drives and the weather from where you are.
+        let travelling = calendar.isTravelling(on: now, settings: settings)
+            || calendar.isTravelling(on: now.addingTimeInterval(12 * 3600), settings: settings)
+        if travelling, !startsFromHere {
+            startsFromHere = true
+            extraWarnings.append("You're travelling, so drives and the weather are from where you are.")
+        }
+        var weatherSettings = settings
+        if travelling {
+            weatherSettings.homeAddress = ""
+            if weatherSettings.weatherSource == .homeAssistant { weatherSettings.weatherSource = .openMeteo }
+        }
         let appointments = await appointmentCandidates(from: now, to: end, settings: settings)
 
         var plan = WakePlanner.plan(shift: shift, appointments: appointments, settings: settings, now: now)
 
         // Weather depends on the plan (wake-up until arrival), so check it second and re-plan.
-        if settings.checksWeather, let window = travelWindow(for: plan),
-           let source = weatherForecast(settings: settings, link: context == nil ? nil : link) {
+        // The forecast is read every time now, for Morning weather's plain forecast (v0.4.7 item 5).
+        var forecastHours: (hours: [ForecastHour], unit: String?)?
+        if settings.checksWeather, let source = weatherForecast(settings: weatherSettings, link: context == nil ? nil : link) {
             do {
-                let (forecast, unit) = try await source()
-                let freezing: Double? = settings.addTimeWhenFreezing ? ((unit ?? "°F").contains("C") ? 0 : 32) : nil
-                plan.freezingAt = freezing
-                if let adjustment = PlanAdjustments.weather(
-                    forecast: forecast,
-                    window: window,
-                    conditions: settings.badWeatherConditions,
-                    freezingAt: freezing,
-                    extraMinutes: settings.weatherExtraMinutes,
-                    minutes: settings.weatherConditionMinutes
-                ) {
-                    plan = WakePlanner.plan(shift: shift, appointments: appointments, settings: settings, now: now, weather: adjustment)
-                    plan.freezingAt = freezing
-                }
+                let (hours, unit) = try await source()
+                forecastHours = (hours, unit)
             } catch {
                 extraWarnings.append("Couldn't check the weather: \(error.localizedDescription)")
+            }
+        }
+        if let forecastHours, let window = travelWindow(for: plan) {
+            let freezing: Double? = settings.addTimeWhenFreezing ? ((forecastHours.unit ?? "°F").contains("C") ? 0 : 32) : nil
+            plan.freezingAt = freezing
+            if let adjustment = PlanAdjustments.weather(
+                forecast: forecastHours.hours,
+                window: window,
+                conditions: settings.badWeatherConditions,
+                freezingAt: freezing,
+                extraMinutes: settings.weatherExtraMinutes,
+                minutes: settings.weatherConditionMinutes
+            ) {
+                plan = WakePlanner.plan(shift: shift, appointments: appointments, settings: settings, now: now, weather: adjustment)
+                plan.freezingAt = freezing
             }
         }
 
@@ -466,6 +482,16 @@ final class BedtimeCoordinator {
         plan.atHome = context?.atHome
         if context?.atHome == false {
             extraWarnings.append("You're not home, so Home Assistant won't run your wake-up or bedtime routines.")
+        }
+        // The morning this plan is for, and the vacations around it (v0.4.7 item 6b, 6f).
+        let morning = plan.firstAlarm ?? MorningForecast.moment(leaveBy: nil, wakeUp: nil, goodMorningFrom: settings.noAlarmEarliest, now: now).1
+        plan.vacationMorning = calendar.isLeave(on: morning, settings: settings)
+        plan.vacations = calendar.vacations(from: now.addingTimeInterval(-64 * 86400), to: now.addingTimeInterval(14 * 86400), settings: settings)
+            .map { DayRange(first: $0.first, last: $0.last) }
+        if let forecastHours {
+            let (moment, at) = MorningForecast.moment(leaveBy: plan.leaveBy(settings: settings), wakeUp: plan.wakeTime ?? plan.firstAlarm,
+                                                      goodMorningFrom: settings.noAlarmEarliest, now: now)
+            plan.forecast = MorningForecast.pick(hours: forecastHours.hours, at: at, moment: moment, unit: forecastHours.unit)
         }
         plan.warnings = extraWarnings + plan.warnings
         return (plan, settings)
@@ -831,6 +857,7 @@ final class BedtimeCoordinator {
 
         if settings.leaveReminderEnabled, let trip = Self.trip(for: plan, settings: settings) {
             await leaveReminder.schedule(trip, offsets: Self.localLeaveOffsets(settings, atHome: plan.atHome))
+            if Self.needsBackupReminder(settings, atHome: plan.atHome) { await leaveReminder.scheduleBackup(trip) }
         } else {
             leaveReminder.clear()
         }
@@ -915,6 +942,12 @@ final class BedtimeCoordinator {
         guard let dayBefore = Calendar.current.date(byAdding: .day, value: -1, to: day) else { return false }
         return !calendar.events(from: dayBefore, to: day, calendarIDs: settings.shiftCalendarIDs)
             .contains { WakePlanner.matchingRule(forTitle: $0.title ?? "", rules: settings.shiftRules) != nil }
+    }
+
+    /// v0.4.7 item 2: Home Assistant does the leave checks (so the phone has none), and leave
+    /// reminders are on: keep one at leave time in case it's down.
+    nonisolated static func needsBackupReminder(_ settings: BridgeSettings, atHome: Bool?, checksHere: Bool = HomeAssistantLinks.driveChecksHere) -> Bool {
+        settings.leaveReminderEnabled && !settings.leaveReminderOffsets.isEmpty && localLeaveOffsets(settings, atHome: atHome, checksHere: checksHere).isEmpty
     }
 
     /// The phone's own leave reminders: none while home when Home Assistant re-checks the drive

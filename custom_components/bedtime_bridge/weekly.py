@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from homeassistant.util import dt as dt_util
@@ -96,23 +96,52 @@ def week_start(cutoff: datetime) -> datetime:
     return dt_util.as_utc(dt_util.as_local(cutoff) - timedelta(days=7))
 
 
+def _days(vacations: list[dict[str, Any]] | None) -> list[tuple[date, date]]:
+    out = []
+    for v in vacations or []:
+        try:
+            out.append((date.fromisoformat(v["first"]), date.fromisoformat(v["last"])))
+        except (KeyError, TypeError, ValueError):
+            continue
+    return out
+
+
+def vacation_text(vacations: list[dict[str, Any]] | None, since: datetime, until: datetime) -> str | None:
+    """"Vacation Nov 3 – 7" when a vacation falls in the week (v0.4.7 item 6f)."""
+    start, end = dt_util.as_local(since).date(), dt_util.as_local(until).date()
+    for first, last in _days(vacations):
+        if first <= end and last >= start:
+            if first == last:
+                return f"Vacation {first.strftime('%b')} {first.day}"
+            right = f"{last.day}" if first.month == last.month else f"{last.strftime('%b')} {last.day}"
+            return f"Vacation {first.strftime('%b')} {first.day} – {right}"
+    return None
+
+
+def on_vacation(vacations: list[dict[str, Any]] | None, now: datetime) -> bool:
+    today = dt_util.as_local(now).date()
+    return any(first <= today <= last for first, last in _days(vacations))
+
+
 def _empty(s: dict[str, Any]) -> bool:
     return not (s["nights_tracked"] or s["mornings"] or s["mornings_changed"] or s["naps"])
 
 
 def weeks(history: list[dict[str, Any]], nights: list[dict[str, Any]], settings: dict[str, Any],
-          now: datetime) -> list[dict[str, Any]]:
+          now: datetime, vacations: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
     """This week so far (since the last cut-off), then up to 8 earlier weeks, newest first,
     each as it was at its cut-off. Earlier weeks with nothing in them are left out."""
     cutoff = dt_util.as_local(last_cutoff(settings, now))
-    current = {**summarize(history, nights, now, since=dt_util.as_utc(cutoff)), "current": True}
+    current = {**summarize(history, nights, now, since=dt_util.as_utc(cutoff)), "current": True,
+               "vacation": vacation_text(vacations, dt_util.as_utc(cutoff), now)}
     result = [current]
     for back in range(EARLIER_WEEKS):
         end = cutoff - timedelta(days=7 * back)
         start = end - timedelta(days=7)
         week = summarize(history, nights, now, since=dt_util.as_utc(start), until=dt_util.as_utc(end))
-        if not _empty(week):
-            result.append({**week, "current": False})
+        vacation = vacation_text(vacations, dt_util.as_utc(start), dt_util.as_utc(end))
+        if not _empty(week) or vacation:
+            result.append({**week, "current": False, "vacation": vacation})
     return result
 
 

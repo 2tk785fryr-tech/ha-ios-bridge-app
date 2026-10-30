@@ -23,7 +23,7 @@ from homeassistant.util import dt as dt_util
 
 from . import drivetime as dtm
 from . import ladder as ldr
-from . import weekly
+from . import timefmt, weekly
 from .awake import NoAlarmMorning
 from .liveactivity import LiveActivities
 from .winddown import WindDown
@@ -259,6 +259,7 @@ class BedtimeBridge:
         stored = await self._store.async_load() or {}
         self.state = {**empty_state(), **plan_record(), **pending_record(), **stored.get("state", {})}
         self.settings = stored.get("settings", {})
+        timefmt.set_24h(bool(self.state.get("clock_24h")))
 
     @callback
     def async_start(self) -> None:
@@ -374,6 +375,10 @@ class BedtimeBridge:
         # install of the app stops opening (item 9).
         self.wind_down.adopt_settings(data.get("wind_down_settings"))
         self.awake.adopt_settings(data.get("awake_settings"))
+        if isinstance(data.get("clock_24h"), bool) and data["clock_24h"] != self.state.get("clock_24h"):
+            self.state["clock_24h"] = data["clock_24h"]
+            timefmt.set_24h(data["clock_24h"])
+            self._changed()
         if isinstance(data.get("notification_levels"), dict):
             self.state["notification_levels"] = {
                 k: v for k, v in data["notification_levels"].items() if v in ("normal", "time_sensitive", "critical")
@@ -454,7 +459,7 @@ class BedtimeBridge:
         if level is None or charging is None or charging or level >= int(cfg.get("threshold", 30)):
             return
         times = sorted(t for t in (_time(v) for v in self.state.get("alarm_times") or []) if t and t > dt_util.utcnow())
-        alarms = f" · alarms at {dt_util.as_local(times[0]).strftime('%-I:%M')}" if times else ""
+        alarms = f" · alarms at {timefmt.short(times[0])}" if times else ""
         await self.wind_down._notify("Plug in your phone", f"Plug in your phone{alarms}", tag="charge", time_sensitive=True)
         if again:
             async_call_later(self.hass, timedelta(minutes=10), callback(
@@ -533,11 +538,15 @@ class BedtimeBridge:
         cutoff = weekly.last_cutoff(self.state.get("weekly_settings") or {}, now)
         summary = weekly.summarize(self.state.get("history") or [], self.state.get("wind_down_history") or [], now,
                                    since=weekly.week_start(cutoff), until=cutoff)
+        summary["vacation"] = weekly.vacation_text(self.state.get("vacations"), weekly.week_start(cutoff), cutoff)
         self.state["weekly_summary"] = summary
         self._changed()
+        self._schedule_weekly()
+        # On vacation: the summary is there, without the notification (v0.4.7 item 6f).
+        if weekly.on_vacation(self.state.get("vacations"), now):
+            return summary
         await self.wind_down._notify("Your week", summary["text"] or "Nothing tracked this week.", tag="weekly",
                                      url="bedtimebridge://summary")
-        self._schedule_weekly()
         return summary
 
     async def bedtime_started(self, data: dict[str, Any]) -> None:
@@ -559,7 +568,7 @@ class BedtimeBridge:
         if expires is None or not now < expires <= now + timedelta(days=2) or self.state.get("app_expiry_warned") == today:
             return
         self.state["app_expiry_warned"] = today
-        when = dt_util.as_local(expires).strftime("%a %-I:%M %p")
+        when = timefmt.day_long(expires)
         await self.wind_down._notify("Reinstall Bedtime Bridge", f"The app stops opening {when}. Reinstall it from Xcode (⌘R); settings are kept.",
                                      tag="app_expiry")
 
@@ -636,7 +645,7 @@ class BedtimeBridge:
             "weekly_summary": self.state.get("weekly_summary"),
             # This week so far and up to 8 earlier weeks, newest first (v0.4.6 item 5).
             "weekly_summaries": weekly.weeks(self.state.get("history") or [], self.state.get("wind_down_history") or [],
-                                             self.state.get("weekly_settings") or {}, dt_util.utcnow()),
+                                             self.state.get("weekly_settings") or {}, dt_util.utcnow(), self.state.get("vacations")),
             "curtains_open_at": self._curtains_open(_time(data.get("first_alarm")) or dt_util.utcnow()),
         }
 
@@ -720,6 +729,12 @@ class BedtimeBridge:
         times = sorted(t for t in (_time(v) for v in self.state.get("alarm_times") or []) if t)
         self.state["series_start"] = times[0].isoformat() if times else None
         await self._sync_sleep_in()
+        # v0.4.7 item 6: Sleep In on for a vacation morning with no alarms; the vacations for the
+        # weekly summary.
+        if data.get("vacation") and not times:
+            await self._set_sleep_in(True)
+        if isinstance(data.get("vacations"), list):
+            self.state["vacations"] = data["vacations"]
         # The phone reports a plan only once its alarms are scheduled, so with app alarms this
         # means they're really set; in Clock app mode the shortcut still has to make them.
         has_alarm = data.get("has_alarm", bool(data.get("alarm_times")))
@@ -1161,7 +1176,7 @@ class BedtimeBridge:
             reason = f"Shift override changed to {override}"
         elif shift_start and shift_start != self.state.get("planned_shift_start"):
             when = dt_util.parse_datetime(shift_start)
-            reason = f"Next shift moved to {dt_util.as_local(when).strftime('%a %-I:%M %p') if when else shift_start}"
+            reason = f"Next shift moved to {timefmt.day_long(when) if when else shift_start}"
         if reason is None:
             return
         self.state["plan_outdated"] = True
@@ -1523,6 +1538,8 @@ class BedtimeBridge:
         leave_by = arrive_by - timedelta(seconds=seconds)
         await self._leave_by({"leave_by": leave_by.isoformat(), "drive_minutes": minutes, "note": "checked by Home Assistant"})
         await self._notify_leave(leave_by, minutes, planned, trip)
+        # The phone's leave-time backup can go (v0.4.7 item 2).
+        await self.live.leave_checked()
         if self.live.configured and self.state.get("morning_updates_until"):
             await self.live.morning()
         return True
@@ -1530,11 +1547,11 @@ class BedtimeBridge:
     async def _notify_leave(self, leave_by: datetime, minutes: int, planned: int, trip: dict[str, Any]) -> None:
         """"Leave by 5:48 · 32 min drive (5 min worse than planned)", or "Leave now · …", as the app says it."""
         now = dt_util.utcnow()
-        head = "Leave now" if leave_by <= now + timedelta(minutes=1) else f"Leave by {dt_util.as_local(leave_by).strftime('%-I:%M')}"
+        head = "Leave now" if leave_by <= now + timedelta(minutes=1) else f"Leave by {timefmt.short(leave_by)}"
         difference = minutes - planned if planned else 0
         change = f" ({abs(difference)} min {'worse' if difference > 0 else 'lighter'} than planned)" if abs(difference) >= 3 else ""
         start = _time(trip.get("start"))
-        body = f"{trip.get('title') or 'Your drive'}" + (f" at {dt_util.as_local(start).strftime('%-I:%M %p')}." if start else ".")
+        body = f"{trip.get('title') or 'Your drive'}" + (f" at {timefmt.long(start)}." if start else ".")
         await self.wind_down._notify(f"{head} · {minutes} min drive{change}", body, tag="leave_check", time_sensitive=True)
 
     def _drop_leave_by(self) -> None:

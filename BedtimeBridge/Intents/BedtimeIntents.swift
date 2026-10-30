@@ -34,13 +34,13 @@ struct PlanWakeAlarmsIntent: AppIntent {
 struct SetWakeAlarmsIntent: AppIntent {
     static var title: LocalizedStringResource = "Set Wake-Up Alarms"
     static var description = IntentDescription(
-        "Sets your usual series of alarms (e.g. 3 alarms, 10 minutes apart) around the wake-up time you choose. By default it's the last alarm, so the others go off earlier."
+        "Sets your own alarms (Settings → Alarms → Your own alarms; e.g. 3 alarms, 10 minutes apart) from the wake-up time you choose. By default it's the first alarm, so the others go off later."
     )
 
     @Parameter(title: "Wake-Up Time")
     var wakeTime: Date
 
-    @Parameter(title: "Time Is", description: "Whether the time is your first or last alarm. Default: the setting in the app.")
+    @Parameter(title: "Time Is", description: "Whether the time is your first or last alarm. Default: Your own alarms' setting in the app.")
     var timeIs: WakeTimeChoice?
 
     static var parameterSummary: some ParameterSummary {
@@ -51,10 +51,14 @@ struct SetWakeAlarmsIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult & ReturnsValue<WakePlanEntity> {
+        // Your own alarms' series, like Wake at a different time (v0.4.7 item 7).
+        let settings = SettingsStore.shared.settings
+        let own = OwnAlarmSeries.replacement(wake: BedtimeCoordinator.nextOccurrence(ofTimeIn: wakeTime), wakeIs: timeIs?.wakeTimeAlarm, settings: settings)
         let plan = try await BedtimeCoordinator.shared.scheduleManual(
             wakeTime: wakeTime,
-            wakeIs: timeIs?.wakeTimeAlarm,
-            settings: SettingsStore.shared.settings
+            wakeIs: own.wakeIs,
+            exactly: own,
+            settings: settings
         )
         return .result(value: WakePlanEntity(plan: plan))
     }
@@ -202,6 +206,8 @@ struct CheckDriveAndRemindIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
+        // The check ran, so the leave-time backup isn't needed (v0.4.7 item 2).
+        await LeaveReminder.removeBackup()
         let settings = SettingsStore.shared.settings
         await BedtimeCoordinator.shared.recheckDrive(notify: true, settings: settings)
         await BedtimeCoordinator.shared.commandRan(PhoneCommand.leaveCheck.rawValue, settings: settings)
@@ -394,8 +400,8 @@ struct BedtimeBridgeShortcuts: AppShortcutsProvider {
         )
         AppShortcut(
             intent: AddLeaveIntent(),
-            phrases: ["Add leave in \(.applicationName)"],
-            shortTitle: "Add Leave",
+            phrases: ["Add leave in \(.applicationName)", "Add a vacation in \(.applicationName)"],
+            shortTitle: "Add Vacation",
             systemImageName: "beach.umbrella"
         )
         // v0.4.6 item 2

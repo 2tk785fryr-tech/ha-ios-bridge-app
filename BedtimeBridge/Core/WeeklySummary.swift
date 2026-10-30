@@ -16,6 +16,8 @@ struct WeeklySummary: Codable, Equatable {
     var napMinutes = 0
     /// This week so far, since the last cut-off (v0.4.6 item 5).
     var current = false
+    /// "Vacation Nov 3 – 7" (v0.4.7 item 6f).
+    var vacation: String?
 
     init() {}
 
@@ -39,6 +41,7 @@ struct WeeklySummary: Codable, Equatable {
         naps = reply["naps"] as? Int ?? 0
         napMinutes = reply["nap_minutes"] as? Int ?? 0
         current = reply["current"] as? Bool ?? false
+        vacation = reply["vacation"] as? String
     }
 
     /// "Oct 25 – now" for this week so far, "Oct 18 – Oct 25" for an earlier one.

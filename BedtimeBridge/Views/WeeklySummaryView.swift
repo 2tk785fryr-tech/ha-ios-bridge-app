@@ -38,8 +38,13 @@ struct WeeklySummaryView: View {
                             .disabled(index >= weeks.count - 1)
                             .accessibilityLabel("Earlier week")
                         Spacer()
-                        Text(summary.rangeText ?? "")
-                            .foregroundStyle(Theme.textMuted)
+                        VStack(spacing: 2) {
+                            Text(summary.rangeText ?? "")
+                                .foregroundStyle(Theme.textMuted)
+                            if let vacation = summary.vacation {
+                                Text(vacation).font(.footnote).foregroundStyle(Theme.accentText)
+                            }
+                        }
                         Spacer()
                         Button { index -= 1 } label: { Image(systemName: "chevron.right") }
                             .disabled(index == 0)

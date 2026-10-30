@@ -42,7 +42,7 @@ struct SettingsView: View {
                 SettingsLink(title: "Home", icon: "house.fill", value: settings.homeAddress.isEmpty ? "Current location" : "Set") {
                     HomeSettings(settings: $store.settings)
                 }
-                SettingsLink(title: "Alarms", icon: "alarm", value: "\(settings.alarmCount) alarms, \(settings.alarmSpacingMinutes) min apart") {
+                SettingsLink(title: "Alarms", icon: "alarm", value: AlarmSeriesText.alarmsRow(style: settings.alarmStyle, snooze: settings.snoozeMinutes)) {
                     SettingsPage(title: "Alarms") { AlarmSettingsSection(settings: $store.settings) }
                 }
                 SettingsLink(title: "Nap", icon: "powersleep", value: settings.napEnabled ? "\(settings.napAlarmCount) alarms, \(settings.napSpacingMinutes) min apart" : "Off") {
@@ -51,7 +51,7 @@ struct SettingsView: View {
                 SettingsLink(title: "Wind-down", icon: "moon.zzz", value: settings.windDownEnabled ? "Sleep goal \(DurationText.hours(settings.sleepGoalMinutes))" : "Off") {
                     WindDownSettings(settings: $store.settings)
                 }
-                SettingsLink(title: "Leave", icon: "beach.umbrella", value: settings.leaveTitles.joined(separator: ", ")) {
+                SettingsLink(title: "Vacations", icon: "beach.umbrella", value: settings.leaveTitles.joined(separator: ", ")) {
                     LeaveSettings(settings: $store.settings)
                 }
                 SettingsLink(title: "Weekly summary", icon: "calendar.day.timeline.left", value: settings.weeklySummaryEnabled ? "On" : "Off") {
@@ -100,6 +100,22 @@ struct SettingsView: View {
                 }
                 SettingsLink(title: "App icon", icon: "app.badge", value: AppIconChoice.current.title) {
                     SettingsPage(title: "App icon") { AppIconSection() }
+                }
+                // v0.4.7 item 10.
+                SettingsLink(title: "Clock", icon: "clock", value: store.settings.clockStyle.displayName) {
+                    SettingsPage(title: "Clock") {
+                        Section {
+                            Picker(selection: $store.settings.clockStyle) {
+                                ForEach(ClockStyle.allCases) { Text($0.displayName).tag($0) }
+                            } label: {
+                                WithDefault(text: "Times", defaultText: store.settings.clockStyle == .phone ? nil : ClockStyle.phone.displayName)
+                            }
+                            .pickerStyle(.inline)
+                            .labelsHidden()
+                        } footer: {
+                            Text("How times show in the app, the widgets and Live Activities, and in Home Assistant's notifications. Phone setting follows Settings → General → Date & Time.")
+                        }
+                    }
                 }
             }
 
@@ -458,7 +474,7 @@ struct ShiftRuleEditor: View {
                 }
 
                 Section {
-                    Toggle("Use my usual series", isOn: usesGeneralSeries)
+                    Toggle("Same as appointment & event alarms", isOn: usesGeneralSeries)
                     if !usesGeneralSeries.wrappedValue {
                         Picker("Set time is the", selection: Binding(get: { rule.wakeIs ?? general.wakeTimeIs }, set: { rule.wakeIs = $0 })) {
                             ForEach(WakeTimeAlarm.allCases) { Text($0.displayName).tag($0) }
@@ -543,13 +559,6 @@ private struct AlarmSettingsSection: View {
     @Binding var settings: BridgeSettings
     private let d = BridgeSettings()
 
-    /// e.g. "Up at 5:30 → alarms 5:10, 5:20, 5:30"
-    private var seriesExample: String {
-        let wake = Calendar.current.date(bySettingHour: 5, minute: 30, second: 0, of: .now) ?? .now
-        let times = WakePlanner.alarmTimes(wakeTime: wake, count: settings.alarmCount, spacingMinutes: settings.alarmSpacingMinutes, wakeIs: settings.wakeTimeIs)
-        return "Up at 5:30 → alarms " + times.map(WakePlanner.format).joined(separator: ", ")
-    }
-
     var body: some View {
         Section {
             Picker(selection: $settings.alarmStyle) {
@@ -557,16 +566,19 @@ private struct AlarmSettingsSection: View {
             } label: {
                 WithDefault(text: "Alarms", defaultText: settings.alarmStyle == d.alarmStyle ? nil : d.alarmStyle.displayName)
             }
-            DefaultStepper(value: $settings.alarmCount, in: 1...10, defaultValue: d.alarmCount) { "\($0) alarms" }
-            DefaultStepper(value: $settings.alarmSpacingMinutes, in: 1...60, defaultValue: d.alarmSpacingMinutes, note: { "\($0) min" }) { "\($0) min apart" }
-            Picker(selection: $settings.wakeTimeIs) {
-                ForEach(WakeTimeAlarm.allCases) { Text($0.displayName).tag($0) }
+            // v0.4.7 item 7: the two alarm series, each on its own page, at the top.
+            NavigationLink {
+                AppointmentAlarmSettings(settings: $settings)
             } label: {
-                WithDefault(text: "Set time is the", defaultText: settings.wakeTimeIs == d.wakeTimeIs ? nil : d.wakeTimeIs.displayName.lowercased())
+                LabeledContent("Appointment & event alarms", value: AlarmSeriesText.summary(count: settings.alarmCount, spacing: settings.alarmSpacingMinutes))
             }
-            Text(seriesExample)
-                .font(.footnote)
-                .foregroundStyle(Theme.textMuted)
+            if settings.alarmStyle == .app {
+                NavigationLink {
+                    OwnAlarmSettings(settings: $settings)
+                } label: {
+                    LabeledContent("Your own alarms", value: AlarmSeriesText.summary(count: settings.ownAlarmCount, spacing: settings.ownAlarmSpacingMinutes))
+                }
+            }
             if settings.alarmStyle == .app {
                 DefaultStepper(value: $settings.snoozeMinutes, in: 1...30, defaultValue: d.snoozeMinutes, note: { "\($0) min" }) { "Snooze: \($0) min" }
                 AlarmSoundPicker(sound: $settings.alarmSound)
@@ -581,13 +593,10 @@ private struct AlarmSettingsSection: View {
                 NavigationLink("Change this morning") {
                     MorningChangeSettings(settings: $settings)
                 }
-                NavigationLink("Your own alarms") {
-                    OwnAlarmSettings(settings: $settings)
-                }
             }
             DefaultStepper(value: $settings.lookAheadHours, in: 6...72, defaultValue: d.lookAheadHours, note: { "\($0) h" }) { "Look ahead \($0) h" }
         } header: {
-            Text("Alarms (appointments, day off)")
+            Text("Alarms")
         } footer: {
             switch settings.alarmStyle {
             case .app:
@@ -689,6 +698,31 @@ private struct OptionWindowsSettings: View {
 
 /// Settings → Alarms → Your own alarms (v0.4.3 item 6): used whenever alarms are made by hand,
 /// with the backstops for your own alarm folded in.
+/// Settings → Alarms → Appointment & event alarms (v0.4.7 item 7): the series appointments, events
+/// and shifts without their own series use.
+private struct AppointmentAlarmSettings: View {
+    @Binding var settings: BridgeSettings
+    private let d = BridgeSettings()
+
+    var body: some View {
+        SettingsPage(title: "Appointment & event alarms") {
+            Section {
+                DefaultStepper(value: $settings.alarmCount, in: 1...10, defaultValue: d.alarmCount) { "\($0) alarms" }
+                DefaultStepper(value: $settings.alarmSpacingMinutes, in: 1...60, defaultValue: d.alarmSpacingMinutes, note: { "\($0) min" }) { "\($0) min apart" }
+                Picker(selection: $settings.wakeTimeIs) {
+                    ForEach(WakeTimeAlarm.allCases) { Text($0.displayName).tag($0) }
+                } label: {
+                    WithDefault(text: "Wake-up time is the", defaultText: settings.wakeTimeIs == d.wakeTimeIs ? nil : d.wakeTimeIs.displayName.lowercased())
+                }
+            } footer: {
+                Text(AlarmSeriesText.example(count: settings.alarmCount, spacing: settings.alarmSpacingMinutes, wakeIs: settings.wakeTimeIs)
+                     + ". Used for \"wake up\" appointments and events, and for shifts set to the same as these.")
+            }
+            ResetPageSection { settings.resetToDefaults(SettingsPages.appointmentAlarms) }
+        }
+    }
+}
+
 private struct OwnAlarmSettings: View {
     @Binding var settings: BridgeSettings
     private let d = BridgeSettings()

@@ -36,7 +36,7 @@ struct NapLimit: Equatable {
         let latestText = WakePlanner.format(latest)
         switch reason {
         case .event(let event):
-            let start = event.start.formatted(.dateTime.hour().minute())
+            let start = event.start.formatted(.dateTime.hour().minute().locale(ClockStyle.locale))
             if event.hasAddress {
                 return "\(event.title) at \(start), \(event.driveMinutes) min drive. Leave by \(WakePlanner.format(event.leaveBy)), ready \(event.readyMinutes) min before, so your last nap alarm can be \(latestText) at the latest"
             }

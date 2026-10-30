@@ -443,6 +443,12 @@ extension WakePlan {
     }
 
     /// Sent to Home Assistant: flat keys the integration stores, plus nested details.
+    /// "2026-11-03"
+    static func day(_ date: Date) -> String {
+        let c = Calendar.current.dateComponents([.year, .month, .day], from: date)
+        return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
+    }
+
     func homeAssistantPayload(settings: BridgeSettings) -> [String: Any] {
         let iso = ISO8601DateFormatter()
         iso.timeZone = .current
@@ -457,6 +463,10 @@ extension WakePlan {
             }].compactMap { $0 },
             "weather_extra_minutes": weather?.minutes ?? 0,
             "alarm_style": settings.alarmStyle.rawValue,
+            // v0.4.7 item 6: a vacation morning (Sleep In on with no alarms), and the vacations
+            // for the weekly summary.
+            "vacation": vacationMorning,
+            "vacations": vacations.map { ["first": Self.day($0.first), "last": Self.day($0.last)] },
         ]
         if let first = firstAlarm { body["alarm_time"] = iso.string(from: first) }
         if let wakeTime { body["wake_time"] = iso.string(from: wakeTime) }

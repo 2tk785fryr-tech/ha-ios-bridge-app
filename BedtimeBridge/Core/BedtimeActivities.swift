@@ -82,6 +82,11 @@ enum BedtimeActivities {
         await report(["kind": "morning", "content": content])
     }
 
+    /// The app's own push token, for Home Assistant's silent "leave checked" (v0.4.7 item 2).
+    static func sendDeviceToken(_ token: String) async {
+        await report(["kind": "device", "token": token])
+    }
+
     private static func report(_ data: [String: Any]) async {
         var data = data
         #if DEBUG
@@ -91,7 +96,7 @@ enum BedtimeActivities {
         #endif
         data["bundle_id"] = Bundle.main.bundleIdentifier
         if let team = AppExpiry.teamID { data["team_id"] = team }
-        guard let link = await HomeAssistantLinks.current(SettingsStore.shared.settings) as? IntegrationLink else { return }
+        guard let link = HomeAssistantLinks.current(SettingsStore.shared.settings) as? IntegrationLink else { return }
         _ = try? await link.reply(.liveActivity, data: data)
     }
 

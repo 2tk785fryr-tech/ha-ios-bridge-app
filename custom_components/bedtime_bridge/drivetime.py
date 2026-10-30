@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import logging
+import re
 import time
 from typing import Any
 from urllib.parse import quote
@@ -27,8 +28,23 @@ SOURCES = [SOURCE_PHONE, SOURCE_APPLE, SOURCE_TOMTOM, SOURCE_GOOGLE, SOURCE_LONG
 TIMEOUT = ClientTimeout(total=15)
 
 
+# key=…, api_key=…, token=… in a request address (v0.4.7 item 3).
+_SECRET_PARAM = re.compile(r"((?:[?&]|\b)(?:key|api_key|apikey|token|access_token)=)[^&\s'\")]+", re.IGNORECASE)
+
+
+def scrub(text: str, *secrets: str | None) -> str:
+    """The text with API keys taken out, so an error never puts one in the log (v0.4.7 item 3)."""
+    for secret in secrets:
+        if secret and len(secret) >= 6:
+            text = text.replace(secret, "•••")
+    return _SECRET_PARAM.sub(r"\1•••", text)
+
+
 class DriveTimeError(Exception):
-    """A service couldn't give a drive time."""
+    """A service couldn't give a drive time. Its text never carries a key."""
+
+    def __init__(self, message: str, *secrets: str | None) -> None:
+        super().__init__(scrub(message, *secrets))
 
 
 @dataclass
@@ -125,10 +141,10 @@ class TomTom:
         try:
             async with self._session.get(url, params={"key": self._key, **params}, timeout=TIMEOUT) as response:
                 if response.status != 200:
-                    raise DriveTimeError(f"TomTom {response.status}: {(await response.text())[:150]}")
+                    raise DriveTimeError(f"TomTom {response.status}: {(await response.text())[:150]}", self._key)
                 return await response.json()
         except (ClientError, TimeoutError) as err:
-            raise DriveTimeError(f"TomTom: {err}") from err
+            raise DriveTimeError(f"TomTom: {err}", self._key) from err
 
     async def locate(self, place: Place) -> Place:
         if place.has_coordinates:
@@ -136,7 +152,7 @@ class TomTom:
         data = await self._get(f"https://api.tomtom.com/search/2/geocode/{quote(place.text)}.json", {"limit": "1"})
         results = data.get("results") or []
         if not results:
-            raise DriveTimeError(f"TomTom couldn't find {place.text}")
+            raise DriveTimeError(f"TomTom couldn't find {place.text}", self._key)
         position = results[0].get("position") or {}
         return Place(place.text, position.get("lat"), position.get("lon"))
 
@@ -148,7 +164,7 @@ class TomTom:
         )
         routes = data.get("routes") or []
         if not routes:
-            raise DriveTimeError("TomTom found no route")
+            raise DriveTimeError("TomTom found no route", self._key)
         return float(routes[0]["summary"]["travelTimeInSeconds"])
 
 
@@ -181,13 +197,13 @@ class Google:
             async with self._session.post("https://routes.googleapis.com/directions/v2:computeRoutes", json=body,
                                           headers=headers, timeout=TIMEOUT) as response:
                 if response.status != 200:
-                    raise DriveTimeError(f"Google {response.status}: {(await response.text())[:150]}")
+                    raise DriveTimeError(f"Google {response.status}: {(await response.text())[:150]}", self._key)
                 data = await response.json()
         except (ClientError, TimeoutError) as err:
-            raise DriveTimeError(f"Google: {err}") from err
+            raise DriveTimeError(f"Google: {err}", self._key) from err
         routes = data.get("routes") or []
         if not routes or not routes[0].get("duration"):
-            raise DriveTimeError("Google found no route")
+            raise DriveTimeError("Google found no route", self._key)
         return float(str(routes[0]["duration"]).rstrip("s"))
 
     async def drive_seconds(self, origin: Place, destination: Place, arrive_by: datetime, now: datetime | None = None) -> float:

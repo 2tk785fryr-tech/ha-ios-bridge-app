@@ -15,7 +15,7 @@ enum QuickAction: String, CaseIterable, Codable, Identifiable {
         case .nap: "Nap"
         case .previewTomorrow: "Preview tomorrow"
         case .addWakeUpEvent: "Add a wake-up event"
-        case .addLeave: "Add leave"
+        case .addLeave: "Add vacation"
         case .sleepLater: "Sleep later"
         case .noAlarmsTomorrow: "No alarms tomorrow"
         case .startWindDown: "Start wind-down"
@@ -93,9 +93,9 @@ final class QuickActionSceneDelegate: NSObject, UIWindowSceneDelegate {
         if let item = connectionOptions.shortcutItem { open(item) }
     }
 
-    func windowScene(_ windowScene: UIWindowScene, performActionFor shortcutItem: UIApplicationShortcutItem) async -> Bool {
+    func windowScene(_ windowScene: UIWindowScene, performActionFor shortcutItem: UIApplicationShortcutItem, completionHandler: @escaping (Bool) -> Void) {
         open(shortcutItem)
-        return true
+        completionHandler(true)
     }
 
     private func open(_ item: UIApplicationShortcutItem) {

@@ -140,8 +140,8 @@ struct CancelWindDownIntent: AppIntent {
 }
 
 struct AddLeaveIntent: AppIntent {
-    static var title: LocalizedStringResource = "Add Leave"
-    static var description = IntentDescription("Adds one all-day leave event, first day through last, to the Calendar for new events.")
+    static var title: LocalizedStringResource = "Add Vacation"
+    static var description = IntentDescription("Adds one all-day vacation event (one of your vacation titles), first day through last, to the Calendar for new events.")
 
     @Parameter(title: "First Day")
     var first: Date
@@ -149,18 +149,45 @@ struct AddLeaveIntent: AppIntent {
     @Parameter(title: "Last Day")
     var last: Date
 
-    static var parameterSummary: some ParameterSummary { Summary("Add leave from \(\.$first) to \(\.$last)") }
+    /// v0.4.7 item 6: which vacation title; asked when there's more than one.
+    @Parameter(title: "Kind", optionsProvider: VacationTitleOptions())
+    var kind: String?
+
+    @Parameter(title: "Travelling", default: false)
+    var travelling: Bool
+
+    static var parameterSummary: some ParameterSummary {
+        Summary("Add \(\.$kind) from \(\.$first) to \(\.$last)") { \.$travelling }
+    }
 
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
         let settings = SettingsStore.shared.settings
         let service = BedtimeCoordinator.shared.calendar
         try await service.ensureAccess()
-        let text = LeaveDays.describe(title: settings.leaveTitles.first ?? "Leave", first: first, last: last,
-                                      calendarName: service.newEventsCalendar(settings: settings)?.title ?? "your calendar")
+        let titles = settings.leaveTitles.isEmpty ? ["Leave"] : settings.leaveTitles
+        let title: String
+        if let kind, titles.contains(kind) {
+            title = kind
+        } else if titles.count == 1 {
+            title = titles[0]
+        } else {
+            title = try await $kind.requestDisambiguation(among: titles, dialog: "Which kind?")
+        }
+        let text = LeaveDays.describe(title: title, first: first, last: last,
+                                      calendarName: service.newEventsCalendar(settings: settings)?.title ?? "your calendar") + (travelling ? ", travelling" : "")
         try await requestConfirmation(dialog: "Add \(text)?")
-        _ = try service.addLeave(first: first, last: last, settings: settings)
+        _ = try service.addVacation(title: title, first: first, last: last, travelling: travelling, settings: settings)
+        await BedtimeCoordinator.shared.scheduleBackToWork(settings: settings)
         return .result(dialog: "Added: \(text).")
+    }
+}
+
+/// The vacation titles from Settings → Vacations, for Siri and Shortcuts.
+struct VacationTitleOptions: DynamicOptionsProvider {
+    func results() async throws -> [String] {
+        let titles = SettingsStore.shared.settings.leaveTitles
+        return titles.isEmpty ? ["Leave"] : titles
     }
 }
 

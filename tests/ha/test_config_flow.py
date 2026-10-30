@@ -83,17 +83,26 @@ async def test_options_change_wake_action_and_add_shift(hass: HomeAssistant):
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
-    result = await hass.config_entries.options.async_init(entry.entry_id)
-    assert result["step_id"] == "init"
-    result = await hass.config_entries.options.async_configure(
-        result["flow_id"], {CONF_WAKE_ACTION: WAKE_EVENTS, CONF_SHIFT_TYPES: "Days, Swings, Nights"}
-    )
+    result = await open_page(hass, entry, "wake")
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {CONF_WAKE_ACTION: WAKE_EVENTS})
     assert result["type"] is FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
-
     assert entry.options[CONF_WAKE_ACTION] == WAKE_EVENTS
     assert entry.options[CONF_SNOOZE_HELPER] is None  # cleared, and stays cleared
+
+    result = await open_page(hass, entry, "shifts")
+    await hass.config_entries.options.async_configure(result["flow_id"], {CONF_SHIFT_TYPES: "Days, Swings, Nights"})
+    await hass.async_block_till_done()
+    assert entry.options[CONF_WAKE_ACTION] == WAKE_EVENTS, "another page's options stay"
     assert hass.states.get("number.bedtime_bridge_nights_lead_time") is not None
+
+
+async def open_page(hass, entry, page):
+    """Configure opens a menu of pages (v0.4.7 item 9)."""
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert result["type"] is FlowResultType.MENU and result["step_id"] == "init"
+    assert page in result["menu_options"]
+    return await hass.config_entries.options.async_configure(result["flow_id"], {"next_step_id": page})
 
 
 def suggested(result, key):
@@ -117,7 +126,7 @@ async def test_configure_suggests_options_the_entry_never_had(hass: HomeAssistan
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
-    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await open_page(hass, entry, "phone")
     assert suggested(result, CONF_NOTIFY) == "notify.mobile_app_mikes_iphone"
 
 
@@ -127,10 +136,10 @@ async def test_cleared_option_stays_cleared(hass: HomeAssistant):
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
-    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await open_page(hass, entry, "phone")
     # Save without a notify action (the field cleared).
-    await hass.config_entries.options.async_configure(result["flow_id"], {CONF_WAKE_ACTION: "both", CONF_SHIFT_TYPES: "Days, Swings"})
+    await hass.config_entries.options.async_configure(result["flow_id"], {})
     await hass.async_block_till_done()
     assert entry.options[CONF_NOTIFY] is None
-    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await open_page(hass, entry, "phone")
     assert suggested(result, CONF_NOTIFY) is None
