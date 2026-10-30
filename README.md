@@ -227,6 +227,8 @@ scheduled, then shows what the phone really holds, read back from the system: **
 4:20 4:25 4:30**, or **Couldn't set 1 of 3 alarms** in red. The Lock Screen widget shows the same
 count ("3 alarms set · Leave by 6:26").
 
+**Setting up?** `docs/setup.md` has every step for v0.4.2 – 0.4.5 in order.
+
 **New in 0.4.4:** with an Apple push key in the integration's options, Home Assistant starts,
 updates and ends the wind-down and morning Live Activities by push, without the app running
 (`docs/ha-handoffs-v0.4.4.md`). The app's own leave-by reminders, "Tomorrow changed" and the Nap

@@ -21,7 +21,7 @@ or home IDs.
 | Home Assistant push `RUN_NAP_END` (v0.4.2: the nap ended) | Nap End - App |
 | Home Assistant push `RUN_PLAN_PREVIEW` (v0.4.3: before tonight's wind-down) | Preview Tomorrow - App |
 | Home Assistant push `RUN_WIND_DOWN` (v0.4.3: wind-down starts) | Wind Down On - App |
-| Home Assistant push `RUN_WIND_DOWN_CANCEL` (v0.4.3: wind-down cancelled) | Wind Down Off - App |
+| Home Assistant push `RUN_CANCEL_WIND_DOWN` (v0.4.3: wind-down cancelled) | Wind Down Off - App |
 | Home Assistant push `RUN_MORNING_UPDATE` (v0.4.3: hourly on a leave-by morning, and when you leave home) | Morning Update - App |
 | By hand | Temporary Wake-Up - App |
 
@@ -162,28 +162,24 @@ right under its box. No Dark Mode step: Appearance is Automatic, and Shortcuts c
 to Automatic.
 
 Phone setup: a "When I receive a notification from Home Assistant" automation, message contains
-`RUN_WIND_DOWN`, Run Immediately, Notify When Run off. (It also matches `RUN_WIND_DOWN_CANCEL`;
-filter on "RUN_WIND_DOWN" only if your Shortcuts version matches whole messages, otherwise see
-below.)
+`RUN_WIND_DOWN`, Run Immediately, Notify When Run off. (The cancel command is
+`RUN_CANCEL_WIND_DOWN`, which doesn't contain it, so the two automations never both run.)
 
 ## Wind Down Off - App (v0.4.3 item 5)
 
 New, signed in `shortcuts/`. Run when wind-down is cancelled (the warning's button, the app, ⋯,
 the control or Siri).
 
-0. Bedtime Bridge **Report Shortcut Ran** (`RUN_WIND_DOWN_CANCEL`, Outcome **Started**).
+0. Bedtime Bridge **Report Shortcut Ran** (`RUN_CANCEL_WIND_DOWN`, Outcome **Started**).
 1. **Set Focus**: Wind Down, Off. *Add by hand.*
 2. **Set Reduce White Point** Off. *Add by hand.*
 3. **Set Night Shift** Off, or leave it to its schedule. *Add by hand.*
 4. No brightness step: auto-brightness takes over.
-5. Report Shortcut Ran (`RUN_WIND_DOWN_CANCEL`, Outcome **Completed**).
+5. Report Shortcut Ran (`RUN_CANCEL_WIND_DOWN`, Outcome **Completed**).
 
 As with On, each step to add has its own "ADD BELOW: …" comment box in the imported shortcut.
 
-Phone setup: an automation, message contains `RUN_WIND_DOWN_CANCEL`, Run Immediately. Because
-"contains RUN_WIND_DOWN" also matches the cancel message, give Wind Down On - App's automation
-the condition "message is RUN_WIND_DOWN" if your Shortcuts offers *is*; otherwise add an **If**
-at the top of Wind Down On - App: if the notification's message contains `CANCEL`, stop.
+Phone setup: an automation, message contains `RUN_CANCEL_WIND_DOWN`, Run Immediately.
 
 Test once: run On, then Off, and check auto-brightness and automatic Appearance still work.
 
