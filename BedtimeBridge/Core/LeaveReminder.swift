@@ -74,6 +74,8 @@ final class LeaveReminder {
             content.title = Self.message(leaveBy: trip.leaveBy, travelSeconds: trip.plannedTravelSeconds, bedtimeSeconds: trip.bedtimeTravelSeconds, now: due)
             content.body = "\(trip.title) at \(WakePlanner.format(trip.start)). \(checked)"
             content.sound = .default
+            // Through Focus (paid team, since 29 Oct 2026): leaving late is what this prevents.
+            content.interruptionLevel = .timeSensitive
             let fireAt = max(due.addingTimeInterval(Self.fallbackDelay), Date.now.addingTimeInterval(5))
             let trigger = UNTimeIntervalNotificationTrigger(timeInterval: fireAt.timeIntervalSinceNow, repeats: false)
             try? await center.add(UNNotificationRequest(identifier: "\(Self.requestPrefix)-\(minutes)", content: content, trigger: trigger))
@@ -113,6 +115,7 @@ final class LeaveReminder {
             content.title = Self.message(leaveBy: trip.leaveBy, travelSeconds: trip.plannedTravelSeconds, bedtimeSeconds: trip.bedtimeTravelSeconds)
             content.body = "\(trip.title) at \(WakePlanner.format(trip.start))." + (trip.checkedAt == nil ? " Couldn't re-check the drive." : "")
             content.sound = .default
+            content.interruptionLevel = .timeSensitive
             try? await center.add(UNNotificationRequest(identifier: "leave-check-now", content: content, trigger: nil))
         }
         return trip

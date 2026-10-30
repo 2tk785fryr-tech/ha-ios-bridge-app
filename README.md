@@ -229,7 +229,8 @@ count ("3 alarms set · Leave by 6:26").
 
 **New in 0.4.4:** with an Apple push key in the integration's options, Home Assistant starts,
 updates and ends the wind-down and morning Live Activities by push, without the app running
-(`docs/ha-handoffs-v0.4.4.md`).
+(`docs/ha-handoffs-v0.4.4.md`). The app's own leave-by reminders, "Tomorrow changed" and the Nap
+control's notice are time-sensitive, so they come through Focus.
 
 **New in v0.4.3:**
 - **Set alarms asks first:** a manual Plan and set alarms shows a preview with Set alarms and

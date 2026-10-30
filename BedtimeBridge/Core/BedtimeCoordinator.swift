@@ -661,6 +661,8 @@ final class BedtimeCoordinator {
         guard let minutes = settings.napLengths.first else { return }
         let limit = await napLimit(settings: settings)
         let content = UNMutableNotificationContent()
+        // You pressed the control expecting a nap: say at once if it didn't happen.
+        content.interruptionLevel = .timeSensitive
         if NapPlanner.fits(minutes: minutes, now: .now, count: settings.napAlarmCount, spacing: settings.napSpacingMinutes, limit: limit) {
             do {
                 try await startNap(minutes: minutes, settings: settings)
