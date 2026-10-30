@@ -157,8 +157,9 @@ now in the app, the Wind-down control or Siri).
 4. **Set Reduce White Point** On. *Add by hand.*
 5. Report Shortcut Ran (`RUN_WIND_DOWN`, Outcome **Completed**).
 
-The imported shortcut has a comment where steps 1, 3 and 4 go. No Dark Mode step: Appearance is
-Automatic, and Shortcuts can't set it back to Automatic.
+The imported shortcut has a comment box at each step to add ("ADD BELOW: …"); put that action
+right under its box. No Dark Mode step: Appearance is Automatic, and Shortcuts can't set it back
+to Automatic.
 
 Phone setup: a "When I receive a notification from Home Assistant" automation, message contains
 `RUN_WIND_DOWN`, Run Immediately, Notify When Run off. (It also matches `RUN_WIND_DOWN_CANCEL`;
@@ -176,6 +177,8 @@ the control or Siri).
 3. **Set Night Shift** Off, or leave it to its schedule. *Add by hand.*
 4. No brightness step: auto-brightness takes over.
 5. Report Shortcut Ran (`RUN_WIND_DOWN_CANCEL`, Outcome **Completed**).
+
+As with On, each step to add has its own "ADD BELOW: …" comment box in the imported shortcut.
 
 Phone setup: an automation, message contains `RUN_WIND_DOWN_CANCEL`, Run Immediately. Because
 "contains RUN_WIND_DOWN" also matches the cancel message, give Wind Down On - App's automation
