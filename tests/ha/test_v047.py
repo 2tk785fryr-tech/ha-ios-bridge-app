@@ -44,11 +44,11 @@ async def test_item3_failed_tomtom_request_leaves_no_key_in_the_log(hass, aiocli
 
 # MARK: Item 10, 12- or 24-hour clock
 
-from datetime import datetime  # noqa: E402
+from datetime import datetime, timedelta  # noqa: E402
 
 from homeassistant.util import dt as dt_util  # noqa: E402
 
-from custom_components.bedtime_bridge import timefmt, winddown  # noqa: E402
+from custom_components.bedtime_bridge import timefmt, weekly, winddown  # noqa: E402
 
 from .test_ladder import TZ  # noqa: E402
 from .test_webhook import send, setup  # noqa: E402
@@ -65,3 +65,50 @@ async def test_item10_times_follow_the_app_clock(hass, hass_client_no_auth):
     assert winddown.short(evening) == "21:50" and winddown.long(evening) == "21:50"
     assert timefmt.day_long(evening) == "Fri 21:50" and timefmt.hour(evening) == "21:00"
     timefmt.set_24h(False)
+
+
+# MARK: Item 6, vacations
+
+from pytest_homeassistant_custom_component.common import async_mock_service  # noqa: E402
+
+from .test_ladder import calendar_days, ladder, local, plan  # noqa: E402,F401
+from .test_v043 import at  # noqa: E402
+
+VACATIONS = [{"first": "2026-11-02", "last": "2026-11-06"}]
+
+
+async def test_item6_vacation_morning_turns_sleep_in_on(hass, ladder, hass_client_no_auth):
+    from homeassistant.setup import async_setup_component
+    assert await async_setup_component(hass, "input_boolean", {"input_boolean": {"sleep_in": {"initial": False}}})
+    await ladder(sleep_in_helper="input_boolean.sleep_in")
+    await send(hass_client_no_auth, {"type": "planned", "data": {"has_alarm": False, "alarm_times": [], "alarm_cause": "noalarm",
+                                                                  "vacation": True, "vacations": VACATIONS}})
+    await hass.async_block_till_done()
+    assert hass.states.get("input_boolean.sleep_in").state == "on"
+
+
+async def test_item6_no_wind_down_before_a_vacation_morning_without_alarms(hass, ladder, hass_client_no_auth):
+    await ladder()
+    reply = await send(hass_client_no_auth, {"type": "planned", "data": {"has_alarm": False, "alarm_times": [], "alarm_cause": "noalarm",
+                                                                          "vacation": True, "wind_down_settings": {"enabled": True}}})
+    assert reply["wind_down"].get("status") in (None, "off")
+
+
+def test_item6_weeks_with_vacation_days_are_marked():
+    since = datetime(2026, 11, 1, 23, 0, tzinfo=dt_util.UTC)
+    until = datetime(2026, 11, 8, 23, 0, tzinfo=dt_util.UTC)
+    assert weekly.vacation_text(VACATIONS, since, until) == "Vacation Nov 2 – 6"
+    assert weekly.vacation_text([{"first": "2026-10-30", "last": "2026-11-02"}], since, until) == "Vacation Oct 30 – Nov 2"
+    assert weekly.vacation_text(VACATIONS, since + timedelta(days=7), until + timedelta(days=7)) is None
+    assert weekly.on_vacation(VACATIONS, datetime(2026, 11, 4, 18, 0, tzinfo=dt_util.UTC))
+
+
+async def test_item6_no_weekly_notification_on_vacation(hass, ladder, hass_client_no_auth, freezer):
+    notes = async_mock_service(hass, "notify", "phone")
+    await ladder(notify_service="notify.phone")
+    await send(hass_client_no_auth, {"type": "context", "data": {"weekly_summary": {"enabled": True, "weekday": 6, "time": "18:00"}}})
+    await send(hass_client_no_auth, {"type": "planned", "data": {"has_alarm": False, "alarm_times": [], "alarm_cause": "noalarm",
+                                                                  "vacations": [{"first": "2026-10-31", "last": "2026-11-03"}]}})
+    await at(hass, freezer, datetime(2026, 11, 1, 18, 0, tzinfo=dt_util.get_time_zone(TZ)))
+    assert not [c for c in notes if c.data.get("title") == "Your week"]
+    assert hass.states.get("sensor.bedtime_bridge_weekly_summary").attributes.get("vacation") == "Vacation Oct 31 – Nov 3"

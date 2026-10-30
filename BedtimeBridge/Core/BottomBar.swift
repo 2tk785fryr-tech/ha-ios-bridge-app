@@ -68,7 +68,7 @@ enum BarAction: String, CaseIterable, Identifiable {
         case .startWindDown: "Start wind-down now"
         case .cancelWindDown: "Cancel wind-down"
         case .stopReminders: "Stop bedtime reminders"
-        case .addLeave: "Add leave"
+        case .addLeave: "Add vacation"
         case .addWakeUpEvent: "Add a wake-up event"
         case .imAwake: "I'm awake"
         case .setAlarmsForTime: "Set alarms for a time"

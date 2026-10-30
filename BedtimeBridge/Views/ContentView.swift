@@ -44,7 +44,9 @@ struct ContentView: View {
         /// v0.4.3 item 3, for that morning.
         case noAlarms(Date)
         /// v0.4.3 items 12 and 13.
-        case addLeave, addWakeUp
+        /// v0.4.7 item 6: Add <title>; nil asks which title.
+        case addLeave(String?)
+        case addWakeUp
         /// v0.4.3 item 15, from the weekly notification.
         case weeklySummary
         var id: String {
@@ -228,6 +230,7 @@ struct ContentView: View {
             .toolbar(.hidden, for: .navigationBar)
             .onAppear {
                 coordinator.watchCalendar()
+                Task { await coordinator.scheduleBackToWork(settings: store.settings) }
                 coordinator.dropLeaveRemindersIfEventGone(settings: store.settings)
                 refreshScheduled()
             }
@@ -302,8 +305,11 @@ struct ContentView: View {
                     }
                 case .weeklySummary:
                     WeeklySummaryView(settings: store.settings, justEnded: true)
-                case .addLeave:
-                    AddLeaveSheet(settings: store.settings) { refreshScheduled() }
+                case .addLeave(let title):
+                    AddLeaveSheet(settings: store.settings, title: title) {
+                        refreshScheduled()
+                        Task { await coordinator.scheduleBackToWork(settings: store.settings) }
+                    }
                 case .addWakeUp:
                     // Afterwards the preview opens with the new plan.
                     AddWakeUpEventSheet(settings: store.settings) {
@@ -510,7 +516,11 @@ struct ContentView: View {
         .background(Theme.ground)
         .sheet(isPresented: $menuOpen) {
             BarMenu(items: BottomBar.menu(barInputs, alarmStyleApp: store.settings.alarmStyle == .app, morningKnown: barMorning != nil && skippedMorning == nil),
-                    day: barDay) { action in
+                    day: barDay, vacationTitles: store.settings.leaveTitles.isEmpty ? ["Leave"] : store.settings.leaveTitles,
+                    addVacation: { title in
+                        menuOpen = false
+                        sheet = .addLeave(title)
+                    }) { action in
                 menuOpen = false
                 // Protected actions from ⋯ take over the bar too.
                 if action.isProtected && !action.opensScreen { barSlider = action } else { perform(action) }
@@ -538,7 +548,7 @@ struct ContentView: View {
         case .startWindDown: windDown("start")
         case .cancelWindDown: confirmCancelWindDown = true
         case .stopReminders: windDown("stop_reminders")
-        case .addLeave: sheet = .addLeave
+        case .addLeave: sheet = .addLeave(nil)
         case .addWakeUpEvent: sheet = .addWakeUp
         case .previewPlan: run(schedule: false)
         case .nap: sheet = .nap
@@ -639,7 +649,7 @@ struct ContentView: View {
         case .nap: sheet = .nap
         case .previewTomorrow: run(schedule: false)
         case .addWakeUpEvent: sheet = .addWakeUp
-        case .addLeave: sheet = .addLeave
+        case .addLeave: sheet = .addLeave(nil)
         case .sleepLater: sheet = .sleepLater
         case .noAlarmsTomorrow: perform(.noAlarmsTomorrow)
         case .startWindDown: perform(.startWindDown)
@@ -2006,11 +2016,27 @@ private struct BottomBarView: View {
 private struct BarMenu: View {
     let items: [BarAction]
     let day: String
+    /// One Add per vacation title (v0.4.7 item 6).
+    let vacationTitles: [String]
+    let addVacation: (String) -> Void
     let choose: (BarAction) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(items) { action in
+                if action == .addLeave {
+                    ForEach(vacationTitles, id: \.self) { title in
+                        Button { addVacation(title) } label: {
+                            Text("Add \(title)")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(Theme.text)
+                                .frame(maxWidth: .infinity, minHeight: 46, alignment: .leading)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        Divider().overlay(Theme.divider)
+                    }
+                } else {
                 Button { choose(action) } label: {
                     HStack {
                         Text(action.title(day: day))
@@ -2026,13 +2052,14 @@ private struct BarMenu: View {
                 }
                 .buttonStyle(.plain)
                 if action != items.last { Divider().overlay(Theme.divider) }
+                }
             }
         }
         .padding(.horizontal, 20)
         .padding(.top, 24)
         .frame(maxHeight: .infinity, alignment: .top)
         .background(Theme.surface.ignoresSafeArea())
-        .presentationDetents([.height(CGFloat(items.count) * 47 + 60)])
+        .presentationDetents([.height(CGFloat(items.count + max(vacationTitles.count - 1, 0)) * 47 + 60)])
         .presentationDragIndicator(.visible)
     }
 }

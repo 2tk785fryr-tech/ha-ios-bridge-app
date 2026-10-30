@@ -51,7 +51,7 @@ struct SettingsView: View {
                 SettingsLink(title: "Wind-down", icon: "moon.zzz", value: settings.windDownEnabled ? "Sleep goal \(DurationText.hours(settings.sleepGoalMinutes))" : "Off") {
                     WindDownSettings(settings: $store.settings)
                 }
-                SettingsLink(title: "Leave", icon: "beach.umbrella", value: settings.leaveTitles.joined(separator: ", ")) {
+                SettingsLink(title: "Vacations", icon: "beach.umbrella", value: settings.leaveTitles.joined(separator: ", ")) {
                     LeaveSettings(settings: $store.settings)
                 }
                 SettingsLink(title: "Weekly summary", icon: "calendar.day.timeline.left", value: settings.weeklySummaryEnabled ? "On" : "Off") {

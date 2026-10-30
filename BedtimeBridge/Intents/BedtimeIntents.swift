@@ -398,8 +398,8 @@ struct BedtimeBridgeShortcuts: AppShortcutsProvider {
         )
         AppShortcut(
             intent: AddLeaveIntent(),
-            phrases: ["Add leave in \(.applicationName)"],
-            shortTitle: "Add Leave",
+            phrases: ["Add leave in \(.applicationName)", "Add a vacation in \(.applicationName)"],
+            shortTitle: "Add Vacation",
             systemImageName: "beach.umbrella"
         )
         // v0.4.6 item 2

@@ -418,6 +418,18 @@ final class BedtimeCoordinator {
         if startsFromHere {
             extraWarnings.append("You're away, so drives start from where you are.")
         }
+        // A travelling vacation (v0.4.7 item 6d): drives and the weather from where you are.
+        let travelling = calendar.isTravelling(on: now, settings: settings)
+            || calendar.isTravelling(on: now.addingTimeInterval(12 * 3600), settings: settings)
+        if travelling, !startsFromHere {
+            startsFromHere = true
+            extraWarnings.append("You're travelling, so drives and the weather are from where you are.")
+        }
+        var weatherSettings = settings
+        if travelling {
+            weatherSettings.homeAddress = ""
+            if weatherSettings.weatherSource == .homeAssistant { weatherSettings.weatherSource = .openMeteo }
+        }
         let appointments = await appointmentCandidates(from: now, to: end, settings: settings)
 
         var plan = WakePlanner.plan(shift: shift, appointments: appointments, settings: settings, now: now)
@@ -425,7 +437,7 @@ final class BedtimeCoordinator {
         // Weather depends on the plan (wake-up until arrival), so check it second and re-plan.
         // The forecast is read every time now, for Morning weather's plain forecast (v0.4.7 item 5).
         var forecastHours: (hours: [ForecastHour], unit: String?)?
-        if settings.checksWeather, let source = weatherForecast(settings: settings, link: context == nil ? nil : link) {
+        if settings.checksWeather, let source = weatherForecast(settings: weatherSettings, link: context == nil ? nil : link) {
             do {
                 let (hours, unit) = try await source()
                 forecastHours = (hours, unit)
@@ -471,6 +483,11 @@ final class BedtimeCoordinator {
         if context?.atHome == false {
             extraWarnings.append("You're not home, so Home Assistant won't run your wake-up or bedtime routines.")
         }
+        // The morning this plan is for, and the vacations around it (v0.4.7 item 6b, 6f).
+        let morning = plan.firstAlarm ?? MorningForecast.moment(leaveBy: nil, wakeUp: nil, goodMorningFrom: settings.noAlarmEarliest, now: now).1
+        plan.vacationMorning = calendar.isLeave(on: morning, settings: settings)
+        plan.vacations = calendar.vacations(from: now.addingTimeInterval(-64 * 86400), to: now.addingTimeInterval(14 * 86400), settings: settings)
+            .map { DayRange(first: $0.first, last: $0.last) }
         if let forecastHours {
             let (moment, at) = MorningForecast.moment(leaveBy: plan.leaveBy(settings: settings), wakeUp: plan.wakeTime ?? plan.firstAlarm,
                                                       goodMorningFrom: settings.noAlarmEarliest, now: now)

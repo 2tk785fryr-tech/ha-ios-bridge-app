@@ -538,11 +538,15 @@ class BedtimeBridge:
         cutoff = weekly.last_cutoff(self.state.get("weekly_settings") or {}, now)
         summary = weekly.summarize(self.state.get("history") or [], self.state.get("wind_down_history") or [], now,
                                    since=weekly.week_start(cutoff), until=cutoff)
+        summary["vacation"] = weekly.vacation_text(self.state.get("vacations"), weekly.week_start(cutoff), cutoff)
         self.state["weekly_summary"] = summary
         self._changed()
+        self._schedule_weekly()
+        # On vacation: the summary is there, without the notification (v0.4.7 item 6f).
+        if weekly.on_vacation(self.state.get("vacations"), now):
+            return summary
         await self.wind_down._notify("Your week", summary["text"] or "Nothing tracked this week.", tag="weekly",
                                      url="bedtimebridge://summary")
-        self._schedule_weekly()
         return summary
 
     async def bedtime_started(self, data: dict[str, Any]) -> None:
@@ -641,7 +645,7 @@ class BedtimeBridge:
             "weekly_summary": self.state.get("weekly_summary"),
             # This week so far and up to 8 earlier weeks, newest first (v0.4.6 item 5).
             "weekly_summaries": weekly.weeks(self.state.get("history") or [], self.state.get("wind_down_history") or [],
-                                             self.state.get("weekly_settings") or {}, dt_util.utcnow()),
+                                             self.state.get("weekly_settings") or {}, dt_util.utcnow(), self.state.get("vacations")),
             "curtains_open_at": self._curtains_open(_time(data.get("first_alarm")) or dt_util.utcnow()),
         }
 
@@ -725,6 +729,12 @@ class BedtimeBridge:
         times = sorted(t for t in (_time(v) for v in self.state.get("alarm_times") or []) if t)
         self.state["series_start"] = times[0].isoformat() if times else None
         await self._sync_sleep_in()
+        # v0.4.7 item 6: Sleep In on for a vacation morning with no alarms; the vacations for the
+        # weekly summary.
+        if data.get("vacation") and not times:
+            await self._set_sleep_in(True)
+        if isinstance(data.get("vacations"), list):
+            self.state["vacations"] = data["vacations"]
         # The phone reports a plan only once its alarms are scheduled, so with app alarms this
         # means they're really set; in Clock app mode the shortcut still has to make them.
         has_alarm = data.get("has_alarm", bool(data.get("alarm_times")))

@@ -127,6 +127,11 @@ struct WakePlan: Equatable {
     var weather: WeatherAdjustment? = nil
     /// The plain forecast for Morning weather (v0.4.7 item 5).
     var forecast: MorningForecast? = nil
+    /// The morning this plan is for is a vacation day (v0.4.7 item 6): Home Assistant turns
+    /// Sleep In on when there are no alarms.
+    var vacationMorning = false
+    /// Recent and coming vacations, for the weekly summary (item 6f).
+    var vacations: [DayRange] = []
     /// From Home Assistant; nil when it couldn't tell.
     var atHome: Bool? = nil
     var warnings: [String] = []
