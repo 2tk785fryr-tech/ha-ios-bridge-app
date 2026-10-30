@@ -11,12 +11,22 @@ enum AppExpiry {
         return expiration(inProfile: data)
     }()
 
-    static func expiration(inProfile data: Data) -> Date? {
+    static func expiration(inProfile data: Data) -> Date? { profile(data)?["ExpirationDate"] as? Date }
+
+    /// The signing team, for Home Assistant's Apple push key (Live Activity pushes).
+    static let teamID: String? = {
+        guard let url = Bundle.main.url(forResource: "embedded", withExtension: "mobileprovision"),
+              let data = try? Data(contentsOf: url) else { return nil }
+        return team(inProfile: data)
+    }()
+
+    static func team(inProfile data: Data) -> String? { (profile(data)?["TeamIdentifier"] as? [String])?.first }
+
+    private static func profile(_ data: Data) -> [String: Any]? {
         guard let start = data.range(of: Data("<?xml".utf8)),
               let end = data.range(of: Data("</plist>".utf8), in: start.lowerBound..<data.endIndex) else { return nil }
         let plist = data[start.lowerBound..<end.upperBound]
-        let object = try? PropertyListSerialization.propertyList(from: plist, format: nil) as? [String: Any]
-        return object?["ExpirationDate"] as? Date
+        return try? PropertyListSerialization.propertyList(from: plist, format: nil) as? [String: Any]
     }
 
     struct Banner: Equatable {

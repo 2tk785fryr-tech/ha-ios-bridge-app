@@ -29,6 +29,8 @@ enum BridgeEvent: String {
     case windDown = "wind_down"
     /// v0.4.3 item 7a.
     case reset
+    /// Live Activity push tokens and the morning lines Home Assistant can't work out.
+    case liveActivity = "live_activity"
 }
 
 /// For item 3's confirm screen: the backstops now, and when the curtains open that morning.

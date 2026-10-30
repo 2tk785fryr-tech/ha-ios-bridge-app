@@ -111,5 +111,6 @@ extension BedtimeCoordinator {
             state.nextBackstop = next.at
         }
         await BedtimeActivities.show(state, title: trip.title, until: MorningActivity.endsAt(leaveBy: leaveBy))
+        await BedtimeActivities.reportMorningContent(state)
     }
 }

@@ -6,12 +6,13 @@ final class ExpiryAndChargeTests: XCTestCase {
     func testItem9ReadsTheExpiryFromTheProfile() {
         let plist = """
         <?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-        <plist version="1.0"><dict><key>ExpirationDate</key><date>2026-11-07T21:14:00Z</date></dict></plist>
+        <plist version="1.0"><dict><key>ExpirationDate</key><date>2026-11-07T21:14:00Z</date><key>TeamIdentifier</key><array><string>E3P6U6KP7P</string></array></dict></plist>
         """
         var data = Data([0x30, 0x82, 0x01, 0x02])  // the signature around it
         data.append(Data(plist.utf8))
         data.append(Data([0xA0, 0x00]))
         XCTAssertEqual(AppExpiry.expiration(inProfile: data), ISO8601DateFormatter().date(from: "2026-11-07T21:14:00Z"))
+        XCTAssertEqual(AppExpiry.team(inProfile: data), "E3P6U6KP7P", "the team Home Assistant's push key signs for")
     }
 
     func testItem9BannerFromThreeDaysRedOnTheLastDay() {

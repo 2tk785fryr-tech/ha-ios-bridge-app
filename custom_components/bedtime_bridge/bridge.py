@@ -22,6 +22,7 @@ from homeassistant.util import dt as dt_util
 
 from . import ladder as ldr
 from . import weekly
+from .liveactivity import LiveActivities
 from .winddown import WindDown
 from .const import (
     BED_EMPTY_SECONDS,
@@ -98,6 +99,7 @@ from .const import (
     MSG_NAP_ENDED,
     MSG_PREVIEW,
     MSG_RESET,
+    MSG_LIVE_ACTIVITY,
     MSG_WIND_DOWN,
     MSG_NAP_STARTED,
     MSG_CANCELLED,
@@ -224,6 +226,8 @@ class BedtimeBridge:
         self._leave_unsubs: list[Callable[[], None]] = []
         # Tonight's wind-down (v0.4.3 item 5).
         self.wind_down = WindDown(self)
+        # Live Activities by Apple push (0.4.4).
+        self.live = LiveActivities(self)
         # RUN_MORNING_UPDATE timers for the morning Live Activity (v0.4.3 item 14).
         self._morning_unsubs: list[Callable[[], None]] = []
         # The weekly summary's timer (v0.4.3 item 15).
@@ -347,6 +351,7 @@ class BedtimeBridge:
             MSG_PREVIEW: self._preview,
             MSG_WIND_DOWN: self._wind_down_action,
             MSG_RESET: self._reset,
+            MSG_LIVE_ACTIVITY: self._live_activity,
         }.get(kind)
         if handler is None:
             return {"error": f"unknown message type: {kind}"}
@@ -373,8 +378,15 @@ class BedtimeBridge:
             self._cancel_leave_checks()
         if kind == MSG_STOPPED:
             self._schedule_morning_updates()
+            if self.live.configured and self.state.get("morning_updates_until") and self.is_home():
+                await self.live.morning()
         elif kind in (MSG_CANCELLED, MSG_SKIPPED, MSG_RESET) or (kind == MSG_MORNING_CHANGED and not data.get("alarm_times")):
             self._cancel_morning_updates()
+            if self.live.configured:
+                await self.live.end_morning()
+        elif kind == MSG_LEAVE_BY and self.live.configured and self.state.get("morning_updates_until"):
+            # A new leave-by from a drive re-check: the countdown follows.
+            await self.live.morning()
         if kind in (MSG_PLANNED, MSG_CANCELLED, MSG_SKIPPED, MSG_UNSKIPPED, MSG_MORNING_CHANGED):
             changed = kind == MSG_MORNING_CHANGED
             self.wind_down.refresh(
@@ -450,7 +462,12 @@ class BedtimeBridge:
 
     @callback
     def _morning_update_due(self, _now: datetime) -> None:
-        if self.is_home():
+        if not self.is_home():
+            return
+        if self.live.configured:
+            # By push: refreshed (or ended, 15 min after leave-by) without the app.
+            self.hass.async_create_task(self.live.morning())
+        else:
             self.hass.async_create_task(self._command(CMD_MORNING_UPDATE))
 
     @callback
@@ -461,7 +478,10 @@ class BedtimeBridge:
         if until is None or dt_util.utcnow() > until or new is None or self.is_home():
             return
         self._cancel_morning_updates()
-        self.hass.async_create_task(self._command(CMD_MORNING_UPDATE))
+        if self.live.configured:
+            self.hass.async_create_task(self.live.end_morning())
+        else:
+            self.hass.async_create_task(self._command(CMD_MORNING_UPDATE))
 
     # MARK: Weekly summary (v0.4.3 item 15)
 
@@ -538,6 +558,9 @@ class BedtimeBridge:
         self.wind_down.async_reschedule()
         self._event(MSG_RESET)
         return {}
+
+    async def _live_activity(self, data: dict[str, Any]) -> dict[str, Any]:
+        return self.live.handle(data)
 
     async def _preview(self, data: dict[str, Any]) -> dict[str, Any]:
         """The phone's Preview tomorrow (RUN_PLAN_PREVIEW): sets nothing, gives the wind-down

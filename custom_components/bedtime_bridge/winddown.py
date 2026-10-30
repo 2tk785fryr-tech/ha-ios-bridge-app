@@ -283,6 +283,7 @@ class WindDown:
         if status == "winding_down" and old_bed and abs((old_bed - times.go_to_bed).total_seconds()) >= 60:
             self.hass.async_create_task(self._notify(
                 "New bedtime", f"Go to bed at {short(times.go_to_bed)} · first alarm {short(first)}", tag="wind_down_moved"))
+            self.hass.async_create_task(self._live())
         self._reschedule()
 
     def _home_at(self) -> datetime | None:
@@ -295,6 +296,7 @@ class WindDown:
         if s.get("status") == "winding_down":
             self.hass.async_create_task(self._helper(False))
             self.hass.async_create_task(self.bridge._command(CMD_WIND_DOWN_CANCEL))
+            self.hass.async_create_task(self.bridge.live.end_wind_down())
         if s.get("status") not in ("off", None):
             s["status"] = "off"
             s["off_reason"] = why
@@ -505,6 +507,7 @@ class WindDown:
             await self._notify("Tomorrow", " · ".join(parts) + unchecked, tag="wind_down_tomorrow")
         self.bridge._event("wind_down_started", wind_down=s.get("wind_down"), go_to_bed=s.get("go_to_bed"))
         self._reschedule()
+        await self._live()
 
     async def later(self) -> None:
         """"15 min later": moves wind-down, not go to bed, never below the minimum."""
@@ -528,6 +531,7 @@ class WindDown:
             await self._helper(False)
         await self.bridge._command(CMD_WIND_DOWN_CANCEL)
         await self._clear("wind_down_warning")
+        await self.bridge.live.end_wind_down()
         self.bridge._event("wind_down_cancelled")
         self._reschedule()
 
@@ -545,6 +549,7 @@ class WindDown:
             await self._notify("Time for bed", f"Time for bed · first alarm {short(first)}" if first else "Time for bed",
                                tag="wind_down_bed", critical=True)
         s["status"] = "bedtime"
+        await self.bridge.live.end_wind_down()
         # Plug in your phone at go to bed too (v0.4.3 item 10).
         await self.bridge.charge_check()
         self.bridge._event("wind_down_go_to_bed", go_to_bed=s.get("go_to_bed"))
@@ -580,6 +585,7 @@ class WindDown:
         status = s.get("status")
         if status == "winding_down":
             await self._helper(False)
+            await self.bridge.live.end_wind_down()
         if status in ("scheduled", "winding_down", "bedtime"):
             s["status"] = "bedtime"
             s["bed_notified"] = True
@@ -689,6 +695,12 @@ class WindDown:
             await self.hass.services.async_call("homeassistant", "turn_on" if on else "turn_off", {"entity_id": helper})
         except HomeAssistantError as err:
             _LOGGER.warning("Bedtime Bridge couldn't turn %s %s: %s", helper, "on" if on else "off", err)
+
+    async def _live(self) -> None:
+        """The wind-down Live Activity by push (with an Apple push key)."""
+        bed = self._t("go_to_bed")
+        if self.s.get("status") == "winding_down" and bed and bed > self._now():
+            await self.bridge.live.wind_down(bed, self._t("first_alarm"))
 
     async def turn_helper_off(self) -> None:
         await self._helper(False)

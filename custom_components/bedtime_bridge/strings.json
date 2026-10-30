@@ -38,7 +38,9 @@
           "bedroom_door_sensor": "Bedroom door sensor",
           "wind_down_notify_service": "Wind-down notifications to",
           "phone_battery_sensor": "Phone battery level",
-          "phone_battery_state_sensor": "Phone battery state"
+          "phone_battery_state_sensor": "Phone battery state",
+          "apns_key": "Apple push key (.p8)",
+          "apns_key_id": "Apple push Key ID"
         },
         "data_description": {
           "wake_action": "Helpers: turn on the entities below, for blueprints that watch them (Wake Snooze Fade, Wake Sequence). Events: fire a bedtime_bridge event for automations and blueprints to trigger on. Both: do both.",
@@ -67,7 +69,9 @@
           "bedroom_door_sensor": "Door closed and bed occupied counts as in bed: no go to bed notification, no Still up reminders, and when you went to bed.",
           "wind_down_notify_service": "e.g. notify.mobile_app_mikes_iphone. Empty uses the notify action above. The warning, go to bed (critical) and Still up reminders go here, home or away.",
           "phone_battery_sensor": "The companion app's battery level (e.g. sensor.mikes_iphone_battery_level), for Plug in your phone at go to bed and the second reminder.",
-          "phone_battery_state_sensor": "The companion app's battery state (Charging, Not Charging, Full)."
+          "phone_battery_state_sensor": "The companion app's battery state (Charging, Not Charging, Full).",
+          "apns_key": "Paste the whole AuthKey_….p8 file, BEGIN and END lines included, from developer.apple.com → Keys (Apple Push Notifications service). With it and the Key ID, Home Assistant starts, updates and ends the app's Live Activities by push; without them, RUN_MORNING_UPDATE stands in.",
+          "apns_key_id": "The key's 10-character Key ID."
         }
       },
       "pair": {
@@ -118,7 +122,9 @@
           "bedroom_door_sensor": "Bedroom door sensor",
           "wind_down_notify_service": "Wind-down notifications to",
           "phone_battery_sensor": "Phone battery level",
-          "phone_battery_state_sensor": "Phone battery state"
+          "phone_battery_state_sensor": "Phone battery state",
+          "apns_key": "Apple push key (.p8)",
+          "apns_key_id": "Apple push Key ID"
         },
         "data_description": {
           "wake_action": "Helpers: turn on the entities below, for blueprints that watch them (Wake Snooze Fade, Wake Sequence). Events: fire a bedtime_bridge event for automations and blueprints to trigger on. Both: do both.",
@@ -147,7 +153,9 @@
           "bedroom_door_sensor": "Door closed and bed occupied counts as in bed: no go to bed notification, no Still up reminders, and when you went to bed.",
           "wind_down_notify_service": "e.g. notify.mobile_app_mikes_iphone. Empty uses the notify action above. The warning, go to bed (critical) and Still up reminders go here, home or away.",
           "phone_battery_sensor": "The companion app's battery level (e.g. sensor.mikes_iphone_battery_level), for Plug in your phone at go to bed and the second reminder.",
-          "phone_battery_state_sensor": "The companion app's battery state (Charging, Not Charging, Full)."
+          "phone_battery_state_sensor": "The companion app's battery state (Charging, Not Charging, Full).",
+          "apns_key": "Paste the whole AuthKey_….p8 file, BEGIN and END lines included, from developer.apple.com → Keys (Apple Push Notifications service). With it and the Key ID, Home Assistant starts, updates and ends the app's Live Activities by push; without them, RUN_MORNING_UPDATE stands in.",
+          "apns_key_id": "The key's 10-character Key ID."
         }
       }
     }

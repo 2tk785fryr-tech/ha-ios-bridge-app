@@ -203,8 +203,9 @@ Home Assistant uses the shift calendar alone and the warning adds "(appointments
 ## Morning Update - App (v0.4.3 item 14)
 
 New, signed in `shortcuts/`. Home Assistant sends `RUN_MORNING_UPDATE` every hour after the first
-alarm is stopped on a leave-by morning, and once when you leave home. (Live Activity pushes would
-make this unnecessary; they need a server sending Apple pushes, not built.)
+alarm is stopped on a leave-by morning, and once when you leave home. **Not needed once the Apple
+push key is in the integration (0.4.4):** Home Assistant then updates the Live Activity by push
+and stops sending the command (see `docs/ha-handoffs-v0.4.4.md`).
 
 0. Report Shortcut Ran (`RUN_MORNING_UPDATE`, **Started**).
 1. Bedtime Bridge **Morning Update**: refreshes the morning Live Activity (drive, weather, next

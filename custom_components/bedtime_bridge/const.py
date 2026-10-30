@@ -41,6 +41,10 @@ CONF_WIND_DOWN_NOTIFY = "wind_down_notify_service"
 # v0.4.3 item 10: the companion app's battery sensors, for "Plug in your phone".
 CONF_PHONE_BATTERY = "phone_battery_sensor"
 CONF_PHONE_BATTERY_STATE = "phone_battery_state_sensor"
+# Live Activities by Apple push: the .p8 key's contents and its Key ID (the team and app come
+# from the phone). Without them, RUN_MORNING_UPDATE stands in.
+CONF_APNS_KEY = "apns_key"
+CONF_APNS_KEY_ID = "apns_key_id"
 
 # What Snooze/Stop on the phone do in Home Assistant.
 WAKE_BOTH = "both"
@@ -201,6 +205,8 @@ MSG_NAP_ENDED = "nap_ended"
 MSG_PREVIEW = "preview"
 # v0.4.3 item 7a: Reset alarms and backstops to nothing set.
 MSG_RESET = "reset"
+# Live Activity push tokens (and the morning lines Home Assistant can't work out) from the app.
+MSG_LIVE_ACTIVITY = "live_activity"
 MSG_WIND_DOWN = "wind_down"
 EVENT_RERUN = "bedtime_rerun"
 EVENT_REARMED = "temporary_rearmed"

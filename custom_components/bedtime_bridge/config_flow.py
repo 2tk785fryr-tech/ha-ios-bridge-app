@@ -16,6 +16,8 @@ from .pairing import async_placeholders
 from .const import shift_types as parse_shift_types
 from .const import (
     CONF_AWAKE_HELPER,
+    CONF_APNS_KEY,
+    CONF_APNS_KEY_ID,
     CONF_BEDROOM_DOOR,
     CONF_PHONE_BATTERY,
     CONF_PHONE_BATTERY_STATE,
@@ -103,6 +105,8 @@ OPTION_KEYS = [
     CONF_WIND_DOWN_NOTIFY,
     CONF_PHONE_BATTERY,
     CONF_PHONE_BATTERY_STATE,
+    CONF_APNS_KEY,
+    CONF_APNS_KEY_ID,
 ]
 
 
@@ -211,6 +215,10 @@ def _schema(hass: HomeAssistant, current: dict[str, Any]) -> vol.Schema:
             vol.Optional(CONF_WIND_DOWN_NOTIFY, description=suggested(CONF_WIND_DOWN_NOTIFY)): selector.TextSelector(),
             vol.Optional(CONF_PHONE_BATTERY, description=suggested(CONF_PHONE_BATTERY)): entity(["sensor"]),
             vol.Optional(CONF_PHONE_BATTERY_STATE, description=suggested(CONF_PHONE_BATTERY_STATE)): entity(["sensor"]),
+            vol.Optional(CONF_APNS_KEY, description=suggested(CONF_APNS_KEY)): selector.TextSelector(
+                selector.TextSelectorConfig(multiline=True, type=selector.TextSelectorType.PASSWORD)
+            ),
+            vol.Optional(CONF_APNS_KEY_ID, description=suggested(CONF_APNS_KEY_ID)): selector.TextSelector(),
             vol.Required(
                 CONF_RERUN_MINUTES, default=current.get(CONF_RERUN_MINUTES) or DEFAULT_RERUN_MINUTES
             ): selector.NumberSelector(selector.NumberSelectorConfig(min=1, max=60, step=1, unit_of_measurement="min")),

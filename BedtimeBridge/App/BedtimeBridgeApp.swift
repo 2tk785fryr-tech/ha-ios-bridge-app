@@ -13,6 +13,8 @@ struct BedtimeBridgeApp: App {
         ControlActions.napNow = {
             await BedtimeCoordinator.shared.napNowFromControl(settings: SettingsStore.shared.settings)
         }
+        // Live Activity push tokens go to Home Assistant from launch.
+        Task { @MainActor in BedtimeActivities.watchPushTokens() }
         ControlActions.open = { url in
             await MainActor.run { _ = UIApplication.shared.open(url) }
         }
