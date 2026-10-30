@@ -82,6 +82,11 @@ enum BedtimeActivities {
         await report(["kind": "morning", "content": content])
     }
 
+    /// The app's own push token, for Home Assistant's silent "leave checked" (v0.4.7 item 2).
+    static func sendDeviceToken(_ token: String) async {
+        await report(["kind": "device", "token": token])
+    }
+
     private static func report(_ data: [String: Any]) async {
         var data = data
         #if DEBUG

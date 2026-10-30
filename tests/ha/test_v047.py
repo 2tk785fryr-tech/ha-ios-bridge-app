@@ -112,3 +112,30 @@ async def test_item6_no_weekly_notification_on_vacation(hass, ladder, hass_clien
     await at(hass, freezer, datetime(2026, 11, 1, 18, 0, tzinfo=dt_util.get_time_zone(TZ)))
     assert not [c for c in notes if c.data.get("title") == "Your week"]
     assert hass.states.get("sensor.bedtime_bridge_weekly_summary").attributes.get("vacation") == "Vacation Oct 31 – Nov 3"
+
+
+# MARK: Item 2, the phone's leave-time backup
+
+from unittest.mock import AsyncMock, patch  # noqa: E402
+
+from custom_components.bedtime_bridge import liveactivity as la  # noqa: E402
+
+from .test_drive_times import trip_plan  # noqa: E402
+from .test_live_activity import APP, KEY  # noqa: E402
+
+
+async def test_item2_check_here_sends_the_silent_leave_checked_push(hass, ladder, hass_client_no_auth, freezer, aioclient_mock):
+    aioclient_mock.get("https://api.tomtom.com/routing/1/calculateRoute/32.87336,-117.22743:42.1,-71.1/json",
+                       json={"routes": [{"summary": {"travelTimeInSeconds": 35 * 60}}]})
+    async_mock_service(hass, "notify", "phone")
+    sent = AsyncMock(return_value=200)
+    with patch.object(la.ApnsClient, "send", sent):
+        await ladder(notify_service="notify.phone", phone_commands=True, drive_time_source="tomtom", tomtom_key="tt",
+                     apns_key=KEY, apns_key_id="KEYID12345")
+        await send(hass_client_no_auth, {"type": "live_activity", "data": {**APP, "kind": "device", "token": "app-token"}})
+        await send(hass_client_no_auth, trip_plan())
+        await at(hass, freezer, local("05:30"))
+    silent = [c for c in sent.call_args_list if c.args[0] == "app-token"]
+    assert silent, "the app's own token got the push"
+    assert silent[0].args[1] == {"aps": {"content-available": 1}, "bedtime_bridge": "leave_checked"}
+    assert silent[0].kwargs == {"environment": "development", "topic": "io.example.bedtime", "priority": 5, "push_type": "background"}

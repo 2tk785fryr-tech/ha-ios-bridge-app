@@ -61,6 +61,35 @@ final class LeaveReminder {
         return text
     }
 
+    /// v0.4.7 item 2: with Home Assistant checking the drive, one reminder at leave time stays on
+    /// the phone in case Home Assistant is down; its leave check's silent push withdraws it.
+    static let backupID = "leave-reminder-backup"
+    static let checkedSignal = "leave_checked"
+
+    static func removeBackup(center: UNUserNotificationCenter = .current()) async {
+        center.removePendingNotificationRequests(withIdentifiers: [backupID])
+    }
+
+    /// The backup's title and body: what the bedtime plan said, marked not re-checked.
+    static func backupText(_ trip: PendingTrip) -> (title: String, body: String) {
+        ("Leave by \(WakePlanner.format(trip.leaveBy)) · not re-checked",
+         "Home Assistant didn't answer, so this is the drive from bedtime (\(Int((trip.plannedTravelSeconds / 60).rounded())) min). \(trip.title) at \(WakePlanner.format(trip.start)).")
+    }
+
+    func scheduleBackup(_ trip: PendingTrip) async {
+        await Self.removeBackup(center: center)
+        guard trip.leaveBy > .now, (try? await center.requestAuthorization(options: [.alert, .sound])) == true else { return }
+        let text = Self.backupText(trip)
+        let content = UNMutableNotificationContent()
+        content.title = text.title
+        content.body = text.body
+        content.sound = .default
+        content.interruptionLevel = NotificationKind.leaveReminder.interruptionLevel
+        let fireAt = trip.leaveBy.addingTimeInterval(Self.fallbackDelay)
+        try? await center.add(UNNotificationRequest(identifier: Self.backupID, content: content,
+                                                    trigger: UNTimeIntervalNotificationTrigger(timeInterval: max(fireAt.timeIntervalSinceNow, 5), repeats: false)))
+    }
+
     /// The fallback notifications, one per reminder still ahead, with the trip's current figures.
     func schedule(_ trip: PendingTrip, offsets: [Int]) async {
         var trip = trip
@@ -84,7 +113,10 @@ final class LeaveReminder {
 
     func clear() {
         pendingTrip = nil
-        Task { await removePending() }
+        Task {
+            await removePending()
+            await Self.removeBackup(center: center)
+        }
     }
 
     private func removePending() async {

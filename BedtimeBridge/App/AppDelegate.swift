@@ -6,7 +6,21 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = self
         LocationQuestions.registerCategories()
+        // A silent push from Home Assistant when its leave check went out (v0.4.7 item 2).
+        application.registerForRemoteNotifications()
         return true
+    }
+
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        let token = deviceToken.map { String(format: "%02x", $0) }.joined()
+        Task { await BedtimeActivities.sendDeviceToken(token) }
+    }
+
+    func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+                     fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+        guard userInfo["bedtime_bridge"] as? String == LeaveReminder.checkedSignal else { return completionHandler(.noData) }
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [LeaveReminder.backupID])
+        completionHandler(.newData)
     }
 
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {

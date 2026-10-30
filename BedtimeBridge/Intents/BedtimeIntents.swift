@@ -206,6 +206,8 @@ struct CheckDriveAndRemindIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
+        // The check ran, so the leave-time backup isn't needed (v0.4.7 item 2).
+        await LeaveReminder.removeBackup()
         let settings = SettingsStore.shared.settings
         await BedtimeCoordinator.shared.recheckDrive(notify: true, settings: settings)
         await BedtimeCoordinator.shared.commandRan(PhoneCommand.leaveCheck.rawValue, settings: settings)

@@ -128,13 +128,13 @@ class ApnsClient:
         return token
 
     async def send(self, device_token: str, body: dict[str, Any], *, environment: str, topic: str,
-                   priority: int = 10) -> int:
+                   priority: int = 10, push_type: str = "liveactivity") -> int:
         import httpx  # noqa: PLC0415
 
         url = f"{HOSTS.get(environment, HOSTS['production'])}/3/device/{device_token}"
         headers = {
             "authorization": f"bearer {self._token()}",
-            "apns-push-type": "liveactivity",
+            "apns-push-type": push_type,
             "apns-topic": topic,
             "apns-priority": str(priority),
         }
@@ -182,7 +182,10 @@ class LiveActivities:
                 s[key] = data[key]
         kind = data.get("kind")
         environment = data.get("environment") or "production"
-        if kind == "start" and data.get("token"):
+        if kind == "device" and data.get("token"):
+            # The app's own token, for silent pushes (v0.4.7 item 2).
+            s["device"] = {"token": data["token"], "environment": environment}
+        elif kind == "start" and data.get("token"):
             s["start"] = {"token": data["token"], "environment": environment}
         elif kind in ("windDown", "morning"):
             tokens = s.setdefault("tokens", {})
@@ -197,6 +200,17 @@ class LiveActivities:
         return {"live_activity_pushes": self.configured}
 
     # MARK: Sending
+
+    async def leave_checked(self) -> bool:
+        """A silent push telling the app Home Assistant's leave check went out, so it withdraws
+        its leave-time backup reminder (v0.4.7 item 2)."""
+        client, device = self.client(), self.s.get("device") or {}
+        if client is None or not device.get("token"):
+            return False
+        status = await client.send(device["token"], {"aps": {"content-available": 1}, "bedtime_bridge": "leave_checked"},
+                                   environment=device.get("environment") or "production", topic=self.s["bundle_id"],
+                                   priority=5, push_type="background")
+        return status == 200
 
     async def _push(self, kind: str, event: str, state: dict[str, Any], *, title: str, stale: datetime | None = None,
                     alert: dict[str, str] | None = None) -> bool:

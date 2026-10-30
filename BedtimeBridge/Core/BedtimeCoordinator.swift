@@ -857,6 +857,7 @@ final class BedtimeCoordinator {
 
         if settings.leaveReminderEnabled, let trip = Self.trip(for: plan, settings: settings) {
             await leaveReminder.schedule(trip, offsets: Self.localLeaveOffsets(settings, atHome: plan.atHome))
+            if Self.needsBackupReminder(settings, atHome: plan.atHome) { await leaveReminder.scheduleBackup(trip) }
         } else {
             leaveReminder.clear()
         }
@@ -941,6 +942,12 @@ final class BedtimeCoordinator {
         guard let dayBefore = Calendar.current.date(byAdding: .day, value: -1, to: day) else { return false }
         return !calendar.events(from: dayBefore, to: day, calendarIDs: settings.shiftCalendarIDs)
             .contains { WakePlanner.matchingRule(forTitle: $0.title ?? "", rules: settings.shiftRules) != nil }
+    }
+
+    /// v0.4.7 item 2: Home Assistant does the leave checks (so the phone has none), and leave
+    /// reminders are on: keep one at leave time in case it's down.
+    nonisolated static func needsBackupReminder(_ settings: BridgeSettings, atHome: Bool?, checksHere: Bool = HomeAssistantLinks.driveChecksHere) -> Bool {
+        settings.leaveReminderEnabled && !settings.leaveReminderOffsets.isEmpty && localLeaveOffsets(settings, atHome: atHome, checksHere: checksHere).isEmpty
     }
 
     /// The phone's own leave reminders: none while home when Home Assistant re-checks the drive

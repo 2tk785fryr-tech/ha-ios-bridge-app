@@ -1538,6 +1538,8 @@ class BedtimeBridge:
         leave_by = arrive_by - timedelta(seconds=seconds)
         await self._leave_by({"leave_by": leave_by.isoformat(), "drive_minutes": minutes, "note": "checked by Home Assistant"})
         await self._notify_leave(leave_by, minutes, planned, trip)
+        # The phone's leave-time backup can go (v0.4.7 item 2).
+        await self.live.leave_checked()
         if self.live.configured and self.state.get("morning_updates_until"):
             await self.live.morning()
         return True
