@@ -236,7 +236,10 @@ Assistant sends). **Apple Weather** is a third forecast source (Settings → Bad
 Home Assistant and Open-Meteo. Get-ready time and arriving early moved to **Settings → Mornings**,
 and the home address to **Settings → Home**. Home Assistant can **re-check the drive itself** at
 each leave check (Apple Maps, TomTom, Google or the longest), so the checks work with the phone
-asleep; the app's own drive times are unchanged.
+asleep; the app's own drive times are unchanged. The **Next Alarm widget** comes in every size:
+small (next alarm, or "Bed in…" during wind-down), medium (next alarm plus the next four things:
+wind-down, go to bed, alarms, leave-by), and large and extra large (the whole night and morning as
+a timeline).
 
 **New in v0.4.3:**
 - **Set alarms asks first:** a manual Plan and set alarms shows a preview with Set alarms and

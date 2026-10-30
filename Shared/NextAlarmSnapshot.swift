@@ -95,6 +95,37 @@ struct NextAlarmSnapshot: Codable, Equatable {
         ([snoozedUntil, leaveBy.map(leaveByHiddenAt), windDownAt, goToBedAt].compactMap { $0 } + alarmTimes + (temporaryAlarms ?? [])).filter { $0 > date }.sorted()
     }
 
+    /// One line of the bigger widgets' timeline: wind-down, go to bed, each alarm, leave-by.
+    struct Step: Equatable {
+        enum Kind: Equatable { case windDown, goToBed, alarm, wakeUp, temporary, snooze, leaveBy }
+        var kind: Kind
+        var time: Date
+        var title: String
+    }
+
+    /// What's still ahead at `date`, in time order: the medium widget shows the first four, the
+    /// large one up to eight.
+    func steps(after date: Date) -> [Step] {
+        var steps: [Step] = []
+        if let windDownAt, let goToBedAt, goToBedAt > date {
+            if windDownAt > date { steps.append(Step(kind: .windDown, time: windDownAt, title: "Wind-down")) }
+            steps.append(Step(kind: .goToBed, time: goToBedAt, title: "Go to bed"))
+        }
+        if let snoozedUntil, snoozedUntil > date { steps.append(Step(kind: .snooze, time: snoozedUntil, title: "Snooze ends")) }
+        let series = alarmTimes.filter { $0 > date }.sorted()
+        for (index, time) in series.enumerated() {
+            let isWake = wakeTime.map { abs($0.timeIntervalSince(time)) < 60 } ?? (index == series.count - 1)
+            steps.append(Step(kind: isWake ? .wakeUp : .alarm, time: time, title: isWake ? "Wake up" : "Alarm"))
+        }
+        for time in (temporaryAlarms ?? []) where time > date {
+            steps.append(Step(kind: .temporary, time: time, title: "Temporary wake-up"))
+        }
+        if let leaveBy, date < leaveByHiddenAt(leaveBy) {
+            steps.append(Step(kind: .leaveBy, time: leaveBy, title: leaveBy > date ? "Leave by" : "Time to go"))
+        }
+        return steps.sorted { $0.time < $1.time }
+    }
+
     static func load() -> NextAlarmSnapshot {
         guard let data = UserDefaults(suiteName: appGroup)?.data(forKey: key),
               let snapshot = try? JSONDecoder().decode(NextAlarmSnapshot.self, from: data) else { return NextAlarmSnapshot() }

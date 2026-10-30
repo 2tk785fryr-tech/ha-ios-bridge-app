@@ -55,7 +55,8 @@ struct NextAlarmWidget: Widget {
         }
         .configurationDisplayName("Next Alarm")
         .description("Your next wake-up alarm and why it's set.")
-        .supportedFamilies([.accessoryRectangular, .accessoryCircular, .accessoryInline, .systemSmall])
+        .supportedFamilies([.accessoryRectangular, .accessoryCircular, .accessoryInline,
+                            .systemSmall, .systemMedium, .systemLarge, .systemExtraLarge])
     }
 }
 
@@ -96,6 +97,15 @@ struct NextAlarmView: View {
 
         case .systemSmall:
             NightfallSmallView(entry: entry)
+
+        case .systemMedium:
+            NightfallMediumView(entry: entry)
+
+        case .systemLarge:
+            NightfallLargeView(entry: entry, columns: false)
+
+        case .systemExtraLarge:
+            NightfallLargeView(entry: entry, columns: true)
 
         default:
             // Three short lines, each fitting the Lock Screen's narrow rectangle: the time with
@@ -175,11 +185,21 @@ private struct NightfallSmallView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Label(entry.isSnoozing ? "Snoozing" : entry.nextAlarm == nil && entry.leaveByOnly != nil ? "Alarms done" : "Next alarm",
-                  systemImage: entry.isSnoozing ? "zzz" : "alarm")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Theme.textMuted)
-            if let alarm = entry.nextAlarm {
+            WidgetHeading(entry: entry)
+            if let bed = entry.bed {
+                Text(bed, style: .relative)
+                    .font(.sora(fixed: 30, .light))
+                    .foregroundStyle(Theme.accentText)
+                    .minimumScaleFactor(0.6)
+                    .lineLimit(1)
+                Text("until bed").font(.caption.weight(.semibold)).foregroundStyle(Theme.textSoft)
+                Spacer(minLength: 0)
+                if let first = entry.nextAlarm {
+                    Text("First alarm \(first.formatted(date: .omitted, time: .shortened))")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(Theme.textMuted)
+                }
+            } else if let alarm = entry.nextAlarm {
                 Text(alarm, format: .dateTime.hour(.defaultDigits(amPM: .omitted)).minute())
                     .font(.sora(fixed: 40, .light))
                     .foregroundStyle(Theme.accentText)
@@ -220,6 +240,204 @@ private struct NightfallSmallView: View {
                     .foregroundStyle(Theme.textSoft)
                 Spacer(minLength: 0)
             }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+}
+
+
+// MARK: Bigger sizes
+
+/// "Next alarm", "Snoozing", "Winding down" or "Alarms done", over the big time.
+private struct WidgetHeading: View {
+    let entry: NextAlarmEntry
+
+    var body: some View {
+        let (text, symbol): (String, String) = if entry.bed != nil { ("Winding down", "moon.zzz") }
+            else if entry.isSnoozing { ("Snoozing", "zzz") }
+            else if entry.nextAlarm == nil && entry.leaveByOnly != nil { ("Alarms done", "car") }
+            else { ("Next alarm", "alarm") }
+        Label(text, systemImage: symbol)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(entry.isSnoozing ? Theme.snoozing : Theme.textMuted)
+    }
+}
+
+/// The big time: go to bed's countdown, the next alarm, leave-by, or "No alarm".
+private struct WidgetBigTime: View {
+    let entry: NextAlarmEntry
+    var size: CGFloat = 46
+
+    var body: some View {
+        if let bed = entry.bed {
+            Text(bed, style: .relative)
+                .font(.sora(fixed: size * 0.7, .light))
+                .foregroundStyle(Theme.accentText)
+                .minimumScaleFactor(0.5)
+                .lineLimit(1)
+        } else if let time = entry.nextAlarm ?? entry.leaveByOnly {
+            Text(time, format: .dateTime.hour(.defaultDigits(amPM: .omitted)).minute())
+                .font(.sora(fixed: size, .light))
+                .foregroundStyle(Theme.accentText)
+                .minimumScaleFactor(0.6)
+                .lineLimit(1)
+        } else {
+            Text("No alarm")
+                .font(.sora(fixed: size * 0.6, .light))
+                .foregroundStyle(Theme.textSoft)
+        }
+    }
+}
+
+private struct WidgetChip: View {
+    let entry: NextAlarmEntry
+
+    var body: some View {
+        let label = entry.bed != nil ? "Bed in" : entry.label
+        if !label.isEmpty {
+            Text(label)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(Theme.shiftChip.text)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(Theme.shiftChip.background, in: Capsule())
+                .lineLimit(1)
+        }
+    }
+}
+
+/// One timeline line: an icon, what it is, and when.
+private struct WidgetStepRow: View {
+    let step: NextAlarmSnapshot.Step
+    var large = false
+
+    private var symbol: String {
+        switch step.kind {
+        case .windDown: "moon.zzz"
+        case .goToBed: "bed.double"
+        case .alarm: "alarm"
+        case .wakeUp: "sun.max"
+        case .temporary: "alarm.waves.left.and.right"
+        case .snooze: "zzz"
+        case .leaveBy: "car"
+        }
+    }
+
+    private var tint: Color {
+        switch step.kind {
+        case .leaveBy: Theme.leaveBy
+        case .snooze: Theme.snoozing
+        case .wakeUp: Theme.accentText
+        default: Theme.textSoft
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: symbol)
+                .font(large ? .subheadline : .caption)
+                .foregroundStyle(tint)
+                .frame(width: large ? 20 : 16)
+            Text(step.title)
+                .font((large ? Font.subheadline : .caption).weight(step.kind == .wakeUp || step.kind == .leaveBy ? .semibold : .regular))
+                .foregroundStyle(Theme.text)
+                .lineLimit(1)
+            Spacer(minLength: 4)
+            Text(step.time, format: .dateTime.hour().minute())
+                .font((large ? Font.subheadline : .caption).monospacedDigit().weight(.semibold))
+                .foregroundStyle(tint)
+        }
+    }
+}
+
+/// "3 alarms set", "Clock app alarms" or "Nothing set".
+private struct WidgetStatus: View {
+    let entry: NextAlarmEntry
+
+    var body: some View {
+        if entry.snapshot.alarmStyle == "clock", entry.nextAlarm != nil {
+            Label("Clock app alarms", systemImage: "clock").foregroundStyle(Theme.textMuted)
+        } else if let summary = entry.snapshot.setSummary(after: entry.date) {
+            Label(summary, systemImage: "checkmark.circle.fill").foregroundStyle(Theme.good)
+        } else {
+            Label("Nothing set", systemImage: "moon.stars").foregroundStyle(Theme.textMuted)
+        }
+    }
+}
+
+/// Medium: the next alarm big on the left; the next four things on the right.
+private struct NightfallMediumView: View {
+    let entry: NextAlarmEntry
+
+    var body: some View {
+        let steps = Array(entry.snapshot.steps(after: entry.date).prefix(4))
+        HStack(alignment: .top, spacing: 14) {
+            VStack(alignment: .leading, spacing: 6) {
+                WidgetHeading(entry: entry)
+                WidgetBigTime(entry: entry, size: 44)
+                WidgetChip(entry: entry)
+                Spacer(minLength: 0)
+                WidgetStatus(entry: entry).font(.caption2.weight(.semibold))
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: 7) {
+                if steps.isEmpty {
+                    Text("Nothing else tonight").font(.caption).foregroundStyle(Theme.textMuted)
+                } else {
+                    ForEach(Array(steps.enumerated()), id: \.offset) { WidgetStepRow(step: $0.element) }
+                }
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+/// Large (and extra large in two columns): the reason, the big time, and the whole night and
+/// morning as a timeline.
+private struct NightfallLargeView: View {
+    let entry: NextAlarmEntry
+    let columns: Bool
+
+    private var title: String {
+        let hour = Calendar.current.component(.hour, from: entry.date)
+        return hour < 12 && hour >= 4 ? "This morning" : "Tonight"
+    }
+
+    var body: some View {
+        let steps = Array(entry.snapshot.steps(after: entry.date).prefix(columns ? 10 : 8))
+        let summary = VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(title).font(.sora(fixed: 22, .semibold)).foregroundStyle(Theme.text)
+                Spacer()
+                WidgetChip(entry: entry)
+            }
+            WidgetHeading(entry: entry)
+            WidgetBigTime(entry: entry, size: 64)
+            if let reason = entry.snapshot.reason, !reason.isEmpty, entry.nextAlarm != nil {
+                Text(reason).font(.footnote).foregroundStyle(Theme.textSoft).lineLimit(2)
+            }
+        }
+        let timeline = VStack(alignment: .leading, spacing: 9) {
+            if steps.isEmpty {
+                Text("Nothing set for tonight. Open the app to plan.").font(.footnote).foregroundStyle(Theme.textMuted)
+            } else {
+                ForEach(Array(steps.enumerated()), id: \.offset) { WidgetStepRow(step: $0.element, large: true) }
+            }
+        }
+        VStack(alignment: .leading, spacing: 12) {
+            if columns {
+                HStack(alignment: .top, spacing: 24) {
+                    summary.frame(maxWidth: .infinity, alignment: .leading)
+                    timeline.frame(maxWidth: .infinity, alignment: .leading)
+                }
+            } else {
+                summary
+                Divider().overlay(Theme.divider)
+                timeline
+            }
+            Spacer(minLength: 0)
+            WidgetStatus(entry: entry).font(.footnote.weight(.semibold))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
