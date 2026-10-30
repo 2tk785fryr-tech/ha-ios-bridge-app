@@ -78,6 +78,10 @@ struct BridgeSettings: Codable, Equatable {
     var appointmentCalendarIDs: Set<String> = []
     /// Appointments are only considered when their notes contain this text.
     var appointmentKeyword = "wake up"
+    /// All-day events with one of these titles are leave (v0.4.3 item 12); the first titles new leave.
+    var leaveTitles = ["Leave"]
+    /// Where Add leave and Add a wake-up event save; empty is the calendar holding the shifts.
+    var newEventsCalendarID = ""
     /// Time to get ready before leaving for an appointment.
     var getReadyMinutes = 60
     /// Arrive this long before an appointment starts.

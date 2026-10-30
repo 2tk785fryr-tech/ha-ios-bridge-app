@@ -71,13 +71,13 @@ final class BottomBarTests: XCTestCase {
 
     func testMenuHidesWhatDoesntApplyAndProtectedActions() {
         var i = BottomBar.Inputs(now: first.addingTimeInterval(-6 * 3600))
-        XCTAssertEqual(BottomBar.menu(i, alarmStyleApp: true, morningKnown: false), [.previewPlan, .addTemporary, .settings])
+        XCTAssertEqual(BottomBar.menu(i, alarmStyleApp: true, morningKnown: false), [.previewPlan, .addTemporary, .addWakeUpEvent, .addLeave, .settings])
         i.alarmsSet = 3
         i.sleepLaterWindow = true
         i.notReadyWindow = true
         i.napEnabled = true
         XCTAssertEqual(BottomBar.menu(i, alarmStyleApp: true, morningKnown: true),
-                       [.previewPlan, .editAlarms, .sleepLater, .nap, .noAlarmsTomorrow, .skip, .notGoingToSleep, .addTemporary, .settings])
+                       [.previewPlan, .editAlarms, .sleepLater, .nap, .noAlarmsTomorrow, .skip, .notGoingToSleep, .addTemporary, .addWakeUpEvent, .addLeave, .settings])
         XCTAssertTrue(BarAction.endAlarms.isProtected)
         XCTAssertFalse(BarAction.previewPlan.isProtected)
         XCTAssertEqual(BarAction.endNap.knob, .stop)

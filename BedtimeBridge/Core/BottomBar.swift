@@ -9,6 +9,8 @@ enum BarAction: String, CaseIterable, Identifiable {
     case undo, noAlarmsTomorrow
     /// v0.4.3 item 5.
     case startWindDown, cancelWindDown, stopReminders
+    /// v0.4.3 items 12 and 13.
+    case addLeave, addWakeUpEvent
 
     var id: String { rawValue }
 
@@ -62,6 +64,8 @@ enum BarAction: String, CaseIterable, Identifiable {
         case .startWindDown: "Start wind-down now"
         case .cancelWindDown: "Cancel wind-down"
         case .stopReminders: "Stop bedtime reminders"
+        case .addLeave: "Add leave"
+        case .addWakeUpEvent: "Add a wake-up event"
         }
     }
 
@@ -212,6 +216,7 @@ struct BottomBar: Equatable {
             if (w.status == .bedtime || w.status == .windingDown) && !w.bedtimeRan && !w.remindersStopped { items.append(.stopReminders) }
         }
         if alarmStyleApp { items.append(.addTemporary) }
+        items += [.addWakeUpEvent, .addLeave]
         items.append(.settings)
         return items
     }

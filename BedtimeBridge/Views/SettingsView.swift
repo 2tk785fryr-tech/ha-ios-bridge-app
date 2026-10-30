@@ -67,6 +67,9 @@ struct SettingsView: View {
                 SettingsLink(title: "Wind-down", icon: "moon.zzz", value: settings.windDownEnabled ? "Sleep goal \(DurationText.hours(settings.sleepGoalMinutes))" : "Off") {
                     WindDownSettings(settings: $store.settings)
                 }
+                SettingsLink(title: "Leave", icon: "beach.umbrella", value: settings.leaveTitles.joined(separator: ", ")) {
+                    LeaveSettings(settings: $store.settings)
+                }
                 SettingsLink(title: "Appointments", icon: "calendar.badge.clock",
                              value: settings.appointmentKeyword.isEmpty ? "Wake-up keyword: none" : "Wake-up keyword: \(settings.appointmentKeyword)") {
                     SettingsPage(title: "Appointments") {
@@ -337,6 +340,16 @@ private struct CalendarsPage: View {
             }
             Section("Appointment calendars") {
                 CalendarPicker(calendars: calendars, selection: $settings.appointmentCalendarIDs)
+            }
+            Section {
+                Picker(selection: $settings.newEventsCalendarID) {
+                    Text("The calendar holding the shifts").tag("")
+                    ForEach(calendars.filter(\.allowsContentModifications), id: \.calendarIdentifier) { Text($0.title).tag($0.calendarIdentifier) }
+                } label: {
+                    WithDefault(text: "Calendar for new events", defaultText: settings.newEventsCalendarID.isEmpty ? nil : "the shifts' calendar")
+                }
+            } footer: {
+                Text("Where Add leave and Add a wake-up event save.")
             }
             ResetPageSection(detail: "Shifts and appointments are searched in every calendar again.") { settings.resetToDefaults(SettingsPages.calendars) }
         }

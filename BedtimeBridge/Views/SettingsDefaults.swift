@@ -125,7 +125,8 @@ enum SettingsPages {
     static let driveTime = ["driveTimeSource", "googlePessimisticTraffic", "fallbackTravelMinutes", "driveFromHereWhenAway", "leaveReminderEnabled", "leaveReminderOffsets", "widgetLeaveByMinutes"]
     static let homeAssistant = ["homeAssistantURL", "snoozeHelper", "stopHelper", "shiftOverrideEntity", "shiftSensorEntity", "nextAlarmSensor", "bedtimeHelper", "presenceEntity", "homeOnly", "bedSensor", "exitLatch"]
     static let weather = ["weatherSource", "weatherEntity", "weatherExtraMinutes", "badWeatherConditions", "weatherConditionMinutes", "addTimeWhenFreezing"]
-    static let calendars = ["shiftCalendarIDs", "appointmentCalendarIDs"]
+    static let calendars = ["shiftCalendarIDs", "appointmentCalendarIDs", "newEventsCalendarID"]
+    static let leave = ["leaveTitles"]
 
-    static let all = [main, alarms, ownAlarms, optionWindows, morningChange, nap, windDown, appointments, driveTime, homeAssistant, weather, calendars]
+    static let all = [main, alarms, ownAlarms, optionWindows, morningChange, nap, windDown, appointments, driveTime, homeAssistant, weather, calendars, leave]
 }

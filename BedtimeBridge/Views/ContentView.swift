@@ -37,6 +37,8 @@ struct ContentView: View {
         case preview(PlanPreview)
         /// v0.4.3 item 3, for that morning.
         case noAlarms(Date)
+        /// v0.4.3 items 12 and 13.
+        case addLeave, addWakeUp
         var id: String {
             switch self {
             case .changeMorning(let phase): "changeMorning-\(phase.rawValue)"
@@ -185,6 +187,14 @@ struct ContentView: View {
                         .editing(settings: store.settings, edited: refreshScheduled)
                     } else if skippedMorning == nil, scheduled.isEmpty, plan?.hasAlarm != true {
                         DayOffCard { sheet = .dayOff }
+                        // Tomorrow has nothing: a wake-up event may be missing (v0.4.3 item 13).
+                        Button { sheet = .addWakeUp } label: {
+                            Label("Add a wake-up event", systemImage: "calendar.badge.plus")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(Theme.accentText)
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.border, lineWidth: 1))
+                        }
                     }
 
                     if store.settings.alarmStyle == .app {
@@ -265,6 +275,16 @@ struct ContentView: View {
                                      bedtime: bedtimeTimes(preview.plan)) {
                         setPreviewed(preview)
                     }
+                case .addLeave:
+                    AddLeaveSheet(settings: store.settings) { refreshScheduled() }
+                case .addWakeUp:
+                    // Afterwards the preview opens with the new plan.
+                    AddWakeUpEventSheet(settings: store.settings) {
+                        Task { @MainActor in
+                            try? await Task.sleep(for: .milliseconds(600))
+                            preview(replan: false)
+                        }
+                    }
                 case .noAlarms(let morning):
                     NoAlarmsSheet(morning: morning, shift: coordinator.shiftOnCalendar(morning: morning, settings: store.settings)) { sleepIn in
                         do {
@@ -292,7 +312,8 @@ struct ContentView: View {
                         title: "Day off alarm",
                         note: "Next shows your morning, where you can change single alarms and the backstops before setting them.",
                         settings: settings,
-                        backstopsDefault: morningContext?.ladderStatus == "idle_leave" ? settings.ownBackstopsLeave : settings.ownBackstopsDayOff
+                        backstopsDefault: morningContext?.ladderStatus == "idle_leave" || coordinator.calendar.isLeave(on: .now.addingTimeInterval(86400), settings: settings)
+                            ? settings.ownBackstopsLeave : settings.ownBackstopsDayOff
                     ) { replacement in setDayOff(replacement) }
                 case .skipToTime:
                     OwnAlarmSheet(
@@ -475,6 +496,8 @@ struct ContentView: View {
         case .startWindDown: windDown("start")
         case .cancelWindDown: confirmCancelWindDown = true
         case .stopReminders: windDown("stop_reminders")
+        case .addLeave: sheet = .addLeave
+        case .addWakeUpEvent: sheet = .addWakeUp
         case .previewPlan: run(schedule: false)
         case .nap: sheet = .nap
         case .changeNap: sheet = .napChange
