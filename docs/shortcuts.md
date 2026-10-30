@@ -41,7 +41,8 @@ automation, filtering on the message text, set to run immediately.
    3. If the plan says "No alarm": ask "Would you like wake-up alarms?"
       - **Set wake-up alarms:** ask for the first wake-up time (default: 6 hours from now), then
         Bedtime Bridge **Set Wake-Up Alarms** with that time as the *first* alarm. `Alarmtimes` =
-        that result.
+        that result. (From 0.4.7 the action uses Settings → Alarms → *Your own alarms* for how
+        many alarms and how far apart, and starts at your time unless *Time Is* says otherwise.)
       - **No alarms:** ask "Would you like to enable Sleep In?" **Yes** runs a HomeKit scene that
         turns Sleep In on. **No** does nothing.
    4. ecobee **Get Home Monitoring State** (the house alarm's state).

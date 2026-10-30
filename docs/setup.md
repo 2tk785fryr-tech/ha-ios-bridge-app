@@ -1,4 +1,10 @@
-# Setting up v0.4.2 – 0.4.6: everything, in order
+# Setting up v0.4.2 – 0.4.7: everything, in order
+
+**New in 0.4.7:** update the integration to **0.4.7** in HACS and restart, then open the app once
+(it sends Home Assistant its push token for the backup leave reminder). Configure is now a menu of
+pages; your settings carried over. Optional: **Settings → Clock** (24-hour) and **Settings →
+Vacations**. If you want Critical for the app's own notifications, submit the request in
+`docs/critical-alerts-request.md`. Details: `docs/ha-handoffs-v0.4.7.md`.
 
 **New in 0.4.6** (if you've done everything below already, this is all): update the integration
 to **0.4.6** in HACS and restart, then set **Hallway presence** in Bedtime Bridge → Configure, and
@@ -18,7 +24,7 @@ the paid account, good until 30 Oct 2027).
 ## Part 1: Home Assistant
 
 ### 1. Update the integration
-- [ ] **HACS → Bedtime Bridge → Update** to **0.4.6** (it includes 0.4.2 – 0.4.5). Not 0.4.4:
+- [ ] **HACS → Bedtime Bridge → Update** to **0.4.7** (it includes 0.4.2 – 0.4.6). Not 0.4.4:
       0.4.5 and later have the `RUN_CANCEL_WIND_DOWN` command the new Wind Down Off shortcut uses.
 - [ ] **Settings → System → Restart Home Assistant.** On restart it installs `h2`, which the
       Live Activity pushes need.
@@ -32,8 +38,9 @@ the paid account, good until 30 Oct 2027).
 Check each one's entity id after creating it (click it → settings cog).
 
 ### 3. Fill in the integration's options
-**Settings → Devices & services → Bedtime Bridge → Configure.** Set these and leave everything
-else as it is:
+**Settings → Devices & services → Bedtime Bridge → Configure.** It opens a menu of pages (You and
+home, Wake-up, Bedroom and bed, Bedtime and wind-down, Shifts and calendar, Phone, Backstops,
+Keys); each saves on its own. Set these and leave everything else as it is:
 
 | Option | Set to |
 | --- | --- |

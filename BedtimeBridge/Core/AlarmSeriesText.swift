@@ -14,9 +14,10 @@ enum AlarmSeriesText {
         return "Up at \(WakePlanner.format(wake)) → alarms " + times.map(WakePlanner.format).joined(separator: ", ")
     }
 
-    /// The Alarms row on the main Settings page: "Bedtime Bridge alarms · snooze 9 min".
+    /// The Alarms row on the main Settings page: "Snooze 9 min" (the app's alarms), or the Clock
+    /// app's name. Short, so it fits beside the title.
     static func alarmsRow(style: AlarmStyle, snooze: Int) -> String {
-        style == .app ? "\(style.displayName) · snooze \(snooze) min" : style.displayName
+        style == .app ? "Snooze \(snooze) min" : style.displayName
     }
 }
 

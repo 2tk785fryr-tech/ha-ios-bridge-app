@@ -22,7 +22,7 @@ final class AlarmSeriesTests: XCTestCase {
     func testSummaries() {
         XCTAssertEqual(AlarmSeriesText.summary(count: 3, spacing: 10), "3 alarms, 10 min apart")
         XCTAssertEqual(AlarmSeriesText.summary(count: 1, spacing: 10), "1 alarm")
-        XCTAssertEqual(AlarmSeriesText.alarmsRow(style: .app, snooze: 9), "\(AlarmStyle.app.displayName) · snooze 9 min")
+        XCTAssertEqual(AlarmSeriesText.alarmsRow(style: .app, snooze: 9), "Snooze 9 min")
         XCTAssertTrue(AlarmSeriesText.example(count: 3, spacing: 10, wakeIs: .last).hasPrefix("Up at"))
     }
 
