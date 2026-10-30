@@ -40,3 +40,28 @@ async def test_item3_failed_tomtom_request_leaves_no_key_in_the_log(hass, aiocli
         await services[0].drive_seconds(HOME, WORK, ARRIVE)
     assert KEY not in str(err.value) and "403" in str(err.value)
     assert KEY not in caplog.text
+
+
+# MARK: Item 10, 12- or 24-hour clock
+
+from datetime import datetime  # noqa: E402
+
+from homeassistant.util import dt as dt_util  # noqa: E402
+
+from custom_components.bedtime_bridge import timefmt, winddown  # noqa: E402
+
+from .test_ladder import TZ  # noqa: E402
+from .test_webhook import send, setup  # noqa: E402
+
+
+async def test_item10_times_follow_the_app_clock(hass, hass_client_no_auth):
+    await hass.config.async_set_time_zone(TZ)
+    await setup(hass)
+    evening = datetime(2026, 10, 30, 21, 50, tzinfo=dt_util.get_time_zone(TZ))
+    await send(hass_client_no_auth, {"type": "context", "data": {"clock_24h": False}})
+    assert winddown.short(evening) == "9:50" and winddown.long(evening) == "9:50 PM"
+    await send(hass_client_no_auth, {"type": "context", "data": {"clock_24h": True}})
+    assert timefmt.uses_24h()
+    assert winddown.short(evening) == "21:50" and winddown.long(evening) == "21:50"
+    assert timefmt.day_long(evening) == "Fri 21:50" and timefmt.hour(evening) == "21:00"
+    timefmt.set_24h(False)

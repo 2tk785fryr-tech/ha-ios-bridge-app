@@ -55,7 +55,7 @@ enum MorningActivity {
         let dryAt = ahead.firstIndex { !isWet($0.condition) }
         if !isWet(main), let dryAt, let wet = ahead[dryAt...].first(where: { isWet($0.condition) }) {
             let word = conditionName(wet.condition).lowercased()
-            day += " · \(word) after \(wet.start.formatted(.dateTime.hour()))"
+            day += " · \(word) after \(wet.start.formatted(.dateTime.hour().locale(ClockStyle.locale)))"
         }
         return (drive, day)
     }

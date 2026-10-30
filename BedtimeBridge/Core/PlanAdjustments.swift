@@ -106,7 +106,7 @@ enum PlanAdjustments {
         for hour in forecast.sorted(by: { $0.start < $1.start }) {
             let end = hour.start.addingTimeInterval(3600)
             guard end > window.lowerBound, hour.start <= window.upperBound else { continue }
-            let time = hour.start.formatted(date: .omitted, time: .shortened)
+            let time = hour.start.clockTime()
             var found: [WeatherAdjustment] = []
             if conditions.contains(hour.condition) {
                 found.append(WeatherAdjustment(minutes: minutes[hour.condition] ?? extraMinutes, reason: "\(hour.condition) at \(time)"))

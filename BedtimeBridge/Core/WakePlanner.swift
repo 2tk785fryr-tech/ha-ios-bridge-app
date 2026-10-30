@@ -362,6 +362,6 @@ enum WakePlanner {
     }
 
     static func format(_ date: Date) -> String {
-        date.formatted(date: .omitted, time: .shortened)
+        date.clockTime()
     }
 }

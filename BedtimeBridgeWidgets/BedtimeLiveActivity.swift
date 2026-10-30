@@ -56,7 +56,7 @@ private struct Countdown: View {
     }
 }
 
-private func clock(_ date: Date) -> String { date.formatted(date: .omitted, time: .shortened) }
+private func clock(_ date: Date) -> String { date.clockTime() }
 
 private struct LockScreenView: View {
     let state: BedtimeActivityAttributes.ContentState

@@ -101,6 +101,22 @@ struct SettingsView: View {
                 SettingsLink(title: "App icon", icon: "app.badge", value: AppIconChoice.current.title) {
                     SettingsPage(title: "App icon") { AppIconSection() }
                 }
+                // v0.4.7 item 10.
+                SettingsLink(title: "Clock", icon: "clock", value: store.settings.clockStyle.displayName) {
+                    SettingsPage(title: "Clock") {
+                        Section {
+                            Picker(selection: $store.settings.clockStyle) {
+                                ForEach(ClockStyle.allCases) { Text($0.displayName).tag($0) }
+                            } label: {
+                                WithDefault(text: "Times", defaultText: store.settings.clockStyle == .phone ? nil : ClockStyle.phone.displayName)
+                            }
+                            .pickerStyle(.inline)
+                            .labelsHidden()
+                        } footer: {
+                            Text("How times show in the app, the widgets and Live Activities, and in Home Assistant's notifications. Phone setting follows Settings → General → Date & Time.")
+                        }
+                    }
+                }
             }
 
             Section {

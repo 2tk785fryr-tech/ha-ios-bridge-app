@@ -1014,13 +1014,13 @@ private struct BigTime: View {
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(date.formatted(.dateTime.hour(.defaultDigits(amPM: .omitted)).minute()))
+            Text(date.formatted(.dateTime.hour(.defaultDigits(amPM: .omitted)).minute().locale(ClockStyle.locale)))
                 .font(.sora(fixed: 88, .light))
                 .tracking(-2)
                 .foregroundStyle(Theme.accentText)
                 .minimumScaleFactor(0.6)
                 .lineLimit(1)
-            Text(date.formatted(.dateTime.hour(.defaultDigits(amPM: .abbreviated))).filter { $0.isLetter })
+            Text(date.formatted(.dateTime.hour(.defaultDigits(amPM: .abbreviated)).locale(ClockStyle.locale)).filter { $0.isLetter })
                 .font(.sora(fixed: 24, .medium))
                 .foregroundStyle(Theme.textMuted)
         }
@@ -1785,7 +1785,7 @@ struct AlarmBubbleView: View {
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
         VStack(spacing: 4) {
-            Text(bubble.time.formatted(.dateTime.hour(.defaultDigits(amPM: .omitted)).minute()))
+            Text(bubble.time.formatted(.dateTime.hour(.defaultDigits(amPM: .omitted)).minute().locale(ClockStyle.locale)))
                 .font(.system(size: 15, weight: bubble.isWake ? .bold : .semibold))
                 .strikethrough(isOff)
                 .foregroundStyle(bubble.isWake ? .white : Theme.textSoft)

@@ -82,11 +82,11 @@ struct NextAlarmView: View {
                 Image(systemName: entry.nextAlarm == nil && entry.leaveByOnly != nil ? "car" : entry.isSnoozing ? "zzz" : "alarm")
                     .font(.caption)
                 if let alarm = entry.nextAlarm {
-                    Text(alarm, format: .dateTime.hour(.defaultDigits(amPM: .omitted)).minute())
+                    Text(alarm, format: .dateTime.hour(.defaultDigits(amPM: .omitted)).minute().locale(ClockStyle.locale))
                         .font(.sora(fixed: 17, .semibold))
                         .minimumScaleFactor(0.6)
                 } else if let leaveBy = entry.leaveByOnly {
-                    Text(leaveBy, format: .dateTime.hour(.defaultDigits(amPM: .omitted)).minute())
+                    Text(leaveBy, format: .dateTime.hour(.defaultDigits(amPM: .omitted)).minute().locale(ClockStyle.locale))
                         .font(.sora(fixed: 17, .semibold))
                         .minimumScaleFactor(0.6)
                 } else {
@@ -175,7 +175,7 @@ struct NextAlarmView: View {
     }
 
     private func time(_ date: Date) -> String {
-        date.formatted(date: .omitted, time: .shortened)
+        date.clockTime()
     }
 }
 
@@ -195,12 +195,12 @@ private struct NightfallSmallView: View {
                 Text("until bed").font(.caption.weight(.semibold)).foregroundStyle(Theme.textSoft)
                 Spacer(minLength: 0)
                 if let first = entry.nextAlarm {
-                    Text("First alarm \(first.formatted(date: .omitted, time: .shortened))")
+                    Text("First alarm \(first.clockTime())")
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(Theme.textMuted)
                 }
             } else if let alarm = entry.nextAlarm {
-                Text(alarm, format: .dateTime.hour(.defaultDigits(amPM: .omitted)).minute())
+                Text(alarm, format: .dateTime.hour(.defaultDigits(amPM: .omitted)).minute().locale(ClockStyle.locale))
                     .font(.sora(fixed: 40, .light))
                     .foregroundStyle(Theme.accentText)
                     .minimumScaleFactor(0.7)
@@ -213,7 +213,7 @@ private struct NightfallSmallView: View {
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 if let leaveBy = entry.snapshot.leaveBy, leaveBy > entry.date {
-                    Text("Leave by \(leaveBy.formatted(date: .omitted, time: .shortened))")
+                    Text("Leave by \(leaveBy.clockTime())")
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(Theme.appointmentChip.text)
                 } else if let summary = entry.snapshot.setSummary(after: entry.date) {
@@ -225,7 +225,7 @@ private struct NightfallSmallView: View {
                 Text("Leave by")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Theme.appointmentChip.text)
-                Text(leaveBy, format: .dateTime.hour(.defaultDigits(amPM: .omitted)).minute())
+                Text(leaveBy, format: .dateTime.hour(.defaultDigits(amPM: .omitted)).minute().locale(ClockStyle.locale))
                     .font(.sora(fixed: 40, .light))
                     .foregroundStyle(Theme.accentText)
                     .minimumScaleFactor(0.7)
@@ -276,7 +276,7 @@ private struct WidgetBigTime: View {
                 .minimumScaleFactor(0.5)
                 .lineLimit(1)
         } else if let time = entry.nextAlarm ?? entry.leaveByOnly {
-            Text(time, format: .dateTime.hour(.defaultDigits(amPM: .omitted)).minute())
+            Text(time, format: .dateTime.hour(.defaultDigits(amPM: .omitted)).minute().locale(ClockStyle.locale))
                 .font(.sora(fixed: size, .light))
                 .foregroundStyle(Theme.accentText)
                 .minimumScaleFactor(0.6)
@@ -342,7 +342,7 @@ private struct WidgetStepRow: View {
                 .foregroundStyle(Theme.text)
                 .lineLimit(1)
             Spacer(minLength: 4)
-            Text(step.time, format: .dateTime.hour().minute())
+            Text(step.time, format: .dateTime.hour().minute().locale(ClockStyle.locale).locale(ClockStyle.locale))
                 .font((large ? Font.subheadline : .caption).monospacedDigit().weight(.semibold))
                 .foregroundStyle(tint)
         }

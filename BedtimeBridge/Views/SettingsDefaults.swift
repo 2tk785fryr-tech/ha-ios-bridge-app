@@ -134,6 +134,7 @@ enum SettingsPages {
     static let notifications = ["notificationLevels"]
     static let shortcuts = ["quickActions", "windDownControlOpensApp", "napControlNapsNow", "widgetTapAlwaysTonight"]
     static let weekly = ["weeklySummaryEnabled", "weeklySummaryWeekday", "weeklySummaryTime"]
+    static let clock = ["clockStyle"]
 
-    static let all = [main, mornings, home, alarms, appointmentAlarms, ownAlarms, optionWindows, morningChange, nap, windDown, appointments, driveTime, homeAssistant, weather, calendars, leave, weekly, shortcuts, notifications]
+    static let all = [main, mornings, home, alarms, appointmentAlarms, ownAlarms, clock, optionWindows, morningChange, nap, windDown, appointments, driveTime, homeAssistant, weather, calendars, leave, weekly, shortcuts, notifications]
 }
