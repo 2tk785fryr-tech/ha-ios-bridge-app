@@ -125,6 +125,7 @@ class WindDown:
             "appointments_checked": s.get("checked", True),
             "reminders_stopped": bool(s.get("reminders_stopped")),
             "in_bed": self._in_bed(),
+            "bedtime_ran": bool(s.get("bedtime_ran")),
             "went_to_bed": s.get("went_to_bed"),
             "minutes_off_target": s.get("minutes_off"),
         }

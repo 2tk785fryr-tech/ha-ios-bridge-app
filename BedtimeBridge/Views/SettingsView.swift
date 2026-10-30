@@ -60,6 +60,9 @@ struct SettingsView: View {
                 SettingsLink(title: "Nap", icon: "powersleep", value: settings.napEnabled ? "\(settings.napAlarmCount) alarms, \(settings.napSpacingMinutes) min apart" : "Off") {
                     NapSettings(settings: $store.settings)
                 }
+                SettingsLink(title: "Wind-down", icon: "moon.zzz", value: settings.windDownEnabled ? "Sleep goal \(DurationText.hours(settings.sleepGoalMinutes))" : "Off") {
+                    WindDownSettings(settings: $store.settings)
+                }
                 SettingsLink(title: "Appointments", icon: "calendar.badge.clock",
                              value: settings.appointmentKeyword.isEmpty ? "Wake-up keyword: none" : "Wake-up keyword: \(settings.appointmentKeyword)") {
                     SettingsPage(title: "Appointments") { AppointmentsSection(settings: $store.settings) }
@@ -544,6 +547,7 @@ private struct OptionWindowsSettings: View {
                 Stepper("Not ready for bed: for \(settings.notReadyForBedHours) h after bedtime ran", value: $settings.notReadyForBedHours, in: 1...12)
                 Stepper("Back to bed: until \(settings.backToBedHours) h after the wake-up or the last stop, whichever is later", value: $settings.backToBedHours, in: 1...12)
                 LabeledContent("Sleep later", value: "until the first alarm")
+                Stepper("Start wind-down now: from \(settings.startWindDownHours) h before go to bed", value: $settings.startWindDownHours, in: 1...6)
             } footer: {
                 Text("These decide when each option shows in the bottom bar, the ⋯ menu and the cards.")
             }

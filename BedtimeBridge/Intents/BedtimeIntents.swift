@@ -267,6 +267,12 @@ enum PhoneCommand: String, AppEnum {
     case leaveCheck = "RUN_LEAVE_CHECK"
     case napStart = "RUN_NAP_START"
     case napEnd = "RUN_NAP_END"
+    // v0.4.3 item 5
+    case planPreview = "RUN_PLAN_PREVIEW"
+    case windDown = "RUN_WIND_DOWN"
+    case windDownCancel = "RUN_WIND_DOWN_CANCEL"
+    // v0.4.3 item 14
+    case morningUpdate = "RUN_MORNING_UPDATE"
 
     static var typeDisplayRepresentation: TypeDisplayRepresentation = "Phone Command"
     static var caseDisplayRepresentations: [PhoneCommand: DisplayRepresentation] = [
@@ -278,6 +284,10 @@ enum PhoneCommand: String, AppEnum {
         .leaveCheck: "Leave check (RUN_LEAVE_CHECK)",
         .napStart: "Nap start (RUN_NAP_START)",
         .napEnd: "Nap end (RUN_NAP_END)",
+        .planPreview: "Preview tomorrow (RUN_PLAN_PREVIEW)",
+        .windDown: "Wind down on (RUN_WIND_DOWN)",
+        .windDownCancel: "Wind down off (RUN_WIND_DOWN_CANCEL)",
+        .morningUpdate: "Morning update (RUN_MORNING_UPDATE)",
     ]
 }
 
@@ -319,6 +329,21 @@ struct ReportShortcutRanIntent: AppIntent {
     func perform() async throws -> some IntentResult {
         await BedtimeCoordinator.shared.commandRan(command.rawValue, outcome: outcome.rawValue, settings: SettingsStore.shared.settings)
         return .result()
+    }
+}
+
+/// RUN_PLAN_PREVIEW (v0.4.3 item 5): plans tomorrow in the background without setting any
+/// alarms, and tells Home Assistant the first alarm for tonight's wind-down.
+struct PreviewTomorrowIntent: AppIntent {
+    static var title: LocalizedStringResource = "Preview Tomorrow"
+    static var description = IntentDescription(
+        "Works out tomorrow's wake-up without setting alarms and sends the first alarm, cause, event and leave-by to Home Assistant for the wind-down."
+    )
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ReturnsValue<WakePlanEntity> {
+        let plan = try await BedtimeCoordinator.shared.previewTomorrow(settings: SettingsStore.shared.settings)
+        return .result(value: WakePlanEntity(plan: plan))
     }
 }
 

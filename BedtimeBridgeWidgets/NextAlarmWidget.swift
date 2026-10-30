@@ -10,6 +10,8 @@ struct NextAlarmEntry: TimelineEntry {
     var label: String { snapshot.label(after: date) }
     /// Alarms done, leave-by still ahead (or just past): item 4.
     var leaveByOnly: Date? { snapshot.leaveByAfterAlarms(at: date) }
+    /// Winding down (v0.4.3 item 5): go to bed, counted down.
+    var bed: Date? { snapshot.bedCountdown(at: date) }
 }
 
 struct NextAlarmProvider: TimelineProvider {
@@ -61,7 +63,9 @@ struct NextAlarmView: View {
     var body: some View {
         switch family {
         case .accessoryInline:
-            if let alarm = entry.nextAlarm {
+            if let bed = entry.bed {
+                Label("Bed in \(Text(bed, style: .relative))", systemImage: "moon.zzz")
+            } else if let alarm = entry.nextAlarm {
                 Label("\(time(alarm)) · \(entry.label)", systemImage: entry.isSnoozing ? "zzz" : "alarm")
             } else if let leaveBy = entry.leaveByOnly {
                 Label("Leave by \(time(leaveBy)) · \(entry.label)", systemImage: "car")
@@ -94,7 +98,18 @@ struct NextAlarmView: View {
             // Three short lines, each fitting the Lock Screen's narrow rectangle: the time with
             // how many alarms are set, why, and when to leave.
             VStack(alignment: .leading, spacing: 1) {
-                if let alarm = entry.nextAlarm {
+                if let bed = entry.bed {
+                    // "Bed in 42 min · first alarm 4:20"
+                    Label { Text("Bed in \(Text(bed, style: .relative))") } icon: { Image(systemName: "moon.zzz") }
+                        .font(.sora(fixed: 17, .semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .widgetAccentable()
+                    if let first = entry.nextAlarm {
+                        Text("First alarm \(time(first))").font(.caption).lineLimit(1)
+                    }
+                    Text("Winding down").font(.caption).foregroundStyle(.secondary)
+                } else if let alarm = entry.nextAlarm {
                     HStack(alignment: .firstTextBaseline, spacing: 4) {
                         Label(time(alarm), systemImage: entry.isSnoozing ? "zzz" : "alarm")
                             .font(.sora(fixed: 17, .semibold))

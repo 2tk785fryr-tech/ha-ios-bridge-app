@@ -24,6 +24,9 @@ enum BridgeEvent: String {
     case morningChanged = "morning_changed"
     case napStarted = "nap_started"
     case napEnded = "nap_ended"
+    /// v0.4.3 item 5: Preview tomorrow's answer, and wind-down actions (start, cancel, stop_reminders).
+    case preview
+    case windDown = "wind_down"
 }
 
 /// For item 3's confirm screen: the backstops now, and when the curtains open that morning.
@@ -111,6 +114,17 @@ enum HomeAssistantLinks {
         let remote = items.first { $0.name == "remote" }?.value ?? ""
         let local = items.first { $0.name == "local" }?.value ?? ""
         return remote.isEmpty && local.isEmpty ? nil : (remote, local)
+    }
+
+    private static let everyMessageKey = "homeAssistantEveryMessage.v1"
+
+    /// Added to every message (wind-down settings, v0.4.3 item 5), kept current by SettingsStore.
+    static var everyMessage: [String: Any] {
+        get {
+            guard let data = UserDefaults.standard.data(forKey: everyMessageKey) else { return [:] }
+            return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+        }
+        set { UserDefaults.standard.set(try? JSONSerialization.data(withJSONObject: newValue), forKey: everyMessageKey) }
     }
 
     private static let cachedSettingsKey = "homeAssistantSettings.v1"
@@ -244,6 +258,7 @@ struct IntegrationLink: HomeAssistantLink {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let data = data.merging(HomeAssistantLinks.everyMessage) { mine, _ in mine }
         request.httpBody = try JSONSerialization.data(withJSONObject: ["type": type, "data": data])
         let (body, response) = try await session.data(for: request)
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
@@ -255,6 +270,9 @@ struct IntegrationLink: HomeAssistantLink {
         }
         if let settings = reply["settings"] as? [String: Any] {
             HomeAssistantLinks.cachedSettings = settings
+        }
+        if let windDown = reply["wind_down"] as? [String: Any] {
+            WindDownState.cached = WindDownState(windDown)
         }
         return reply
     }

@@ -29,6 +29,16 @@ struct NextAlarmSnapshot: Codable, Equatable {
     var reason: String? = nil
     /// After the last alarm, leave-by stays on the widget until this many minutes past it.
     var leaveByShownMinutes: Int? = nil
+    /// Tonight's wind-down (v0.4.3 item 5): from wind-down until go to bed the widget shows
+    /// "Bed in 42 min · first alarm 4:20".
+    var windDownAt: Date? = nil
+    var goToBedAt: Date? = nil
+
+    /// Winding down at `date`: go to bed still ahead.
+    func bedCountdown(at date: Date) -> Date? {
+        guard let windDownAt, let goToBedAt, windDownAt <= date, date < goToBedAt else { return nil }
+        return goToBedAt
+    }
 
     /// "3 alarms set", counting the series still to ring.
     func setSummary(after date: Date) -> String? {
@@ -68,7 +78,7 @@ struct NextAlarmSnapshot: Codable, Equatable {
     /// Times at which the widget's text changes (each alarm passing, leave-by going away),
     /// for its timeline.
     func changeDates(after date: Date) -> [Date] {
-        ([snoozedUntil, leaveBy.map(leaveByHiddenAt)].compactMap { $0 } + alarmTimes + (temporaryAlarms ?? [])).filter { $0 > date }.sorted()
+        ([snoozedUntil, leaveBy.map(leaveByHiddenAt), windDownAt, goToBedAt].compactMap { $0 } + alarmTimes + (temporaryAlarms ?? [])).filter { $0 > date }.sorted()
     }
 
     static func load() -> NextAlarmSnapshot {

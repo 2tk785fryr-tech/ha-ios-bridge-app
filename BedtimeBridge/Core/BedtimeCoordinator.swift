@@ -646,6 +646,62 @@ final class BedtimeCoordinator {
         undoPlan = nil
     }
 
+    // MARK: Wind-down (v0.4.3 item 5)
+
+    /// Home Assistant's last word on tonight's wind-down.
+    var windDown: WindDownState { WindDownState.cached }
+
+    /// "Preview tomorrow" (RUN_PLAN_PREVIEW): plans without setting anything and tells Home
+    /// Assistant the first alarm, cause, event and leave-by.
+    func previewTomorrow(settings phoneSettings: BridgeSettings) async throws -> WakePlan {
+        let made = try await previewForSet(settings: phoneSettings)
+        let plan = adjustedForSkip(made.plan, settings: made.settings)
+        var data: [String: Any] = ["cause": plan.cause]
+        if let first = plan.firstAlarm { data["first_alarm"] = Self.iso(first) }
+        if let event = plan.appointment {
+            data["event"] = event.title
+            data["event_start"] = Self.iso(event.start)
+        } else if let shift = plan.shift {
+            data["event"] = shift.cause
+            data["event_start"] = Self.iso(shift.start)
+        }
+        if let leaveBy = plan.leaveBy(settings: made.settings) { data["leave_by"] = Self.iso(leaveBy) }
+        if let moved = Self.movedFromUsual(plan, settings: made.settings) {
+            data["moved"] = true
+            data["moved_reason"] = moved
+        }
+        if let link = HomeAssistantLinks.current(phoneSettings) as? IntegrationLink {
+            _ = try? await link.reply(.preview, data: data)
+        }
+        await BedtimeActivities.syncWindDown(windDown)
+        return plan
+    }
+
+    /// Why tomorrow's first alarm isn't at its usual time (weather, the override, an earlier
+    /// wake to get ready); nil when it is. Event mornings say so on their own.
+    nonisolated static func movedFromUsual(_ plan: WakePlan, settings: BridgeSettings) -> String? {
+        guard plan.source == .shift, let shift = plan.shift, let first = plan.firstAlarm else { return nil }
+        if let weather = plan.weather { return weather.reason }
+        if !shift.title.localizedCaseInsensitiveContains(shift.cause) { return "shift override \(shift.cause)" }
+        let usual = WakePlanner.alarmTimes(wakeTime: shift.wakeTime, count: shift.alarmCount ?? settings.alarmCount,
+                                           spacingMinutes: shift.alarmSpacingMinutes ?? settings.alarmSpacingMinutes,
+                                           wakeIs: shift.wakeIs ?? settings.wakeTimeIs).first
+        guard let usual, abs(usual.timeIntervalSince(first)) >= 60 else { return nil }
+        return first < usual ? "earlier, to get ready" : "changed"
+    }
+
+    /// Start wind-down now, Cancel wind-down, Stop bedtime reminders: Home Assistant runs them.
+    @discardableResult
+    func windDownAction(_ action: String, settings: BridgeSettings) async throws -> WindDownState {
+        guard let link = HomeAssistantLinks.current(settings) as? IntegrationLink else {
+            throw BridgeError.homeAssistant(0, "Wind-down needs the Bedtime Bridge integration.")
+        }
+        _ = try await link.reply(.windDown, data: ["action": action])
+        let state = windDown
+        await BedtimeActivities.syncWindDown(state)
+        return state
+    }
+
     // MARK: Calendar changed after the alarms were set (v0.4.3 item 4)
 
     private static let changeNotifiedKey = "planChangeNotified.v1"
@@ -728,6 +784,11 @@ final class BedtimeCoordinator {
         lastCause = plan.cause
         var payload = plan.homeAssistantPayload(settings: settings)
         payload["app_settings"] = settings.homeAssistantSettings
+        // Wind-down says so when tomorrow's first alarm moved from its usual time (v0.4.3 item 5).
+        if let moved = Self.movedFromUsual(plan, settings: settings) {
+            payload["first_alarm_moved"] = true
+            payload["moved_reason"] = moved
+        }
         // Home Assistant sends RUN_LEAVE_CHECK at each of these (item 17).
         payload["leave_reminders"] = Self.trip(for: plan, settings: settings) != nil && settings.leaveReminderEnabled ? settings.leaveReminderOffsets.sorted(by: >) : []
         if settings.alarmStyle == .app, plan.hasAlarm {

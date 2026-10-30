@@ -145,6 +145,34 @@ struct BridgeSettings: Codable, Equatable {
     /// The quick choices, in minutes.
     var napLengths = [20, 30, 45, 60, 90, 120]
 
+    // MARK: Wind-down (v0.4.3 item 5)
+
+    /// Off until the phone side is set up.
+    var windDownEnabled = false
+    /// Go to bed = tomorrow's first alarm − this.
+    var sleepGoalMinutes = 390
+    var windDownMinutes = 60
+    /// Getting home late: at least this long free before wind-down starts…
+    var freeAfterHomeMinutes = 30
+    /// …and at least this much wind-down (bedtime moves later instead).
+    var minimumWindDownMinutes = 30
+    /// The warning before wind-down; 0 is off.
+    var windDownWarningMinutes = 5
+    /// The warning's "Later" button.
+    var windDownLaterMinutes = 15
+    var notInBedReminders = true
+    var reminderFirstMinutes = 10
+    var reminderEveryMinutes = 10
+    var reminderStopMinutes = 60
+    /// RUN_PLAN_PREVIEW this long before the wind-down the shift calendar gives…
+    var planCheckBeforeMinutes = 120
+    /// …or at this time ("HH:mm") when only an appointment might decide tomorrow.
+    var planCheckFallback = "18:00"
+    /// Wind-down for your own alarm on a day off.
+    var windDownOwnAlarm = true
+    /// "Start wind-down now" shows from this long before go to bed (also on When options show).
+    var startWindDownHours = 2
+
     // MARK: Your own alarm's backstops (v0.4.1 item 14)
 
     /// Whether your own alarm on a day off, or on leave, starts with backstops on.
@@ -238,6 +266,19 @@ struct BridgeSettings: Codable, Equatable {
 }
 
 extension BridgeSettings {
+    /// Sent with every message, so Home Assistant always has the current wind-down settings.
+    var windDownForHomeAssistant: [String: Any] {
+        [
+            "enabled": windDownEnabled, "sleep_goal_minutes": sleepGoalMinutes, "length_minutes": windDownMinutes,
+            "free_minutes": freeAfterHomeMinutes, "minimum_minutes": minimumWindDownMinutes,
+            "warning_minutes": windDownWarningMinutes, "later_minutes": windDownLaterMinutes,
+            "reminders": notInBedReminders, "reminder_first_minutes": reminderFirstMinutes,
+            "reminder_every_minutes": reminderEveryMinutes, "reminder_stop_minutes": reminderStopMinutes,
+            "preview_before_minutes": planCheckBeforeMinutes, "preview_fallback": planCheckFallback,
+            "own_alarm": windDownOwnAlarm,
+        ]
+    }
+
     /// The settings a plan depends on (shifts, alarm series, timings, drive, weather, calendars,
     /// home), so Tonight can tell the plan changed after the alarms were set (v0.4.1 item 10).
     var planFingerprint: String {
@@ -387,6 +428,7 @@ final class SettingsStore {
         if let data = try? JSONEncoder().encode(settings) {
             defaults.set(data, forKey: Self.key)
         }
+        HomeAssistantLinks.everyMessage = ["wind_down_settings": settings.windDownForHomeAssistant]
     }
 }
 

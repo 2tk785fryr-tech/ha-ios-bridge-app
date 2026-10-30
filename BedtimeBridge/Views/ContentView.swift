@@ -27,6 +27,8 @@ struct ContentView: View {
     @State private var morningContext: MorningContext?
     @State private var morningContextLoaded = false
     @State private var sheet: Sheet?
+    /// Cancel wind-down: a plain confirm (v0.4.3 item 5).
+    @State private var confirmCancelWindDown = false
 
     private enum Sheet: Identifiable {
         case temporary, dayOff, skipToTime, nap, napChange, sleepLater, editAlarms
@@ -88,7 +90,7 @@ struct ContentView: View {
                             WarningBanner(text: "+\(weather.minutes) min for \(weather.reason)", systemImage: "cloud.rain")
                         }
                         if plan.source == .appointment, let appointment = plan.appointment, let wake = plan.wakeTime {
-                            MorningTimeline(appointment: appointment, weather: plan.weather, wake: wake, bufferMinutes: settings.arrivalBufferMinutes).with(backstopInfo(leaveBy: plan.leaveBy(settings: settings), firstDayBack: plan.firstDayBack ?? false, replacedShift: plan.replacedShift))
+                            MorningTimeline(appointment: appointment, weather: plan.weather, wake: wake, bufferMinutes: settings.arrivalBufferMinutes).with(backstopInfo(leaveBy: plan.leaveBy(settings: settings), firstDayBack: plan.firstDayBack ?? false, replacedShift: plan.replacedShift)).with(bedtime: bedtimeTimes(plan))
                         }
                         if let short = plan.getReadyShortfall(settings: settings), short.earlierWake > .now {
                             GetReadyCard(minutes: short.minutes, wanted: settings.getReadyMinutes, leaveBy: short.leaveBy, earlierWake: short.earlierWake) {
@@ -96,7 +98,7 @@ struct ContentView: View {
                             }
                         }
                         if plan.source == .shift, let shift = plan.shift, let commute = plan.commute, let wake = plan.wakeTime {
-                            MorningTimeline(shift: shift, commute: commute, weather: plan.weather, wake: wake, bufferMinutes: settings.workArrivalBufferMinutes, getReadyGoal: settings.getReadyMinutes).with(backstopInfo(leaveBy: plan.leaveBy(settings: settings), firstDayBack: plan.firstDayBack ?? false, replacedShift: plan.replacedShift))
+                            MorningTimeline(shift: shift, commute: commute, weather: plan.weather, wake: wake, bufferMinutes: settings.workArrivalBufferMinutes, getReadyGoal: settings.getReadyMinutes).with(backstopInfo(leaveBy: plan.leaveBy(settings: settings), firstDayBack: plan.firstDayBack ?? false, replacedShift: plan.replacedShift)).with(bedtime: bedtimeTimes(plan))
                         }
                         ForEach(plan.missingLocations, id: \.eventID) { appointment in
                             MissingLocationCard(appointment: appointment) { location in
@@ -254,7 +256,8 @@ struct ContentView: View {
                     EditAlarmsSheet(settings: store.settings, done: refreshScheduled)
                 case .preview(let preview):
                     PlanPreviewSheet(preview: preview, alarmsSet: !coordinator.setAlarmTimes().isEmpty,
-                                     backstops: { backstopInfo(leaveBy: $0.leaveBy(settings: preview.settings), firstDayBack: $0.firstDayBack ?? false, replacedShift: $0.replacedShift) }) {
+                                     backstops: { backstopInfo(leaveBy: $0.leaveBy(settings: preview.settings), firstDayBack: $0.firstDayBack ?? false, replacedShift: $0.replacedShift) },
+                                     bedtime: bedtimeTimes(preview.plan)) {
                         setPreviewed(preview)
                     }
                 case .noAlarms(let morning):
@@ -305,6 +308,12 @@ struct ContentView: View {
                     await coordinator.alarmStopped(id: alarm.id, all: all, settings: store.settings)
                     refreshScheduled()
                 }
+            }
+            .confirmationDialog("Cancel tonight's wind-down?", isPresented: $confirmCancelWindDown, titleVisibility: .visible) {
+                Button("Cancel wind-down", role: .destructive) { windDown("cancel") }
+                Button("Keep it", role: .cancel) {}
+            } message: {
+                Text("The winding-down helper goes off, and there's no go to bed notification or reminders tonight.")
             }
             .alert(pairingMessage ?? "", isPresented: Binding(get: { pairingMessage != nil }, set: { if !$0 { pairingMessage = nil } })) {
                 Button("OK", role: .cancel) {}
@@ -396,9 +405,23 @@ struct ContentView: View {
         i.napEnabled = store.settings.napEnabled && store.settings.alarmStyle == .app
         i.undo = coordinator.availableUndo(now: now)?.status(alarmsSet: set.count)
         i.tomorrowHasAlarm = plan?.hasAlarm == true
+        if store.settings.windDownEnabled {
+            i.windDown = coordinator.windDown
+            i.startWindDownHours = store.settings.startWindDownHours
+        }
         let hour = Calendar.current.component(.hour, from: now)
         i.evening = hour >= 17 || hour < 4
         return i
+    }
+
+    /// Wind-down and go to bed for this plan's morning: Home Assistant's when it has the same
+    /// first alarm (it knows when you got home), otherwise worked out here.
+    private func bedtimeTimes(_ plan: WakePlan) -> (windDown: Date, goToBed: Date)? {
+        guard store.settings.windDownEnabled, let first = plan.firstAlarm, first > .now else { return nil }
+        let w = coordinator.windDown
+        if let ha = w.firstAlarm, abs(ha.timeIntervalSince(first)) < 60, let wind = w.windDown, let bed = w.goToBed { return (wind, bed) }
+        let times = WindDownTimes.compute(firstAlarm: first, settings: store.settings)
+        return (times.windDown, times.goToBed)
     }
 
     private var barMorning: Date? { scheduled.first ?? plan?.firstAlarm }
@@ -444,6 +467,9 @@ struct ContentView: View {
                 refreshScheduled()
             }
         case .noAlarmsTomorrow: sheet = .noAlarms(coordinator.noAlarmsMorning(plan: plan))
+        case .startWindDown: windDown("start")
+        case .cancelWindDown: confirmCancelWindDown = true
+        case .stopReminders: windDown("stop_reminders")
         case .previewPlan: run(schedule: false)
         case .nap: sheet = .nap
         case .changeNap: sheet = .napChange
@@ -528,6 +554,21 @@ struct ContentView: View {
         return "Plan and set alarms"
     }
 
+    /// Wind-down actions run in Home Assistant (v0.4.3 item 5).
+    private func windDown(_ action: String) {
+        isWorking = true
+        errorMessage = nil
+        Task {
+            defer { isWorking = false }
+            do {
+                try await coordinator.windDownAction(action, settings: store.settings)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            refreshScheduled()
+        }
+    }
+
     /// A manual "Plan and set alarms" shows what it would set first (v0.4.3 item 1).
     private func preview(replan: Bool) {
         isWorking = true
@@ -594,6 +635,11 @@ struct ContentView: View {
             // Home Assistant's plan_out_of_date: say what changed, if tomorrow did (v0.4.3 item 4).
             if morningContext?.planOutdated == true {
                 _ = await coordinator.checkPlanStillMatches(settings: store.settings)
+            }
+            // During wind-down, tomorrow's plan already previewed (not set), and its Live Activity.
+            if store.settings.windDownEnabled, coordinator.windDown.status == .windingDown {
+                if plan == nil { plan = try? await coordinator.buildPlan(settings: store.settings) }
+                await BedtimeActivities.syncWindDown(coordinator.windDown)
             }
         }
         refreshUpcoming()
@@ -725,6 +771,7 @@ private struct PlanPreviewSheet: View {
     let preview: PlanPreview
     let alarmsSet: Bool
     let backstops: (WakePlan) -> BackstopInfo?
+    var bedtime: (windDown: Date, goToBed: Date)?
     let confirm: () -> Void
     @Environment(\.dismiss) private var dismiss
 
@@ -741,9 +788,9 @@ private struct PlanPreviewSheet: View {
                         WarningBanner(text: "+\(weather.minutes) min for \(weather.reason)", systemImage: "cloud.rain")
                     }
                     if plan.source == .appointment, let appointment = plan.appointment, let wake = plan.wakeTime {
-                        MorningTimeline(appointment: appointment, weather: plan.weather, wake: wake, bufferMinutes: settings.arrivalBufferMinutes).with(backstops(plan))
+                        MorningTimeline(appointment: appointment, weather: plan.weather, wake: wake, bufferMinutes: settings.arrivalBufferMinutes).with(backstops(plan)).with(bedtime: bedtime)
                     } else if plan.source == .shift, let shift = plan.shift, let commute = plan.commute, let wake = plan.wakeTime {
-                        MorningTimeline(shift: shift, commute: commute, weather: plan.weather, wake: wake, bufferMinutes: settings.workArrivalBufferMinutes, getReadyGoal: settings.getReadyMinutes).with(backstops(plan))
+                        MorningTimeline(shift: shift, commute: commute, weather: plan.weather, wake: wake, bufferMinutes: settings.workArrivalBufferMinutes, getReadyGoal: settings.getReadyMinutes).with(backstops(plan)).with(bedtime: bedtime)
                     } else if plan.hasAlarm, let info = backstops(plan) {
                         BackstopsCard(info: info)
                     }
@@ -1017,10 +1064,18 @@ private struct MorningTimeline: View {
     var getReadyGoal = 0
     /// The three backstops, in time order with the rest (v0.4.1 item 8).
     var backstops: BackstopInfo?
+    /// Tonight's wind-down and go to bed, above the wake-up (v0.4.3 item 5).
+    var bedtime: (windDown: Date, goToBed: Date)?
 
     func with(_ backstops: BackstopInfo?) -> MorningTimeline {
         var copy = self
         copy.backstops = backstops
+        return copy
+    }
+
+    func with(bedtime: (windDown: Date, goToBed: Date)?) -> MorningTimeline {
+        var copy = self
+        copy.bedtime = bedtime
         return copy
     }
 
@@ -1064,6 +1119,10 @@ private struct MorningTimeline: View {
                 .padding(.bottom, backstops == nil ? 12 : 4)
             if let backstops {
                 BackstopStatusLine(info: backstops).padding(.bottom, 12)
+            }
+            if let bedtime {
+                TimelineStep(title: "Wind-down", value: WakePlanner.format(bedtime.windDown), dot: .ring(Theme.textMuted))
+                TimelineStep(title: "Go to bed", value: WakePlanner.format(bedtime.goToBed), dot: .filled(Theme.textMuted))
             }
             TimelineStep(title: "Wake up", value: WakePlanner.format(wake), dot: .filled(Theme.accent), bold: true)
             if !hasLocation {
