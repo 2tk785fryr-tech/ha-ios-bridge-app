@@ -202,7 +202,8 @@ struct IntegrationLink: HomeAssistantLink {
 
     /// The integration checks presence and turns on its bedtime helper.
     func startBedtime(settings: BridgeSettings) async throws -> (started: Bool, atHome: Bool) {
-        let reply = try await send("bedtime")
+        // The phone's own battery reading, for Plug in your phone (v0.4.3 item 10).
+        let reply = try await send("bedtime", data: await PhoneBattery.reading())
         return (reply["started"] as? Bool ?? false, reply["at_home"] as? Bool ?? true)
     }
 

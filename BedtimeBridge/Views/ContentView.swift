@@ -58,6 +58,11 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     header
 
+                    // Free-team installs stop opening after 7 days (v0.4.3 item 9).
+                    if let expiry = AppExpiry.banner(expires: AppExpiry.date) {
+                        WarningBanner(text: expiry.text, systemImage: "hammer", tint: expiry.urgent ? Theme.danger : Theme.warning.text)
+                    }
+
                     if coordinator.isNapping {
                         NappingCard(alarms: coordinator.napAlarms, status: coordinator.napStatus,
                                     ring: { coordinator.ring(forAlarm: $0.id, at: $0.time) }) {

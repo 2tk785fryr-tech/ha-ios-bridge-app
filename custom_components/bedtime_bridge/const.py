@@ -38,6 +38,9 @@ CONF_RERUN_MINUTES = "rerun_minutes"
 CONF_WIND_DOWN_HELPER = "winding_down_helper"
 CONF_BEDROOM_DOOR = "bedroom_door_sensor"
 CONF_WIND_DOWN_NOTIFY = "wind_down_notify_service"
+# v0.4.3 item 10: the companion app's battery sensors, for "Plug in your phone".
+CONF_PHONE_BATTERY = "phone_battery_sensor"
+CONF_PHONE_BATTERY_STATE = "phone_battery_state_sensor"
 
 # What Snooze/Stop on the phone do in Home Assistant.
 WAKE_BOTH = "both"
@@ -60,6 +63,8 @@ SUGGESTED = {
     CONF_WEATHER: "weather.forecast_home",
     CONF_WIND_DOWN_HELPER: "input_boolean.winding_down",
     CONF_BEDROOM_DOOR: "binary_sensor.aqara_door_and_window_sensor_door_2",
+    CONF_PHONE_BATTERY: "sensor.mikes_iphone_battery_level",
+    CONF_PHONE_BATTERY_STATE: "sensor.mikes_iphone_battery_state",
 }
 # Checked for the away bedtime summary ("Everything at home is good"), when they exist.
 SUGGESTED_HOME_CHECKS = [

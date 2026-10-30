@@ -258,3 +258,53 @@ async def test_item7_reset_clears_alarms_moves_and_helpers_then_follows_the_cale
     assert rungs(hass) == ["04:55", "05:10", "05:25"]
     assert any(e.data.get("type") == "reset" for e in events)
     assert status_of(hass) == "off"
+
+
+# MARK: Item 9, app expiry
+
+
+async def test_item9_app_expires_sensor_and_bedtime_warning_on_the_last_two_days(hass, ladder, hass_client_no_auth, freezer):
+    notes = async_mock_service(hass, "notify", "phone")
+    await ladder(notify_service="notify.phone")
+    await send(hass_client_no_auth, {"type": "context", "data": {"app_expires": local("21:14", day=30).isoformat()}})
+    state = hass.states.get("sensor.bedtime_bridge_app_expires")
+    assert dt_util.parse_datetime(state.state) == local("21:14", day=30)
+    await send(hass_client_no_auth, {"type": "bedtime", "data": {}})
+    assert not [c for c in notes if "Reinstall" in (c.data.get("title") or "")], "3 days out: nothing yet"
+    freezer.move_to(local("22:00", day=28))
+    await send(hass_client_no_auth, {"type": "bedtime", "data": {}})
+    await send(hass_client_no_auth, {"type": "bedtime", "data": {}})
+    warned = [c for c in notes if "Reinstall" in (c.data.get("title") or "")]
+    assert len(warned) == 1, "once a night"
+    freezer.move_to(local("22:00", day=29))
+    await send(hass_client_no_auth, {"type": "bedtime", "data": {}})
+    assert len([c for c in notes if "Reinstall" in (c.data.get("title") or "")]) == 2
+
+
+# MARK: Item 10, phone not charging
+
+
+async def test_item10_plug_in_at_bedtime_and_again_after_10_min(hass, ladder, hass_client_no_auth, freezer):
+    notes = async_mock_service(hass, "notify", "phone")
+    hass.states.async_set("sensor.batt", "22")
+    hass.states.async_set("sensor.batt_state", "Not Charging")
+    await ladder(notify_service="notify.phone", phone_battery_sensor="sensor.batt", phone_battery_state_sensor="sensor.batt_state")
+    await send(hass_client_no_auth, days_plan())
+    await send(hass_client_no_auth, {"type": "bedtime", "data": {"battery_level": 22, "battery_charging": False,
+                                                                 "charge_warning": {"enabled": True, "threshold": 30}}})
+    plug = [c for c in notes if c.data.get("message") == "Plug in your phone · alarms at 4:20"]
+    assert len(plug) == 1 and plug[0].data["data"]["push"]["interruption-level"] == "time-sensitive"
+    await at(hass, freezer, local("20:10", day=27) + timedelta(seconds=30))
+    assert len([c for c in notes if (c.data.get("message") or "").startswith("Plug in")]) == 2, "still not charging"
+
+
+async def test_item10_charging_or_above_threshold_says_nothing(hass, ladder, hass_client_no_auth, freezer):
+    notes = async_mock_service(hass, "notify", "phone")
+    hass.states.async_set("sensor.batt_state", "Charging")
+    await ladder(notify_service="notify.phone", phone_battery_state_sensor="sensor.batt_state")
+    await send(hass_client_no_auth, {"type": "bedtime", "data": {"battery_level": 22, "battery_charging": True}})
+    await send(hass_client_no_auth, {"type": "bedtime", "data": {"battery_level": 80, "battery_charging": False}})
+    await send(hass_client_no_auth, {"type": "bedtime", "data": {"battery_level": 10, "battery_charging": False,
+                                                                 "charge_warning": {"enabled": False, "threshold": 30}}})
+    await at(hass, freezer, local("20:15", day=27))
+    assert not [c for c in notes if (c.data.get("message") or "").startswith("Plug in")]

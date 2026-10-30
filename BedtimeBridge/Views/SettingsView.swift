@@ -516,6 +516,14 @@ private struct AlarmSettingsSection: View {
                 Text("The app works out the times and your shortcut creates Clock alarms from Wake Plan › Alarm Dates. Your snooze/stop automations keep working, but Apple fixes Clock snooze at 9 minutes.")
             }
         }
+        Section {
+            DefaultToggle(title: "Plug in your phone", isOn: $settings.chargeWarningEnabled, defaultValue: d.chargeWarningEnabled)
+            if settings.chargeWarningEnabled {
+                DefaultStepper(value: $settings.chargeWarningThreshold, in: 5...80, step: 5, defaultValue: d.chargeWarningThreshold, note: { "\($0)%" }) { "Under \($0)% and not charging" }
+            }
+        } footer: {
+            Text("At bedtime (and at go to bed with wind-down on), a reminder to plug in, and once more after 10 minutes if it's still not charging.")
+        }
         ResetPageSection {
             settings.resetToDefaults(SettingsPages.alarms)
         }

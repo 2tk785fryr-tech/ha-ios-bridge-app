@@ -36,7 +36,9 @@
           "rerun_minutes": "Bedtime again after back in bed for",
           "winding_down_helper": "Winding down helper",
           "bedroom_door_sensor": "Bedroom door sensor",
-          "wind_down_notify_service": "Wind-down notifications to"
+          "wind_down_notify_service": "Wind-down notifications to",
+          "phone_battery_sensor": "Phone battery level",
+          "phone_battery_state_sensor": "Phone battery state"
         },
         "data_description": {
           "wake_action": "Helpers: turn on the entities below, for blueprints that watch them (Wake Snooze Fade, Wake Sequence). Events: fire a bedtime_bridge event for automations and blueprints to trigger on. Both: do both.",
@@ -63,7 +65,9 @@
           "rerun_minutes": "After undoing bedtime, once the bed reads occupied this long without a break, RUN_BEDTIME is sent so your bedtime shortcut runs again (within 6 hours).",
           "winding_down_helper": "Turned on at wind-down while you're home and off at go to bed, when you cancel or when you get into bed early (e.g. input_boolean.winding_down), for your own house automations.",
           "bedroom_door_sensor": "Door closed and bed occupied counts as in bed: no go to bed notification, no Still up reminders, and when you went to bed.",
-          "wind_down_notify_service": "e.g. notify.mobile_app_mikes_iphone. Empty uses the notify action above. The warning, go to bed (critical) and Still up reminders go here, home or away."
+          "wind_down_notify_service": "e.g. notify.mobile_app_mikes_iphone. Empty uses the notify action above. The warning, go to bed (critical) and Still up reminders go here, home or away.",
+          "phone_battery_sensor": "The companion app's battery level (e.g. sensor.mikes_iphone_battery_level), for Plug in your phone at go to bed and the second reminder.",
+          "phone_battery_state_sensor": "The companion app's battery state (Charging, Not Charging, Full)."
         }
       },
       "pair": {
@@ -112,7 +116,9 @@
           "rerun_minutes": "Bedtime again after back in bed for",
           "winding_down_helper": "Winding down helper",
           "bedroom_door_sensor": "Bedroom door sensor",
-          "wind_down_notify_service": "Wind-down notifications to"
+          "wind_down_notify_service": "Wind-down notifications to",
+          "phone_battery_sensor": "Phone battery level",
+          "phone_battery_state_sensor": "Phone battery state"
         },
         "data_description": {
           "wake_action": "Helpers: turn on the entities below, for blueprints that watch them (Wake Snooze Fade, Wake Sequence). Events: fire a bedtime_bridge event for automations and blueprints to trigger on. Both: do both.",
@@ -139,7 +145,9 @@
           "rerun_minutes": "After undoing bedtime, once the bed reads occupied this long without a break, RUN_BEDTIME is sent so your bedtime shortcut runs again (within 6 hours).",
           "winding_down_helper": "Turned on at wind-down while you're home and off at go to bed, when you cancel or when you get into bed early (e.g. input_boolean.winding_down), for your own house automations.",
           "bedroom_door_sensor": "Door closed and bed occupied counts as in bed: no go to bed notification, no Still up reminders, and when you went to bed.",
-          "wind_down_notify_service": "e.g. notify.mobile_app_mikes_iphone. Empty uses the notify action above. The warning, go to bed (critical) and Still up reminders go here, home or away."
+          "wind_down_notify_service": "e.g. notify.mobile_app_mikes_iphone. Empty uses the notify action above. The warning, go to bed (critical) and Still up reminders go here, home or away.",
+          "phone_battery_sensor": "The companion app's battery level (e.g. sensor.mikes_iphone_battery_level), for Plug in your phone at go to bed and the second reminder.",
+          "phone_battery_state_sensor": "The companion app's battery state (Charging, Not Charging, Full)."
         }
       }
     }
@@ -236,6 +244,9 @@
       },
       "bed_off_target": {
         "name": "Bedtime off target"
+      },
+      "app_expires": {
+        "name": "App expires"
       }
     },
     "binary_sensor": {

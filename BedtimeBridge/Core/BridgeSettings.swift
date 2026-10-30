@@ -173,6 +173,12 @@ struct BridgeSettings: Codable, Equatable {
     /// "Start wind-down now" shows from this long before go to bed (also on When options show).
     var startWindDownHours = 2
 
+    // MARK: Plug in your phone (v0.4.3 item 10)
+
+    /// At bedtime (and go to bed with wind-down on): under this battery and not charging, a reminder.
+    var chargeWarningEnabled = true
+    var chargeWarningThreshold = 30
+
     // MARK: Your own alarm's backstops (v0.4.1 item 14)
 
     /// Whether your own alarm on a day off, or on leave, starts with backstops on.
@@ -411,6 +417,7 @@ final class SettingsStore {
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         settings = defaults.data(forKey: Self.key).flatMap(Self.decode) ?? BridgeSettings()
+        HomeAssistantLinks.everyMessage = Self.everyMessage(settings)
     }
 
     /// Lays saved values over the defaults, so settings added in a later version don't
@@ -428,7 +435,17 @@ final class SettingsStore {
         if let data = try? JSONEncoder().encode(settings) {
             defaults.set(data, forKey: Self.key)
         }
-        HomeAssistantLinks.everyMessage = ["wind_down_settings": settings.windDownForHomeAssistant]
+        HomeAssistantLinks.everyMessage = Self.everyMessage(settings)
+    }
+
+    /// Wind-down settings (v0.4.3 item 5) and when this install expires (item 9).
+    static func everyMessage(_ settings: BridgeSettings) -> [String: Any] {
+        var message: [String: Any] = [
+            "wind_down_settings": settings.windDownForHomeAssistant,
+            "charge_warning": ["enabled": settings.chargeWarningEnabled, "threshold": settings.chargeWarningThreshold],
+        ]
+        if let expires = AppExpiry.iso { message["app_expires"] = expires }
+        return message
     }
 }
 

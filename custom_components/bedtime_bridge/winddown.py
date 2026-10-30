@@ -500,6 +500,8 @@ class WindDown:
             await self._notify("Time for bed", f"Time for bed · first alarm {short(first)}" if first else "Time for bed",
                                tag="wind_down_bed", critical=True)
         s["status"] = "bedtime"
+        # Plug in your phone at go to bed too (v0.4.3 item 10).
+        await self.bridge.charge_check()
         self.bridge._event("wind_down_go_to_bed", go_to_bed=s.get("go_to_bed"))
         self._reschedule()
 

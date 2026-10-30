@@ -41,6 +41,8 @@ from .const import (
     CONF_AWAKE_HELPER,
     CONF_NAP_HELPER,
     CONF_WIND_DOWN_HELPER,
+    CONF_PHONE_BATTERY,
+    CONF_PHONE_BATTERY_STATE,
     CONF_BED_SENSOR,
     CONF_BEDTIME_HELPER,
     CONF_CURTAIN_OFFSET,
@@ -334,8 +336,14 @@ class BedtimeBridge:
         }.get(kind)
         if handler is None:
             return {"error": f"unknown message type: {kind}"}
-        # Every message may carry the app's wind-down settings (v0.4.3 item 5).
+        # Every message may carry the app's wind-down settings (v0.4.3 item 5) and when this
+        # install of the app stops opening (item 9).
         self.wind_down.adopt_settings(data.get("wind_down_settings"))
+        if isinstance(data.get("charge_warning"), dict):
+            self.state["charge_warning"] = data["charge_warning"]
+        if isinstance(data.get("app_expires"), str) and data["app_expires"] != self.state.get("app_expires"):
+            self.state["app_expires"] = data["app_expires"]
+            self._changed()
         result = await handler(data) or {}
         if kind in (MSG_PLANNED, MSG_CANCELLED, MSG_SKIPPED, MSG_UNSKIPPED, MSG_BEDTIME_UNDONE):
             await self._recompute_ladder()
@@ -353,6 +361,52 @@ class BedtimeBridge:
                 moved_reason=data.get("reason") if changed else data.get("moved_reason"),
             )
         return {"settings": self.settings_for_app(), "wind_down": self.wind_down.summary(), **result}
+
+    # MARK: Plug in your phone (v0.4.3 item 10)
+
+    def _battery(self) -> tuple[float | None, bool | None]:
+        """The companion app's battery level and whether it's charging (Full counts)."""
+        level_state = self.hass.states.get(self.options.get(CONF_PHONE_BATTERY) or "")
+        charge_state = self.hass.states.get(self.options.get(CONF_PHONE_BATTERY_STATE) or "")
+        try:
+            level = float(level_state.state) if level_state else None
+        except ValueError:
+            level = None
+        charging = None
+        if charge_state is not None and charge_state.state not in UNKNOWN_STATES:
+            charging = charge_state.state.lower() in ("charging", "full")
+        return level, charging
+
+    async def charge_check(self, level: Any = None, charging: Any = None, *, again: bool = True) -> None:
+        """At bedtime (with the phone's own reading) and at go to bed: under the threshold and
+        not charging → "Plug in your phone · alarms at 4:20", once more after 10 min if still
+        not charging."""
+        cfg = self.state.get("charge_warning") or {}
+        if not cfg.get("enabled", True):
+            return
+        sensor_level, sensor_charging = self._battery()
+        level = level if isinstance(level, (int, float)) else sensor_level
+        charging = charging if isinstance(charging, bool) else sensor_charging
+        if level is None or charging is None or charging or level >= int(cfg.get("threshold", 30)):
+            return
+        times = sorted(t for t in (_time(v) for v in self.state.get("alarm_times") or []) if t and t > dt_util.utcnow())
+        alarms = f" · alarms at {dt_util.as_local(times[0]).strftime('%-I:%M')}" if times else ""
+        await self.wind_down._notify("Plug in your phone", f"Plug in your phone{alarms}", tag="charge", time_sensitive=True)
+        if again:
+            async_call_later(self.hass, timedelta(minutes=10), callback(
+                lambda _now: self.hass.async_create_task(self.charge_check(again=False))))
+
+    async def _warn_app_expiry(self) -> None:
+        """At bedtime on each of the last 2 days before the app stops opening (v0.4.3 item 9)."""
+        expires = _time(self.state.get("app_expires"))
+        now = dt_util.utcnow()
+        today = dt_util.as_local(now).date().isoformat()
+        if expires is None or not now < expires <= now + timedelta(days=2) or self.state.get("app_expiry_warned") == today:
+            return
+        self.state["app_expiry_warned"] = today
+        when = dt_util.as_local(expires).strftime("%a %-I:%M %p")
+        await self.wind_down._notify("Reinstall Bedtime Bridge", f"The app stops opening {when}. Reinstall it from Xcode (⌘R); settings are kept.",
+                                     tag="app_expiry")
 
     async def _reset(self, data: dict[str, Any]) -> dict[str, Any]:
         """Reset alarms and backstops to nothing set (v0.4.3 item 7a): clears the alarm state, the
@@ -1638,6 +1692,8 @@ class BedtimeBridge:
     async def _bedtime(self, data: dict[str, Any]) -> dict[str, Any]:
         """Starts the bedtime routine by turning on its helper, only when you're home."""
         await self.wind_down.bedtime_ran()
+        await self._warn_app_expiry()
+        await self.charge_check(data.get("battery_level"), data.get("battery_charging"))
         at_home = self.is_home()
         helper = self.options.get(CONF_BEDTIME_HELPER)
         started = False

@@ -226,6 +226,15 @@ SENSORS = (
         native_unit_of_measurement=UnitOfTime.MINUTES,
         value=lambda s: _last_night(s).get("minutes_off"),
     ),
+    # v0.4.3 item 9: free-team installs stop opening after 7 days.
+    BridgeSensorDescription(
+        key="app_expires",
+        translation_key="app_expires",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        icon="mdi:cellphone-key",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value=lambda s: _time(s.get("app_expires")),
+    ),
     BridgeSensorDescription(
         key="last_event",
         translation_key="last_event",

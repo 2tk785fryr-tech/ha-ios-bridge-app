@@ -115,7 +115,7 @@ enum DurationText {
 /// Which settings each page shows, for "Reset this page to defaults" (v0.4.3 item 8).
 enum SettingsPages {
     static let main = ["shiftRules", "getReadyMinutes", "workArrivalBufferMinutes", "wakeEarlyToGetReady", "homeAddress"]
-    static let alarms = ["alarmStyle", "alarmCount", "alarmSpacingMinutes", "wakeTimeIs", "snoozeMinutes", "alarmSound", "stopBehavior", "lookAheadHours"]
+    static let alarms = ["chargeWarningEnabled", "chargeWarningThreshold", "alarmStyle", "alarmCount", "alarmSpacingMinutes", "wakeTimeIs", "snoozeMinutes", "alarmSound", "stopBehavior", "lookAheadHours"]
     static let ownAlarms = ["newAlarmHoursAhead", "ownAlarmRoundingMinutes", "ownAlarmPickerSnaps", "ownAlarmCount", "ownAlarmSpacingMinutes", "ownAlarmWakeIs", "ownBackstopsDayOff", "ownBackstopsLeave", "ownEarlyMinutes", "ownDeadlineMinutes", "ownLateMinutes", "ownBackstopsFull"]
     static let optionWindows = ["endAlarmsEarlyHours", "notReadyForBedHours", "backToBedHours", "startWindDownHours"]
     static let morningChange = ["morningReasons", "earlyBackstopGapMinutes"]
