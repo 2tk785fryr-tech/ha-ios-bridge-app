@@ -1,6 +1,6 @@
 # Phone shortcuts
 
-What each shortcut on the iPhone does, step by step, as of 27 Oct 2026. These are the "- App"
+What each shortcut on the iPhone does, step by step, as of 29 Oct 2026. These are the "- App"
 versions built for Bedtime Bridge (imported from `shortcuts/`, which stays out of git because the
 signed files hold the Home Assistant server and ecobee home IDs). Steps only: no addresses, tokens
 or home IDs.
@@ -19,6 +19,10 @@ or home IDs.
 | Home Assistant push `RUN_LEAVE_CHECK` (v0.4.1: at each leave reminder) | Bedtime Bridge **Check Drive and Remind** (no shortcut needed) |
 | Home Assistant push `RUN_NAP_START` (v0.4.2: a nap started, home or away) | Nap Start - App |
 | Home Assistant push `RUN_NAP_END` (v0.4.2: the nap ended) | Nap End - App |
+| Home Assistant push `RUN_PLAN_PREVIEW` (v0.4.3: before tonight's wind-down) | Preview Tomorrow - App |
+| Home Assistant push `RUN_WIND_DOWN` (v0.4.3: wind-down starts) | Wind Down On - App |
+| Home Assistant push `RUN_WIND_DOWN_CANCEL` (v0.4.3: wind-down cancelled) | Wind Down Off - App |
+| Home Assistant push `RUN_MORNING_UPDATE` (v0.4.3: hourly on a leave-by morning, and when you leave home) | Morning Update - App |
 | By hand | Temporary Wake-Up - App |
 
 Each push trigger is an iOS 27 "When I receive a notification from Home Assistant" personal
@@ -133,6 +137,78 @@ Phone setup: a "When I receive a notification from Home Assistant" automation, m
 
 Both are sent home or away. The napping helper (integration option *Napping helper*) only goes
 on while you're home.
+
+## Wind Down Focus (v0.4.3 item 5)
+
+Create it once on the phone: Settings → Focus → + → Custom, named **Wind Down**. Allow Seth, phone
+calls and the Home Assistant app; turn on **Dim Lock Screen**. A custom Focus, not Sleep: the
+bedtime shortcut turns Sleep Focus on, which replaces Wind Down (only one Focus can be on).
+
+## Wind Down On - App (v0.4.3 item 5)
+
+New, signed in `shortcuts/`. Run when wind-down starts (Home Assistant's time, Start wind-down
+now in the app, the Wind-down control or Siri).
+
+0. Bedtime Bridge **Report Shortcut Ran** (`RUN_WIND_DOWN`, Outcome **Started**).
+1. **Set Focus**: Wind Down, On. *Add by hand after importing* (the Focus only exists on the
+   phone, so the signed file can't name it).
+2. **Set Brightness** 30%.
+3. **Set Night Shift** On. *Add by hand.*
+4. **Set Reduce White Point** On. *Add by hand.*
+5. Report Shortcut Ran (`RUN_WIND_DOWN`, Outcome **Completed**).
+
+The imported shortcut has a comment where steps 1, 3 and 4 go. No Dark Mode step: Appearance is
+Automatic, and Shortcuts can't set it back to Automatic.
+
+Phone setup: a "When I receive a notification from Home Assistant" automation, message contains
+`RUN_WIND_DOWN`, Run Immediately, Notify When Run off. (It also matches `RUN_WIND_DOWN_CANCEL`;
+filter on "RUN_WIND_DOWN" only if your Shortcuts version matches whole messages, otherwise see
+below.)
+
+## Wind Down Off - App (v0.4.3 item 5)
+
+New, signed in `shortcuts/`. Run when wind-down is cancelled (the warning's button, the app, ⋯,
+the control or Siri).
+
+0. Bedtime Bridge **Report Shortcut Ran** (`RUN_WIND_DOWN_CANCEL`, Outcome **Started**).
+1. **Set Focus**: Wind Down, Off. *Add by hand.*
+2. **Set Reduce White Point** Off. *Add by hand.*
+3. **Set Night Shift** Off, or leave it to its schedule. *Add by hand.*
+4. No brightness step: auto-brightness takes over.
+5. Report Shortcut Ran (`RUN_WIND_DOWN_CANCEL`, Outcome **Completed**).
+
+Phone setup: an automation, message contains `RUN_WIND_DOWN_CANCEL`, Run Immediately. Because
+"contains RUN_WIND_DOWN" also matches the cancel message, give Wind Down On - App's automation
+the condition "message is RUN_WIND_DOWN" if your Shortcuts offers *is*; otherwise add an **If**
+at the top of Wind Down On - App: if the notification's message contains `CANCEL`, stop.
+
+Test once: run On, then Off, and check auto-brightness and automatic Appearance still work.
+
+## Preview Tomorrow - App (v0.4.3 item 5)
+
+New, signed in `shortcuts/`. Home Assistant sends `RUN_PLAN_PREVIEW` 2 h before the wind-down it
+works out from the shift calendar (6:00 PM when only an appointment might decide tomorrow).
+
+0. Report Shortcut Ran (`RUN_PLAN_PREVIEW`, **Started**).
+1. Bedtime Bridge **Preview Tomorrow**: plans without setting any alarms and sends Home Assistant
+   the first alarm, cause, event and leave-by.
+2. Report Shortcut Ran (`RUN_PLAN_PREVIEW`, **Completed**).
+
+Phone setup: an automation, message contains `RUN_PLAN_PREVIEW`, Run Immediately. Without it,
+Home Assistant uses the shift calendar alone and the warning adds "(appointments not checked)".
+
+## Morning Update - App (v0.4.3 item 14)
+
+New, signed in `shortcuts/`. Home Assistant sends `RUN_MORNING_UPDATE` every hour after the first
+alarm is stopped on a leave-by morning, and once when you leave home. (Live Activity pushes would
+make this unnecessary; they need a server sending Apple pushes, not built.)
+
+0. Report Shortcut Ran (`RUN_MORNING_UPDATE`, **Started**).
+1. Bedtime Bridge **Morning Update**: refreshes the morning Live Activity (drive, weather, next
+   backstop), or ends it once you've left home.
+2. Report Shortcut Ran (`RUN_MORNING_UPDATE`, **Completed**).
+
+Phone setup: an automation, message contains `RUN_MORNING_UPDATE`, Run Immediately.
 
 ## Temporary Wake-Up - App
 

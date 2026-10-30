@@ -227,6 +227,28 @@ scheduled, then shows what the phone really holds, read back from the system: **
 4:20 4:25 4:30**, or **Couldn't set 1 of 3 alarms** in red. The Lock Screen widget shows the same
 count ("3 alarms set · Leave by 6:26").
 
+**New in v0.4.3:**
+- **Set alarms asks first:** a manual Plan and set alarms shows a preview with Set alarms and
+  Cancel; Undo stays in the bar until bedtime runs. Bedtime and the Plan Wake Alarms action stay
+  hands-free.
+- **No alarms tomorrow**, any time before the morning, with a Sleep In switch. A shift still on
+  the calendar keeps its backstops.
+- **Calendar changed:** "Tomorrow changed: Days shift deleted. Your 4:20 alarms are still set.
+  Re-plan?" Nothing moves until you confirm.
+- **Wind-down** (Settings → Wind-down, off until set up): from tomorrow's first alarm, Home
+  Assistant warns you, starts wind-down (Winding down helper, Wind Down On - App), says when
+  it's time for bed (critical) and reminds you if you're still up. Getting home late moves bedtime
+  later rather than cutting wind-down short.
+- **Morning Live Activity:** "Leave in 25 min · 5:45" with the drive, worst case, weather and
+  the next backstop.
+- **Resets** (Settings → Reset), **defaults shown** on every settings page, and a **Reset this
+  page** on each.
+- **Siri and Shortcuts:** Nap, No alarms tomorrow, Sleep later, Start/Cancel wind-down, Add leave,
+  Add a wake-up event.
+- **Leave titles and Add leave; Add a wake-up event** (the circle button at the top).
+- **Weekly summary**, **Plug in your phone**, **quick actions** on the app icon, **controls** for
+  the Lock Screen, Control Center and Action button.
+
 **New in v0.4.2:**
 - **Bottom bar:** changes with the moment (evening, alarms set, up early, snoozing, up, napping,
   plans changed). It has one ⋯ list for everything else. Protected actions (End alarms, Not
@@ -621,6 +643,12 @@ Requires Xcode 27 (free from the Mac App Store) and an iPhone on iOS 27 or later
 4. Plug in your iPhone, trust the Mac, and turn on Settings → Privacy & Security → Developer Mode.
 5. Pick your iPhone at the top of Xcode and press ⌘R. The first time, allow the developer
    certificate on the phone under Settings → General → VPN & Device Management.
+
+**Reinstalling.** An app signed with a free Apple ID stops opening 7 days after it's installed;
+with a paid Developer Program membership it lasts a year. Bedtime Bridge warns you on the main
+screen from 3 days before (red on the last day), and Home Assistant reminds you at bedtime on the
+last 2 days (sensor *App expires*). To reinstall, plug in the iPhone, open the project in Xcode
+and press ⌘R. Settings, the Home Assistant pairing and your alarms are kept.
 
 On first launch, tap **Preview plan** to grant calendar access.
 Tap **Plan and set alarms** once to grant alarm access and notifications. Then open the gear and set:
