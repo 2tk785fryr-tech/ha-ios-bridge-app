@@ -24,6 +24,7 @@ from homeassistant.util import dt as dt_util
 from . import drivetime as dtm
 from . import ladder as ldr
 from . import weekly
+from .awake import NoAlarmMorning
 from .liveactivity import LiveActivities
 from .winddown import WindDown
 from .const import (
@@ -107,6 +108,7 @@ from .const import (
     MSG_PREVIEW,
     MSG_RESET,
     MSG_LIVE_ACTIVITY,
+    MSG_AWAKE,
     MSG_WIND_DOWN,
     MSG_NAP_STARTED,
     MSG_CANCELLED,
@@ -235,6 +237,8 @@ class BedtimeBridge:
         self.wind_down = WindDown(self)
         # Live Activities by Apple push (0.4.4).
         self.live = LiveActivities(self)
+        # Mornings with no alarms (v0.4.6 item 2).
+        self.awake = NoAlarmMorning(self)
         # Apple Maps' client keeps its access token between checks.
         self._maps: dtm.AppleMaps | None = None
         # RUN_MORNING_UPDATE timers for the morning Live Activity (v0.4.3 item 14).
@@ -275,6 +279,7 @@ class BedtimeBridge:
         self.hass.async_create_task(self._recompute_ladder())
         self.entry.async_on_unload(async_track_time_interval(self.hass, self._weather_tick, timedelta(minutes=15)))
         self.wind_down.async_start()
+        self.awake.async_start()
         presence = self.options.get(CONF_PRESENCE) or []
         if isinstance(presence, str):
             presence = [presence]
@@ -361,12 +366,14 @@ class BedtimeBridge:
             MSG_WIND_DOWN: self._wind_down_action,
             MSG_RESET: self._reset,
             MSG_LIVE_ACTIVITY: self._live_activity,
+            MSG_AWAKE: self._awake,
         }.get(kind)
         if handler is None:
             return {"error": f"unknown message type: {kind}"}
         # Every message may carry the app's wind-down settings (v0.4.3 item 5) and when this
         # install of the app stops opening (item 9).
         self.wind_down.adopt_settings(data.get("wind_down_settings"))
+        self.awake.adopt_settings(data.get("awake_settings"))
         if isinstance(data.get("notification_levels"), dict):
             self.state["notification_levels"] = {
                 k: v for k, v in data["notification_levels"].items() if v in ("normal", "time_sensitive", "critical")
@@ -408,10 +415,16 @@ class BedtimeBridge:
             )
         return {
             "settings": self.settings_for_app(), "wind_down": self.wind_down.summary(),
+            # Whether I'm awake is offered now (v0.4.6 item 2).
+            "no_alarm_morning": self.awake.summary(),
             # The app skips its own leave reminders while home when the checks happen here.
             "drive_checks_here": bool(self._drive_services()),
             **result,
         }
+
+    async def _awake(self, data: dict[str, Any]) -> dict[str, Any]:
+        """I'm awake from the app, Siri or a control: good morning now (v0.4.6 item 2)."""
+        return await self.awake.good_morning(by_hand=True)
 
     # MARK: Plug in your phone (v0.4.3 item 10)
 

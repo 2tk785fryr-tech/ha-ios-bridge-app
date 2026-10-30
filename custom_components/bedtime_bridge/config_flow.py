@@ -21,6 +21,7 @@ from .const import (
     CONF_BEDROOM_DOOR,
     CONF_DRIVE_SOURCE,
     CONF_GOOGLE_KEY,
+    CONF_HALLWAY_SENSORS,
     CONF_MAPS_KEY,
     CONF_MAPS_KEY_ID,
     CONF_TOMTOM_KEY,
@@ -69,6 +70,7 @@ from .const import (
     DEFAULT_SHIFT_TYPES,
     DOMAIN,
     SUGGESTED,
+    SUGGESTED_HALLWAY,
     SUGGESTED_HOME_CHECKS,
     WAKE_ACTIONS,
     WAKE_BOTH,
@@ -117,6 +119,7 @@ OPTION_KEYS = [
     CONF_MAPS_KEY_ID,
     CONF_TOMTOM_KEY,
     CONF_GOOGLE_KEY,
+    CONF_HALLWAY_SENSORS,
 ]
 
 
@@ -162,6 +165,11 @@ def _schema(hass: HomeAssistant, current: dict[str, Any]) -> vol.Schema:
         if CONF_HOME_CHECKS in current:
             return {"suggested_value": current[CONF_HOME_CHECKS]} if current[CONF_HOME_CHECKS] else {}
         found = [e for e in SUGGESTED_HOME_CHECKS if hass.states.get(e)]
+        return {"suggested_value": found} if found else {}
+    def hallway_suggestion() -> dict[str, Any]:
+        if CONF_HALLWAY_SENSORS in current:
+            return {"suggested_value": current[CONF_HALLWAY_SENSORS]} if current[CONF_HALLWAY_SENSORS] else {}
+        found = [e for e in SUGGESTED_HALLWAY if hass.states.get(e)]
         return {"suggested_value": found} if found else {}
     shift_names = parse_shift_types(current.get(CONF_SHIFT_TYPES) or DEFAULT_SHIFT_TYPES)
 
@@ -222,6 +230,9 @@ def _schema(hass: HomeAssistant, current: dict[str, Any]) -> vol.Schema:
             vol.Optional(CONF_NAP_HELPER, description=suggested(CONF_NAP_HELPER)): entity(["input_boolean"]),
             vol.Optional(CONF_WIND_DOWN_HELPER, description=suggested(CONF_WIND_DOWN_HELPER)): entity(["input_boolean"]),
             vol.Optional(CONF_BEDROOM_DOOR, description=suggested(CONF_BEDROOM_DOOR)): entity(["binary_sensor"]),
+            vol.Optional(CONF_HALLWAY_SENSORS, description=hallway_suggestion()): selector.EntitySelector(
+                selector.EntitySelectorConfig(domain=["binary_sensor"], multiple=True)
+            ),
             vol.Optional(CONF_WIND_DOWN_NOTIFY, description=suggested(CONF_WIND_DOWN_NOTIFY)): selector.TextSelector(),
             vol.Optional(CONF_PHONE_BATTERY, description=suggested(CONF_PHONE_BATTERY)): entity(["sensor"]),
             vol.Optional(CONF_PHONE_BATTERY_STATE, description=suggested(CONF_PHONE_BATTERY_STATE)): entity(["sensor"]),
