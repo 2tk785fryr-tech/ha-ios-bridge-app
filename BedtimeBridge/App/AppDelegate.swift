@@ -14,7 +14,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         // until you confirm.
         if response.notification.request.content.categoryIdentifier == PlanChangeNotice.category,
            response.actionIdentifier != UNNotificationDismissActionIdentifier {
-            await MainActor.run { _ = UIApplication.shared.open(PlanChangeNotice.replanURL) }
+            await MainActor.run { UIApplication.shared.open(PlanChangeNotice.replanURL) }
             return
         }
         guard response.notification.request.content.categoryIdentifier == LocationQuestions.category,

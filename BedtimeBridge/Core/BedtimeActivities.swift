@@ -91,7 +91,7 @@ enum BedtimeActivities {
         #endif
         data["bundle_id"] = Bundle.main.bundleIdentifier
         if let team = AppExpiry.teamID { data["team_id"] = team }
-        guard let link = await HomeAssistantLinks.current(SettingsStore.shared.settings) as? IntegrationLink else { return }
+        guard let link = HomeAssistantLinks.current(SettingsStore.shared.settings) as? IntegrationLink else { return }
         _ = try? await link.reply(.liveActivity, data: data)
     }
 

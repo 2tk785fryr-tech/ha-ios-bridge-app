@@ -19,7 +19,7 @@ struct BedtimeBridgeApp: App {
         // Live Activity push tokens go to Home Assistant from launch.
         Task { @MainActor in BedtimeActivities.watchPushTokens() }
         ControlActions.open = { url in
-            await MainActor.run { _ = UIApplication.shared.open(url) }
+            await MainActor.run { UIApplication.shared.open(url) }
         }
         // Navigation titles (e.g. Settings) in Sora to match the Tonight screen.
         let appearance = UINavigationBar.appearance()

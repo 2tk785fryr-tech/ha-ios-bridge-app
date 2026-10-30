@@ -93,9 +93,9 @@ final class QuickActionSceneDelegate: NSObject, UIWindowSceneDelegate {
         if let item = connectionOptions.shortcutItem { open(item) }
     }
 
-    func windowScene(_ windowScene: UIWindowScene, performActionFor shortcutItem: UIApplicationShortcutItem) async -> Bool {
+    func windowScene(_ windowScene: UIWindowScene, performActionFor shortcutItem: UIApplicationShortcutItem, completionHandler: @escaping (Bool) -> Void) {
         open(shortcutItem)
-        return true
+        completionHandler(true)
     }
 
     private func open(_ item: UIApplicationShortcutItem) {

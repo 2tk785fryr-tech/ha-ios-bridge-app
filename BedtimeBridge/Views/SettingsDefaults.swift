@@ -51,7 +51,7 @@ struct WithDefault: View {
 
     var body: some View {
         if let defaultText {
-            Text("\(text) ") + Text("· default \(defaultText)").font(.caption).foregroundStyle(Theme.textFaint)
+            Text("\(text) \(Text("· default \(defaultText)").font(.caption).foregroundStyle(Theme.textFaint))")
         } else {
             Text(text)
         }
