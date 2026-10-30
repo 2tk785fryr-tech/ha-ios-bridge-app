@@ -193,11 +193,13 @@ struct ContentView: View {
                             undoBedtime()
                         }
                         .editing(settings: store.settings, edited: refreshScheduled)
-                    } else if skippedMorning == nil, scheduled.isEmpty, plan?.hasAlarm != true {
+                    } else if skippedMorning == nil, scheduled.isEmpty, plan?.hasAlarm != true, !nothingSetBar {
                         DayOffCard { sheet = .dayOff }
                     }
 
-                    if store.settings.alarmStyle == .app {
+                    // With nothing set, Add a temporary alarm is in the bar (v0.4.7 item 8); the card
+                    // stays while temporary alarms are set, to show them.
+                    if store.settings.alarmStyle == .app, !(nothingSetBar && temporaryAlarms.isEmpty) {
                         TemporaryAlarmsCard(alarms: temporaryAlarms, ring: { coordinator.ring(forAlarm: $0.id, at: $0.time) }) {
                             sheet = .temporary
                         } remove: { id in
@@ -440,6 +442,9 @@ struct ContentView: View {
         )
     }
 
+    /// The bar holds Set alarms for a time and Add a temporary alarm (v0.4.7 item 8).
+    private var nothingSetBar: Bool { !BottomBar.make(barInputs).actionRow.isEmpty }
+
     /// The moment the bottom bar is for (v0.4.2 item 6).
     private var barInputs: BottomBar.Inputs {
         let now = max(tick, Date.now)
@@ -472,6 +477,8 @@ struct ContentView: View {
         }
         i.evening = ScreenClock.isEvening(now)
         i.awakeOffered = NoAlarmMorning.offered
+        i.nothingFound = plan.map { !$0.hasAlarm } ?? false
+        i.alarmStyleApp = store.settings.alarmStyle == .app
         return i
     }
 
@@ -556,6 +563,7 @@ struct ContentView: View {
         case .skip: if let morning = barMorning { skip(morning, then: .sleepIn) }
         case .addTemporary: sheet = .temporary
         case .settings: showSettings = true
+        case .setAlarmsForTime: sheet = .dayOff
         case .imAwake:
             Task {
                 let outcome = await coordinator.imAwake(settings: store.settings)
@@ -1818,6 +1826,7 @@ private struct BottomBarView: View {
     let menu: () -> Void
 
     private static let topHeight: CGFloat = 56
+    private static let statusHeight: CGFloat = 24
     private static let rowHeight: CGFloat = 52
     private static let spacing: CGFloat = 10
 
@@ -1851,26 +1860,29 @@ private struct BottomBarView: View {
                     .frame(height: 72)
                     .id(action)
                 }
+            } else if !bar.actionRow.isEmpty {
+                // Nothing set (v0.4.7 item 8): a small status line, the filled actions, then the
+                // outlined buttons.
+                VStack(spacing: Self.spacing) {
+                    top
+                        .frame(maxWidth: .infinity, minHeight: Self.statusHeight, maxHeight: Self.statusHeight)
+                    HStack(spacing: 10) {
+                        ForEach(bar.actionRow) { action in filled(action) }
+                    }
+                    .frame(height: Self.rowHeight)
+                    buttonRow(outline: Theme.buttonOutline)
+                }
             } else {
                 VStack(spacing: Self.spacing) {
                     top
                         .frame(maxWidth: .infinity, minHeight: Self.topHeight, maxHeight: Self.topHeight)
-                    HStack(spacing: 10) {
-                        ForEach(bar.buttons) { action in button(action) }
-                        Button(action: menu) {
-                            Image(systemName: "ellipsis")
-                                .font(.system(size: 18, weight: .bold))
-                                .foregroundStyle(Theme.accentText)
-                                .frame(width: Self.rowHeight, height: Self.rowHeight)
-                                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Theme.border, lineWidth: 1))
-                        }
-                        .accessibilityLabel("More")
-                    }
-                    .frame(height: Self.rowHeight)
+                    buttonRow(outline: Theme.border)
                 }
             }
         }
-        .frame(height: Self.topHeight + Self.rowHeight + Self.spacing)
+        .frame(height: bar.actionRow.isEmpty || slider != nil
+               ? Self.topHeight + Self.rowHeight + Self.spacing
+               : Self.statusHeight + 2 * Self.rowHeight + 2 * Self.spacing)
         .disabled(working)
     }
 
@@ -1915,17 +1927,49 @@ private struct BottomBarView: View {
         }
     }
 
-    private func button(_ action: BarAction) -> some View {
+    private func buttonRow(outline: Color) -> some View {
+        HStack(spacing: 10) {
+            ForEach(bar.buttons) { action in button(action, outline: outline) }
+            Button(action: menu) {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(Theme.accentText)
+                    .frame(width: Self.rowHeight, height: Self.rowHeight)
+                    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(outline, lineWidth: 1))
+            }
+            .accessibilityLabel("More")
+        }
+        .frame(height: Self.rowHeight)
+    }
+
+    private func button(_ action: BarAction, outline: Color) -> some View {
         let tint = action.isProtected ? Theme.amber : Theme.accentText
+        // The nothing-set bar's second row is short on room (v0.4.7 item 8).
+        let title = action == .addTemporary && !bar.actionRow.isEmpty ? "Temporary alarm" : action.title(day: day)
         return Button { tap(action) } label: {
-            Text(action.title(day: day))
+            Text(title)
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(tint)
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
                 .frame(maxWidth: .infinity, minHeight: Self.rowHeight)
-                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(action.isProtected ? Theme.amber.opacity(0.6) : Theme.border, lineWidth: 1))
+                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(action.isProtected ? Theme.amber.opacity(0.6) : outline, lineWidth: 1))
         }
+    }
+
+    /// Set alarms for a time in violet, Nap in orange (v0.4.7 item 8).
+    private func filled(_ action: BarAction) -> some View {
+        let nap = action == .nap
+        return Button { tap(action) } label: {
+            Label(action.title(day: day), systemImage: nap ? "powersleep" : "alarm")
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(nap ? Theme.nap.text : .white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(nap ? Theme.nap.fill : Theme.accent, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+        .frame(maxWidth: nap ? 120 : .infinity)
     }
 
     private func tap(_ action: BarAction) {

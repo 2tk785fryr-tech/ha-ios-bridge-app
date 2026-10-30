@@ -13,6 +13,8 @@ enum BarAction: String, CaseIterable, Identifiable {
     case addLeave, addWakeUpEvent
     /// v0.4.6 item 2: good morning on a morning with no alarms.
     case imAwake
+    /// v0.4.7 item 8: your own alarms when nothing is set.
+    case setAlarmsForTime
 
     var id: String { rawValue }
 
@@ -69,6 +71,7 @@ enum BarAction: String, CaseIterable, Identifiable {
         case .addLeave: "Add leave"
         case .addWakeUpEvent: "Add a wake-up event"
         case .imAwake: "I'm awake"
+        case .setAlarmsForTime: "Set alarms for a time"
         }
     }
 
@@ -105,6 +108,8 @@ struct BottomBar: Equatable {
 
     var top: Top
     var buttons: [BarAction]
+    /// A row of filled buttons between the top and the buttons (v0.4.7 item 8: nothing set).
+    var actionRow: [BarAction] = []
 
     struct Inputs {
         var now = Date.now
@@ -136,6 +141,9 @@ struct BottomBar: Equatable {
         var startWindDownHours = 2
         /// A morning with no alarms, from Home Assistant (v0.4.6 item 2).
         var awakeOffered = false
+        /// A preview found no shift or event (v0.4.7 item 8).
+        var nothingFound = false
+        var alarmStyleApp = true
     }
 
     /// Wind-down's states (9 before, 10 during, 11 after go to bed and not in bed).
@@ -196,6 +204,13 @@ struct BottomBar: Equatable {
         let nap: [BarAction] = i.napEnabled ? [.nap] : []
         if NoAlarmMorning.barOffers(offered: i.awakeOffered, alarmsSet: i.alarmsSet, napping: false, evening: i.evening) {
             return BottomBar(top: .main(.imAwake, "I'm awake · good morning"), buttons: nap + [.previewPlan])
+        }
+        // v0.4.7 item 8: nothing set and nothing coming (on opening, or a preview found nothing):
+        // the two ways to set something yourself, in the bar.
+        if i.nothingFound || (!i.evening && i.tomorrow == nil) {
+            return BottomBar(top: .status("Nothing set for tonight", .muted),
+                             buttons: (i.alarmStyleApp ? [.addTemporary] : []) + [.previewPlan],
+                             actionRow: [.setAlarmsForTime] + nap)
         }
         if i.evening {
             if let plan = i.planReady, plan.count > 0 {
