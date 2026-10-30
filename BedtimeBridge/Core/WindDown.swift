@@ -74,7 +74,6 @@ struct WindDownState: Codable, Equatable {
             snapshot.windDownAt = active ? newValue.windDown : nil
             snapshot.goToBedAt = active ? newValue.goToBed : nil
             snapshot.windDownStatus = newValue.status.rawValue
-            snapshot.windDownCanStart = newValue.canStartNow(hours: SettingsStore.sharedHoursToStartWindDown)
             snapshot.save()
             ControlRefresh.reload()
         }

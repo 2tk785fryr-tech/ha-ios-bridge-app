@@ -40,7 +40,7 @@ struct WindDownControlProvider: ControlValueProvider {
     var previewValue: WindDownControlValue { WindDownControlValue(running: false, canStart: true) }
     func currentValue() async throws -> WindDownControlValue {
         let snapshot = NextAlarmSnapshot.load()
-        return WindDownControlValue(running: snapshot.windDownStatus == "winding_down", canStart: snapshot.windDownCanStart ?? false)
+        return WindDownControlValue(running: snapshot.windDownStatus == "winding_down", canStart: snapshot.canStartWindDown(at: .now))
     }
 }
 

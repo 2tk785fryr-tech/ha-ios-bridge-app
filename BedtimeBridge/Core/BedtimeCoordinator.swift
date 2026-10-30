@@ -780,7 +780,11 @@ final class BedtimeCoordinator {
         let set = setAlarmTimes().filter { $0 > .now }
         guard !set.isEmpty, let new = try? await buildPlan(settings: settings) else { return nil }
         let snapshot = NextAlarmSnapshot.load()
-        guard let text = PlanChange.describe(set: set, setCause: lastAppliedPlan?.cause ?? snapshot.cause,
+        // Compared with the plan as it was set, so Sleep later, edits and morning changes (which
+        // move the alarms on purpose) don't read as the calendar changing.
+        let planned = (lastAppliedPlan?.alarmTimes ?? []).filter { $0 > .now }
+        guard let text = PlanChange.describe(set: planned.isEmpty ? set : planned, shownFirst: set.first,
+                                             setCause: lastAppliedPlan?.cause ?? snapshot.cause,
                                              setLabel: lastAppliedPlan?.appointment?.title ?? (snapshot.label.isEmpty ? nil : snapshot.label), new: new) else {
             // A change that leaves tomorrow as it is (another day's event): nothing to offer.
             calendarChangedSinceSet = false
@@ -1620,7 +1624,14 @@ final class BedtimeCoordinator {
     /// The shortcut a Home Assistant phone command asked for has run, so HA can take its
     /// notification off the phone.
     func commandRan(_ command: String, outcome: String = "ran", settings: BridgeSettings) async {
-        await report(.commandRan, data: ["command": command, "outcome": outcome], settings: settings)
+        var data: [String: Any] = ["command": command, "outcome": outcome]
+        if command == "RUN_BEDTIME", outcome == "ran" {
+            // The bedtime shortcut's first step is bedtime (v0.4.3): Undo and Not ready for bed
+            // follow it, and Home Assistant ends wind-down and checks the battery.
+            bedtimeRanAt = .now
+            data.merge(PhoneBattery.reading()) { $1 }
+        }
+        await report(.commandRan, data: data, settings: settings)
     }
 
     /// Clock app mode: the Shortcuts "Alarm is snoozed/stopped" automations call this instead

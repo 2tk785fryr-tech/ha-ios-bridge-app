@@ -56,9 +56,12 @@ struct UndoRecord: Codable, Equatable {
 /// "Tomorrow changed: Days shift deleted. Your 4:20 alarms are still set. Re-plan?"
 enum PlanChange {
     /// nil when the new plan wakes you at the same times for the same reason.
-    static func describe(set: [Date], setCause: String, setLabel: String?, new: WakePlan) -> String? {
+    /// `set` is the plan as it was set; `shownFirst` the first alarm set now (moved by Sleep later
+    /// or an edit), for the message.
+    static func describe(set: [Date], shownFirst: Date? = nil, setCause: String, setLabel: String?, new: WakePlan) -> String? {
         let upcoming = set.sorted()
-        guard let first = upcoming.first else { return nil }
+        guard let planned = upcoming.first else { return nil }
+        let first = shownFirst ?? planned
         if UndoRecord.same(upcoming, new.alarmTimes), setCause == new.cause { return nil }
         let what: String
         let wasShift = ![AlarmCause.calendar, AlarmCause.manual, AlarmCause.none, ""].contains(setCause)

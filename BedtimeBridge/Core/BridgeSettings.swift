@@ -303,7 +303,7 @@ extension BridgeSettings {
             "reminders": notInBedReminders, "reminder_first_minutes": reminderFirstMinutes,
             "reminder_every_minutes": reminderEveryMinutes, "reminder_stop_minutes": reminderStopMinutes,
             "preview_before_minutes": planCheckBeforeMinutes, "preview_fallback": planCheckFallback,
-            "own_alarm": windDownOwnAlarm,
+            "own_alarm": windDownOwnAlarm, "start_hours": startWindDownHours,
         ]
     }
 
@@ -458,18 +458,15 @@ final class SettingsStore {
             defaults.set(data, forKey: Self.key)
         }
         HomeAssistantLinks.everyMessage = Self.everyMessage(settings)
-        Self.sharedHoursToStartWindDown = settings.startWindDownHours
         // The controls and the widget's tap read these from the shared snapshot (v0.4.3 item 16).
         var snapshot = NextAlarmSnapshot.load()
         snapshot.windDownControlOpensApp = settings.windDownControlOpensApp
         snapshot.napControlNapsNow = settings.napControlNapsNow
         snapshot.widgetTapAlwaysTonight = settings.widgetTapAlwaysTonight
+        snapshot.startWindDownHours = settings.startWindDownHours
         snapshot.save()
         ControlRefresh.reload()
     }
-
-    /// "Start wind-down now" window, readable without the main actor.
-    nonisolated(unsafe) static var sharedHoursToStartWindDown = 2
 
     /// Wind-down settings (v0.4.3 item 5) and when this install expires (item 9).
     static func everyMessage(_ settings: BridgeSettings) -> [String: Any] {

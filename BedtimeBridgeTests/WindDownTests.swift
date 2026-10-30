@@ -69,3 +69,31 @@ final class WindDownTests: XCTestCase {
         XCTAssertEqual(BedtimeCoordinator.movedFromUsual(plan, settings: settings), "snowy at 5 AM")
     }
 }
+
+/// Review fixes (29 Oct).
+final class WindDownReviewFixTests: XCTestCase {
+    private let bed = Date(timeIntervalSince1970: 1_800_000_000)
+
+    func testControlWorksOutTheWindowWhenAsked() {
+        var snapshot = NextAlarmSnapshot()
+        snapshot.windDownStatus = "scheduled"
+        snapshot.windDownAt = bed.addingTimeInterval(-3600)
+        snapshot.goToBedAt = bed
+        snapshot.startWindDownHours = 2
+        XCTAssertFalse(snapshot.canStartWindDown(at: bed.addingTimeInterval(-3 * 3600)), "before the window: Not yet")
+        XCTAssertTrue(snapshot.canStartWindDown(at: bed.addingTimeInterval(-90 * 60)), "inside it: Start")
+        XCTAssertFalse(snapshot.canStartWindDown(at: bed.addingTimeInterval(-30 * 60)), "wind-down already due")
+    }
+
+    func testSleepLaterIsNotACalendarChange() {
+        // Set at 4:20 4:30, then Sleep later moved them; tomorrow's plan is still 4:20 4:30.
+        let planned = [bed, bed.addingTimeInterval(600)]
+        var same = WakePlan(source: .shift, alarmTimes: planned, reason: "Days shift")
+        same.shift = ShiftCandidate(title: "Days", start: bed.addingTimeInterval(7200), wakeMinutesBefore: 110, cause: "Days")
+        XCTAssertNil(PlanChange.describe(set: planned, shownFirst: bed.addingTimeInterval(1800), setCause: "Days", setLabel: nil, new: same))
+        let gone = WakePlan(source: .none, alarmTimes: [], reason: "")
+        XCTAssertEqual(PlanChange.describe(set: planned, shownFirst: bed.addingTimeInterval(1800), setCause: "Days", setLabel: nil, new: gone),
+                       "Tomorrow changed: Days shift deleted. Your \(WakePlanner.format(bed.addingTimeInterval(1800))) alarms are still set. Re-plan?",
+                       "the message names the alarms set now")
+    }
+}

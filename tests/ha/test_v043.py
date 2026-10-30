@@ -378,3 +378,92 @@ async def test_item15_sent_on_its_day_with_a_link_to_the_app(hass, ladder, hass_
     sent = [c for c in notes if c.data.get("title") == "Your week"]
     assert sent and sent[0].data["data"]["url"] == "bedtimebridge://summary"
     assert "1 nap" in hass.states.get("sensor.bedtime_bridge_weekly_summary").state
+
+
+# MARK: Review fixes (29 Oct)
+
+
+async def test_fix_bedtime_shortcut_report_ends_wind_down(hass, ladder, hass_client_no_auth, freezer):
+    """The bedtime shortcut only reports RUN_BEDTIME; that's bedtime."""
+    notes = await wind_setup(hass, ladder)
+    await send(hass_client_no_auth, days_plan())
+    await at(hass, freezer, local("21:00", day=27))
+    await send(hass_client_no_auth, {"type": "command_ran", "data": {"command": "RUN_BEDTIME", "outcome": "ran"}})
+    assert status_of(hass) == "bedtime"
+    assert hass.states.get("input_boolean.winding_down").state == "off"
+    await at(hass, freezer, local("22:30", day=27))
+    assert not any((m or "").startswith(("Time for bed", "Still up")) for m in messages(notes)), "asleep with the door open: nothing"
+
+
+async def test_fix_a_morning_change_never_rebuilds_last_night(hass, ladder, hass_client_no_auth, freezer):
+    notes = await wind_setup(hass, ladder)
+    await send(hass_client_no_auth, days_plan())
+    await at(hass, freezer, local("04:25"))
+    await send(hass_client_no_auth, {"type": "morning_changed", "data": {
+        "alarm_times": [local("06:00").isoformat()], "alarms_planned": 1, "delay_minutes": 100, "phase": "snoozing", "scope": "alarms"}})
+    await at(hass, freezer, local("04:40"))
+    late = [m for m in messages(notes) if (m or "").startswith(("Time for bed", "Still up")) and "6:00" in m]
+    assert not late, "no go to bed or reminders in the morning"
+
+
+async def test_fix_reminders_skip_missed_slots(hass, ladder, hass_client_no_auth, freezer):
+    await wind_setup(hass, ladder)
+    await send(hass_client_no_auth, days_plan())
+    wd = hass.config_entries.async_entries("bedtime_bridge")[0].runtime_data.wind_down
+    wd.s["reminders_sent"] = 1
+    nxt = wd._next_reminder(local("22:31", day=27))
+    assert nxt == local("22:40", day=27), "the next slot, not a burst of the missed ones"
+
+
+async def test_fix_no_alarms_tomorrow_stops_a_previewed_wind_down(hass, ladder, hass_client_no_auth, freezer):
+    notes = await wind_setup(hass, ladder)
+    await send(hass_client_no_auth, {"type": "preview", "data": {"first_alarm": local("04:20").isoformat(), "cause": "Days", "wind_down_settings": WIND}})
+    assert status_of(hass) == "scheduled"
+    await send(hass_client_no_auth, {"type": "cancelled", "data": {"sleep_in": True}})
+    assert status_of(hass) == "off"
+    await at(hass, freezer, local("22:30", day=27))
+    assert not any((m or "").startswith(("Wind-down", "Time for bed")) for m in messages(notes))
+
+
+async def test_fix_start_now_only_within_its_window(hass, ladder, hass_client_no_auth, freezer):
+    await wind_setup(hass, ladder)
+    freezer.move_to(local("15:00", day=27))
+    await send(hass_client_no_auth, days_plan())
+    reply = await send(hass_client_no_auth, {"type": "wind_down", "data": {"action": "start"}})
+    assert reply["started"] is False and status_of(hass) == "scheduled"
+    freezer.move_to(local("20:00", day=27))
+    reply = await send(hass_client_no_auth, {"type": "wind_down", "data": {"action": "start"}})
+    assert reply["started"] is True and status_of(hass) == "winding_down"
+
+
+async def test_fix_preview_wait_survives_a_reschedule_and_a_deleted_shift_ends_it(hass, ladder, hass_client_no_auth, freezer):
+    freezer.move_to(local("17:00", day=27))
+    notes = await wind_setup(hass, ladder)
+    await send(hass_client_no_auth, {"type": "context", "data": {"wind_down_settings": WIND}})
+    await at(hass, freezer, local("19:00", day=27))
+    assert "RUN_PLAN_PREVIEW" in messages(notes)
+    # An attribute update on the shift sensor during the wait used to drop it.
+    shift_sensor(hass)
+    hass.states.async_set("sensor.current_shift", "Days", {**hass.states.get("sensor.current_shift").attributes, "x": 1})
+    await hass.async_block_till_done()
+    await at(hass, freezer, local("19:11", day=27))
+    assert status_of(hass) == "scheduled", "the calendar fallback still ran"
+    # Then the shift is deleted: the calendar-only times go.
+    shift_sensor(hass, start="2026-11-02T06:30:00-05:00")
+    await hass.async_block_till_done()
+    assert status_of(hass) == "off"
+
+
+async def test_fix_morning_updates_work_the_next_morning_too(hass, ladder, hass_client_no_auth, freezer):
+    notes = async_mock_service(hass, "notify", "phone")
+    await ladder(notify_service="notify.phone", phone_commands=True)
+    for day in (28, 29):
+        freezer.move_to(local("04:20", day=day))
+        planned = days_plan()
+        planned["data"]["leave_by"] = local("06:45", day=day).isoformat()
+        planned["data"]["alarm_times"] = [local("04:20", day=day).isoformat()]
+        await send(hass_client_no_auth, planned)
+        await send(hass_client_no_auth, {"type": "stopped", "data": {"alarm_times": []}})
+        await at(hass, freezer, local("05:21", day=day))
+        await at(hass, freezer, local("07:05", day=day))
+    assert messages(notes).count("RUN_MORNING_UPDATE") >= 4, "both mornings got their updates"

@@ -423,8 +423,11 @@ class BedtimeBridge:
     def _schedule_morning_updates(self) -> None:
         """After the first stop on a leave-by morning: RUN_MORNING_UPDATE every hour until 15 min
         after leave-by, while home."""
-        if self._morning_unsubs:
+        until = _time(self.state.get("morning_updates_until"))
+        if self._morning_unsubs and until is not None and until > dt_util.utcnow():
             return
+        # Last morning's timers have all fired: start over.
+        self._cancel_morning_updates()
         leave_by = _time(self.state.get("leave_by"))
         now = dt_util.utcnow()
         end = leave_by + timedelta(minutes=LEAVE_CHECK_TAIL_MINUTES) if leave_by else None
@@ -482,6 +485,17 @@ class BedtimeBridge:
         self._schedule_weekly()
         return summary
 
+    async def bedtime_started(self, data: dict[str, Any]) -> None:
+        """Bedtime ran (the bedtime shortcut's Report Shortcut Ran RUN_BEDTIME, or Start Bedtime
+        Routine): wind-down ends (v0.4.3 item 5), the expiry warning (item 9) and Plug in your
+        phone (item 10), each once a night."""
+        await self.wind_down.bedtime_ran()
+        await self._warn_app_expiry()
+        today = dt_util.as_local(dt_util.utcnow()).date().isoformat()
+        if self.state.get("charge_checked_night") != today:
+            self.state["charge_checked_night"] = today
+            await self.charge_check(data.get("battery_level"), data.get("battery_charging"))
+
     async def _warn_app_expiry(self) -> None:
         """At bedtime on each of the last 2 days before the app stops opening (v0.4.3 item 9)."""
         expires = _time(self.state.get("app_expires"))
@@ -505,6 +519,7 @@ class BedtimeBridge:
         self.state["ladder"] = {}
         self.state["ladder_plan"] = {}
         self.state["ladder_delay"] = None
+        self.state["nap_alarm_times"] = []
         self.state["leave_reminders"] = []
         self._cancel_leave_checks()
         for command in list(self._pending_commands):
@@ -1449,7 +1464,12 @@ class BedtimeBridge:
         self._check_alarms_set(data)
         if not times:
             self.state["alarm_cause"] = "noalarm"
-        weekly.record(self.state.setdefault("history", []), "change", dt_util.utcnow(), reason=data.get("reason"))
+        if data.get("phase") not in ("bedtime", "edit"):
+            # Mornings changed, for the weekly summary: once per morning, not Sleep later or edits.
+            history = self.state.setdefault("history", [])
+            today = dt_util.as_local(dt_util.utcnow()).date().isoformat()
+            if not any(h.get("kind") == "change" and dt_util.as_local(dt_util.parse_datetime(h["time"])).date().isoformat() == today for h in history):
+                weekly.record(history, "change", dt_util.utcnow(), reason=data.get("reason"))
         self.state["last_morning_change"] = {
             "delay_minutes": delay if times else None,
             "alarm_times": self.state["alarm_times"],
@@ -1715,6 +1735,10 @@ class BedtimeBridge:
         command = data.get("command")
         # "ran" is Started (the shortcut's first step); "completed" its last; "already_done".
         outcome = data.get("outcome") or "ran"
+        if command == CMD_BEDTIME and outcome == "ran":
+            # The bedtime shortcut's first step: this is bedtime, whether a push or you ran it
+            # (it never sends "bedtime" itself).
+            await self.bedtime_started(data)
         now = dt_util.utcnow().isoformat()
         if command in COMMANDS:
             await self._clear_command(command)
@@ -1789,9 +1813,7 @@ class BedtimeBridge:
 
     async def _bedtime(self, data: dict[str, Any]) -> dict[str, Any]:
         """Starts the bedtime routine by turning on its helper, only when you're home."""
-        await self.wind_down.bedtime_ran()
-        await self._warn_app_expiry()
-        await self.charge_check(data.get("battery_level"), data.get("battery_charging"))
+        await self.bedtime_started(data)
         at_home = self.is_home()
         helper = self.options.get(CONF_BEDTIME_HELPER)
         started = False

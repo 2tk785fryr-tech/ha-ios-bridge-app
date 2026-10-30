@@ -56,7 +56,10 @@ DEFAULTS: dict[str, Any] = {
     "preview_before_minutes": 120,
     "preview_fallback": "18:00",
     "own_alarm": True,
+    "start_hours": 2,
 }
+# Never send go to bed (critical) or a reminder this long after it was due (a restart, a late change).
+LATE_LIMIT = timedelta(minutes=15)
 STATUSES = ["scheduled", "winding_down", "bedtime", "cancelled", "off"]
 # The phone has this long to answer RUN_PLAN_PREVIEW before the shift calendar is used alone.
 PREVIEW_ANSWER_MINUTES = 10
@@ -102,6 +105,8 @@ class WindDown:
         self.hass = bridge.hass
         self._unsubs: list[Callable[[], None]] = []
         self._preview_unsub: Callable[[], None] | None = None
+        # The 10-minute wait for the phone's answer, kept apart so rescheduling can't drop it.
+        self._unanswered_unsub: Callable[[], None] | None = None
 
     # MARK: State
 
@@ -171,6 +176,9 @@ class WindDown:
         if self._preview_unsub:
             self._preview_unsub()
             self._preview_unsub = None
+        if self._unanswered_unsub:
+            self._unanswered_unsub()
+            self._unanswered_unsub = None
 
     # MARK: Inputs
 
@@ -207,8 +215,9 @@ class WindDown:
                 self.s["moved_reason"] = moved_reason
             self._set_first_alarm(first, source="alarms", cause=state.get("alarm_cause"), event=state.get("label"),
                                   leave_by=state.get("leave_by"), checked=True)
-        elif self.s.get("source") == "alarms":
-            # The alarms went (cancel, skip, no alarms): no wind-down tonight.
+        elif self.s.get("source") == "alarms" or state.get("alarm_cause") in NOT_MORNINGS:
+            # The alarms went (cancel, skip, No alarms tomorrow): no wind-down tonight, whatever
+            # the times came from.
             self._turn_off("no alarm")
         self.bridge._changed()
 
@@ -216,9 +225,9 @@ class WindDown:
         """The phone's "Preview tomorrow": first alarm, cause, event, leave-by."""
         self.adopt_settings(data.get("wind_down_settings"))
         self.s["preview_answered"] = self._now().isoformat()
-        if self._preview_unsub:
-            self._preview_unsub()
-            self._preview_unsub = None
+        if self._unanswered_unsub:
+            self._unanswered_unsub()
+            self._unanswered_unsub = None
         if self.s.get("source") == "alarms" and self._t("first_alarm") and self._t("first_alarm") > self._now():
             # Alarms already set win over a preview.
             self._reschedule()
@@ -259,6 +268,11 @@ class WindDown:
         wind = min(wind, times.go_to_bed - timedelta(minutes=int(cfg["minimum_minutes"])))
         old_bed = self._t("go_to_bed")
         status = s.get("status", "off")
+        if status in ("off", "scheduled") and times.go_to_bed <= self._now():
+            # Go to bed already passed (a change in the morning, or a late plan): nothing tonight.
+            s.update(status="off", wind_down=None, go_to_bed=times.go_to_bed.isoformat(), bed_notified=True, reminders_stopped=True)
+            self._reschedule()
+            return
         if status in ("off", "scheduled"):
             s["status"] = "scheduled"
             s["wind_down"] = wind.isoformat()
@@ -316,7 +330,12 @@ class WindDown:
                 at(wind, self._start)
         if status in ("scheduled", "winding_down") and bed:
             if bed <= now and not s.get("bed_notified"):
-                self.hass.async_create_task(self._go_to_bed())
+                if now - bed <= LATE_LIMIT:
+                    self.hass.async_create_task(self._go_to_bed())
+                else:
+                    # Too late to say so (Home Assistant was down): it's bedtime, quietly.
+                    s.update(status="bedtime", bed_notified=True)
+                    self.hass.async_create_task(self._helper(False))
             else:
                 at(bed, self._go_to_bed)
         reminding = self.settings["reminders"] and not (s.get("reminders_stopped") or s.get("bedtime_ran") or s.get("went_to_bed"))
@@ -345,6 +364,7 @@ class WindDown:
             if when <= now and self.s.get("preview_sent_day") == dt_util.as_local(now).date().isoformat():
                 when = dt_util.as_utc(local + timedelta(days=1))
         if self.s.get("preview_sent_for") == when.isoformat():
+            self._arm_unanswered()
             return
         if when <= now:
             # Missed (HA restarted): ask now if it's still the evening before.
@@ -383,6 +403,9 @@ class WindDown:
         first, every, stop = (int(cfg[k]) for k in ("reminder_first_minutes", "reminder_every_minutes", "reminder_stop_minutes"))
         sent = int(s.get("reminders_sent") or 0)
         when = start + timedelta(minutes=first + every * sent)
+        # Missed slots (a restart) are skipped, not sent in a burst.
+        while when < now - timedelta(seconds=30):
+            when += timedelta(minutes=every)
         if when > start + timedelta(minutes=stop):
             return None
         return max(when, now + timedelta(seconds=1))
@@ -392,15 +415,31 @@ class WindDown:
     async def _preview(self, when: datetime) -> None:
         self.s["preview_sent_for"] = when.isoformat()
         self.s["preview_sent_day"] = dt_util.as_local(self._now()).date().isoformat()
+        self.s["preview_sent_at"] = self._now().isoformat()
+        self.s["preview_answered"] = None
         await self.bridge._command(CMD_PLAN_PREVIEW)
         self.bridge._changed()
-        self._preview_unsub = async_track_point_in_utc_time(
-            self.hass, callback(lambda _n: self.hass.async_create_task(self._preview_unanswered())),
-            self._now() + timedelta(minutes=PREVIEW_ANSWER_MINUTES))
+        self._arm_unanswered()
+
+    @callback
+    def _arm_unanswered(self) -> None:
+        """Waits PREVIEW_ANSWER_MINUTES for the phone (also after a restart)."""
+        sent = self._t("preview_sent_at")
+        if sent is None or self.s.get("preview_answered") or self._unanswered_unsub:
+            return
+        due = sent + timedelta(minutes=PREVIEW_ANSWER_MINUTES)
+        if due <= self._now():
+            self.hass.async_create_task(self._preview_unanswered())
+            return
+        self._unanswered_unsub = async_track_point_in_utc_time(
+            self.hass, callback(lambda _n: self.hass.async_create_task(self._preview_unanswered())), due)
 
     async def _preview_unanswered(self) -> None:
         """No answer: the shift calendar alone, and the warning says appointments weren't checked."""
-        self._preview_unsub = None
+        self._unanswered_unsub = None
+        if self.s.get("preview_answered"):
+            return
+        self.s["preview_answered"] = "unanswered"
         if self.s.get("source") in ("alarms", "preview") and (self._t("first_alarm") or self._now()) > self._now():
             return
         estimate = self._calendar_estimate(self._now())
@@ -429,8 +468,14 @@ class WindDown:
     async def start_now(self) -> bool:
         """"Start wind-down now" (app, control, Siri): everything wind-down does, right away;
         go to bed unchanged."""
-        if self.s.get("status") not in ("scheduled", "cancelled") or self._t("go_to_bed") is None:
+        bed, wind, now = self._t("go_to_bed"), self._t("wind_down"), self._now()
+        if self.s.get("status") not in ("scheduled", "cancelled") or bed is None:
             return False
+        # Only from start_hours before go to bed, and not once go to bed has passed.
+        if not bed - timedelta(hours=int(self.settings["start_hours"])) <= now < bed:
+            return False
+        if self.s.get("status") == "cancelled":
+            self.s["reminders_stopped"] = False
         self.s["status"] = "scheduled"
         self.s["wind_down"] = self._now().isoformat()
         await self._start()
@@ -611,7 +656,16 @@ class WindDown:
 
     @callback
     def _shift_changed(self, _event: Event) -> None:
-        if self.s.get("source") in (None, "calendar"):
+        source = self.s.get("source")
+        if source == "calendar" and self.s.get("status") in ("scheduled", "winding_down"):
+            # Times from the calendar alone follow it: a changed or deleted shift moves or ends them.
+            estimate = self._calendar_estimate(self._now())
+            if estimate is None:
+                self._turn_off("shift gone")
+            else:
+                self._set_first_alarm(estimate[0], source="calendar", cause=estimate[1], event=estimate[1], leave_by=None, checked=False)
+            self.bridge._changed()
+        elif source is None:
             self._reschedule()
 
     @callback
