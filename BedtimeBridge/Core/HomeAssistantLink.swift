@@ -277,6 +277,9 @@ struct IntegrationLink: HomeAssistantLink {
         if let windDown = reply["wind_down"] as? [String: Any] {
             WindDownState.cached = WindDownState(windDown)
         }
+        if let week = reply["weekly_summary"] as? [String: Any] {
+            WeeklySummary.cached = WeeklySummary(week)
+        }
         return reply
     }
 

@@ -1,6 +1,7 @@
 import EventKit
 import Foundation
 import MapKit
+import UserNotifications
 import WidgetKit
 
 /// Glues calendar, drive time, Home Assistant and alarms together. Used by the app UI,
@@ -644,6 +645,35 @@ final class BedtimeCoordinator {
             clearedMorning = record.previousCleared
         }
         undoPlan = nil
+    }
+
+    // MARK: Controls (v0.4.3 item 16)
+
+    /// The series alarm counting down a snooze, for the widget's tap.
+    func snoozingAlarmID() -> UUID? {
+        guard let until = NextAlarmSnapshot.load().snoozedUntil, until > .now else { return nil }
+        return alarms.scheduledAlarms().filter { !keptAlarms.contains($0.id) }.min { abs($0.date.timeIntervalSince(until)) < abs($1.date.timeIntervalSince(until)) }?.id
+    }
+
+    /// The Nap control set to nap straight away: the first quick length, checked as on the nap
+    /// screen; if it won't fit, a notification says why instead.
+    func napNowFromControl(settings: BridgeSettings) async {
+        guard let minutes = settings.napLengths.first else { return }
+        let limit = await napLimit(settings: settings)
+        let content = UNMutableNotificationContent()
+        if NapPlanner.fits(minutes: minutes, now: .now, count: settings.napAlarmCount, spacing: settings.napSpacingMinutes, limit: limit) {
+            do {
+                try await startNap(minutes: minutes, settings: settings)
+                return
+            } catch {
+                content.title = "Couldn't set the nap"
+                content.body = error.localizedDescription
+            }
+        } else {
+            content.title = "\(NapPlanner.lengthName(minutes)) nap won't fit"
+            content.body = limit?.text ?? "Something later today is too close."
+        }
+        try? await UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: "nap-control", content: content, trigger: nil))
     }
 
     // MARK: Reset (v0.4.3 item 7)
@@ -1409,6 +1439,10 @@ final class BedtimeCoordinator {
             data["sleep_in"] = sleepIn
             // No alarms keeps leave-by only while the shift is still on the calendar.
             dropLeaveRemindersIfEventGone(settings: settings)
+            // The morning Live Activity ends when the morning changes to no alarms (v0.4.3 item 14).
+            await BedtimeActivities.end(.morning)
+        } else {
+            await updateMorningActivity(settings: settings)
         }
         if let reason { data["reason"] = reason }
         if let note, !note.isEmpty { data["note"] = note }
@@ -1504,7 +1538,10 @@ final class BedtimeCoordinator {
         if let upAnswer { stopped["up"] = upAnswer }
         await report(.stopped, data: stopped, settings: settings)
 
-        await recheckDrive(settings: settings)
+        // The drive re-check also shows the morning Live Activity (v0.4.3 item 14).
+        if await recheckDrive(settings: settings) == nil {
+            await updateMorningActivity(settings: settings)
+        }
     }
 
     // MARK: Leave reminders (v0.4.1 item 17)
@@ -1524,6 +1561,7 @@ final class BedtimeCoordinator {
               let trip = await leaveReminder.recheck(using: provider, origin: origin, travel: travel, offsets: settings.leaveReminderOffsets, notify: notify)
         else { return nil }
         updateWidget { $0.leaveBy = trip.leaveBy }
+        await updateMorningActivity(settings: settings)
         await report(.leaveBy, data: [
             "leave_by": Self.iso(trip.leaveBy),
             "drive_minutes": Int((trip.plannedTravelSeconds / 60).rounded()),
@@ -1710,7 +1748,8 @@ final class BedtimeCoordinator {
 
     /// The forecast fetch for the chosen source, or nil when it can't be reached
     /// (Home Assistant chosen but not connected).
-    private func weatherForecast(settings: BridgeSettings, link: HomeAssistantLink?) -> (() async throws -> (hours: [ForecastHour], temperatureUnit: String?))? {
+    /// Also the morning Live Activity's weather (v0.4.3 item 14).
+    func weatherForecast(settings: BridgeSettings, link: HomeAssistantLink?) -> (() async throws -> (hours: [ForecastHour], temperatureUnit: String?))? {
         switch settings.weatherSource {
         case .homeAssistant:
             guard let link else { return nil }

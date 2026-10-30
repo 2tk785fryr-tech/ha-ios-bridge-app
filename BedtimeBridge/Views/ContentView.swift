@@ -39,6 +39,8 @@ struct ContentView: View {
         case noAlarms(Date)
         /// v0.4.3 items 12 and 13.
         case addLeave, addWakeUp
+        /// v0.4.3 item 15, from the weekly notification.
+        case weeklySummary
         var id: String {
             switch self {
             case .changeMorning(let phase): "changeMorning-\(phase.rawValue)"
@@ -229,13 +231,22 @@ struct ContentView: View {
                 refreshScheduled()
                 if scheduled != before { plan = coordinator.lastAppliedPlan }
                 coordinator.dropLeaveRemindersIfEventGone(settings: store.settings)
-                Task { await coordinator.recheckDriveOnOpen(settings: store.settings) }
+                Task {
+                    await coordinator.recheckDriveOnOpen(settings: store.settings)
+                    await coordinator.updateMorningActivity(settings: store.settings)
+                }
             }
             // bedtimebridge://replan, from Home Assistant's "plan out of date" and
             // "missing plan" notifications.
             .onOpenURL { url in
                 // Opens the preview; nothing changes until you confirm (v0.4.3 item 4).
                 if url.host == "replan" { preview(replan: true) }
+                // bedtimebridge://summary, from the weekly notification (v0.4.3 item 15).
+                if url.host == "summary" { sheet = .weeklySummary }
+                // Quick actions, controls and the widget's tap (v0.4.3 item 16).
+                if url.host == "action", let action = QuickAction(rawValue: url.lastPathComponent) { open(action) }
+                if url.host == "tonight" { sheet = nil }
+                if url.host == "now" { openWhatMattersNow() }
                 // bedtimebridge://pair?…, tapped on the integration's pairing screen.
                 if url.host == "pair" {
                     pairingMessage = HomeAssistantLinks.pair(with: url)
@@ -267,6 +278,8 @@ struct ContentView: View {
                                      bedtime: bedtimeTimes(preview.plan)) {
                         setPreviewed(preview)
                     }
+                case .weeklySummary:
+                    WeeklySummaryView(settings: store.settings)
                 case .addLeave:
                     AddLeaveSheet(settings: store.settings) { refreshScheduled() }
                 case .addWakeUp:
@@ -584,6 +597,33 @@ struct ContentView: View {
         return "Plan and set alarms"
     }
 
+    /// A quick action or control opens the app on that screen; protected actions still need the
+    /// slide-and-hold, in the bar or at the screen's commit step (v0.4.3 item 16).
+    private func open(_ action: QuickAction) {
+        sheet = nil
+        switch action {
+        case .nap: sheet = .nap
+        case .previewTomorrow: run(schedule: false)
+        case .addWakeUpEvent: sheet = .addWakeUp
+        case .addLeave: sheet = .addLeave
+        case .sleepLater: sheet = .sleepLater
+        case .noAlarmsTomorrow: perform(.noAlarmsTomorrow)
+        case .startWindDown: perform(.startWindDown)
+        case .wakeLater: perform(.wakeLater)
+        case .upEarlyOrEnd:
+            let first = coordinator.alarmSeries.min()
+            barSlider = first.map { $0 > .now } ?? true ? .upEarly : .endAlarms
+        case .backToBed: barSlider = .backToBed
+        }
+    }
+
+    /// The widget's tap: the stop screen while snoozing, otherwise Tonight (which shows the
+    /// morning after the alarms).
+    private func openWhatMattersNow() {
+        sheet = nil
+        if let snoozing = coordinator.snoozingAlarmID() { stoppingAlarm = SnoozedAlarm(id: snoozing) }
+    }
+
     /// Wind-down actions run in Home Assistant (v0.4.3 item 5).
     private func windDown(_ action: String) {
         isWorking = true
@@ -649,6 +689,7 @@ struct ContentView: View {
 
     private func refreshScheduled() {
         scheduled = coordinator.scheduledAlarmTimes()
+        defer { QuickActions.update(barInputs, settings: store.settings) }
         skippedMorning = coordinator.skippedMorning
         skipReplacement = coordinator.skipReplacement
         temporaryAlarms = coordinator.temporaryAlarms

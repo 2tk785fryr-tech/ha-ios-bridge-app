@@ -647,13 +647,15 @@ class WindDown:
         return domain, service
 
     async def _notify(self, title: str, message: str, *, tag: str, actions: list[dict[str, Any]] | None = None,
-                      critical: bool = False, time_sensitive: bool = False) -> None:
+                      critical: bool = False, time_sensitive: bool = False, url: str | None = None) -> None:
         target = self._notify_service()
         if target is None:
             return
         data: dict[str, Any] = {"tag": f"bedtime_bridge_{tag}"}
         if actions:
             data["actions"] = actions
+        if url:
+            data["url"] = url
         if critical:
             data["push"] = {"sound": {"name": "default", "critical": 1, "volume": 1.0}, "interruption-level": "critical"}
         elif time_sensitive:

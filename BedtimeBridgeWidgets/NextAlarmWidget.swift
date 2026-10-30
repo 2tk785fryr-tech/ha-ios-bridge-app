@@ -49,6 +49,9 @@ struct NextAlarmWidget: Widget {
             NextAlarmView(entry: entry)
                 // Lock Screen sizes are tinted by the system; the Home Screen size uses Nightfall.
                 .containerBackground(Theme.surface, for: .widget)
+                // What matters now (snooze screen, the morning, otherwise Tonight), or always
+                // Tonight (v0.4.3 item 16).
+                .widgetURL(URL(string: entry.snapshot.widgetTapAlwaysTonight == true ? "bedtimebridge://tonight" : "bedtimebridge://now"))
         }
         .configurationDisplayName("Next Alarm")
         .description("Your next wake-up alarm and why it's set.")

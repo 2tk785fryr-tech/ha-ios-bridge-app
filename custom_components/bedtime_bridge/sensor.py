@@ -226,6 +226,14 @@ SENSORS = (
         native_unit_of_measurement=UnitOfTime.MINUTES,
         value=lambda s: _last_night(s).get("minutes_off"),
     ),
+    # v0.4.3 item 15: the week, sent Sunday evening (by default).
+    BridgeSensorDescription(
+        key="weekly_summary",
+        translation_key="weekly_summary",
+        icon="mdi:calendar-week",
+        value=lambda s: ((s.get("weekly_summary") or {}).get("text") or "")[:255] or None,
+        attributes=lambda s: {k: v for k, v in (s.get("weekly_summary") or {}).items() if k != "text"},
+    ),
     # v0.4.3 item 9: free-team installs stop opening after 7 days.
     BridgeSensorDescription(
         key="app_expires",

@@ -70,6 +70,9 @@ struct SettingsView: View {
                 SettingsLink(title: "Leave", icon: "beach.umbrella", value: settings.leaveTitles.joined(separator: ", ")) {
                     LeaveSettings(settings: $store.settings)
                 }
+                SettingsLink(title: "Weekly summary", icon: "calendar.day.timeline.left", value: settings.weeklySummaryEnabled ? "On" : "Off") {
+                    WeeklySummarySettings(settings: $store.settings)
+                }
                 SettingsLink(title: "Appointments", icon: "calendar.badge.clock",
                              value: settings.appointmentKeyword.isEmpty ? "Wake-up keyword: none" : "Wake-up keyword: \(settings.appointmentKeyword)") {
                     SettingsPage(title: "Appointments") {
@@ -104,6 +107,9 @@ struct SettingsView: View {
                 }
                 SettingsLink(title: "Calendars", icon: "calendar", value: calendarSummary(settings)) {
                     CalendarsPage(settings: $store.settings)
+                }
+                SettingsLink(title: "Shortcuts & controls", icon: "square.grid.2x2", value: "") {
+                    ShortcutsSettings(settings: $store.settings)
                 }
                 SettingsLink(title: "App icon", icon: "app.badge", value: AppIconChoice.current.title) {
                     SettingsPage(title: "App icon") { AppIconSection() }

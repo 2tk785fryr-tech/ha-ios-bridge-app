@@ -247,6 +247,9 @@
       },
       "app_expires": {
         "name": "App expires"
+      },
+      "weekly_summary": {
+        "name": "Weekly summary"
       }
     },
     "binary_sensor": {

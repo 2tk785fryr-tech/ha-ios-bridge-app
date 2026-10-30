@@ -73,7 +73,10 @@ struct WindDownState: Codable, Equatable {
             let active = [.scheduled, .windingDown, .bedtime].contains(newValue.status)
             snapshot.windDownAt = active ? newValue.windDown : nil
             snapshot.goToBedAt = active ? newValue.goToBed : nil
+            snapshot.windDownStatus = newValue.status.rawValue
+            snapshot.windDownCanStart = newValue.canStartNow(hours: SettingsStore.sharedHoursToStartWindDown)
             snapshot.save()
+            ControlRefresh.reload()
         }
     }
 

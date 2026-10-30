@@ -8,6 +8,9 @@ struct BedtimeBridgeWidgets: WidgetBundle {
         NextAlarmWidget()
         WakeAlarmLiveActivity()
         BedtimeLiveActivity()
+        NapControl()
+        WindDownControl()
+        TonightControl()
     }
 }
 

@@ -69,7 +69,7 @@ async def test_no_alarms_with_the_shift_still_on_keeps_leave_by(hass, ladder, ha
 
 # MARK: Item 5, wind-down
 
-from datetime import timedelta  # noqa: E402
+from datetime import datetime, timedelta  # noqa: E402
 
 from homeassistant.core import callback  # noqa: E402
 from pytest_homeassistant_custom_component.common import async_fire_time_changed, async_mock_service  # noqa: E402
@@ -308,3 +308,73 @@ async def test_item10_charging_or_above_threshold_says_nothing(hass, ladder, has
                                                                  "charge_warning": {"enabled": False, "threshold": 30}}})
     await at(hass, freezer, local("20:15", day=27))
     assert not [c for c in notes if (c.data.get("message") or "").startswith("Plug in")]
+
+
+# MARK: Item 14, morning Live Activity updates
+
+
+async def test_item14_hourly_morning_updates_after_the_first_stop_and_one_on_leaving(hass, ladder, hass_client_no_auth, freezer):
+    notes = async_mock_service(hass, "notify", "phone")
+    hass.states.async_set("person.me", "home")
+    await ladder(notify_service="notify.phone", phone_commands=True, presence_entities=["person.me"])
+    freezer.move_to(local("04:20"))
+    planned = days_plan()
+    planned["data"]["leave_by"] = local("06:45").isoformat()
+    await send(hass_client_no_auth, planned)
+    await send(hass_client_no_auth, {"type": "stopped", "data": {"alarm_times": []}})
+    await at(hass, freezer, local("05:21"))
+    assert messages(notes).count("RUN_MORNING_UPDATE") == 1
+    await at(hass, freezer, local("06:21"))
+    assert messages(notes).count("RUN_MORNING_UPDATE") == 2
+    hass.states.async_set("person.me", "not_home")
+    await hass.async_block_till_done()
+    assert messages(notes).count("RUN_MORNING_UPDATE") == 3, "left home: once more, so the app ends it"
+    await at(hass, freezer, local("07:01"))
+    assert messages(notes).count("RUN_MORNING_UPDATE") == 3, "and no more after that"
+
+
+async def test_item14_no_alarms_change_stops_the_updates(hass, ladder, hass_client_no_auth, freezer):
+    notes = async_mock_service(hass, "notify", "phone")
+    await ladder(notify_service="notify.phone", phone_commands=True)
+    freezer.move_to(local("04:20"))
+    planned = days_plan()
+    planned["data"]["leave_by"] = local("06:45").isoformat()
+    await send(hass_client_no_auth, planned)
+    await send(hass_client_no_auth, {"type": "stopped", "data": {"alarm_times": []}})
+    await send(hass_client_no_auth, {"type": "morning_changed", "data": {
+        "alarm_times": [], "alarms_planned": 0, "delay_minutes": 0, "phase": "up", "scope": "alarms", "sleep_in": True}})
+    await at(hass, freezer, local("06:30"))
+    assert "RUN_MORNING_UPDATE" not in messages(notes)
+
+
+# MARK: Item 15, weekly summary
+
+from custom_components.bedtime_bridge import weekly  # noqa: E402
+
+
+def test_item15_summary_text():
+    now = dt_util.utcnow()
+    history = []
+    for day, snoozes in ((1, 2), (2, 1), (3, 0)):
+        weekly.record(history, "morning", now - timedelta(days=day), snoozes=snoozes, backstops_fired=1 if day == 1 else 0)
+    weekly.record(history, "change", now - timedelta(days=2), reason="Snow delay")
+    weekly.record(history, "change", now - timedelta(days=9), reason="Too old")
+    weekly.record(history, "nap", now - timedelta(days=1), minutes=30)
+    nights = [{"go_to_bed": (now - timedelta(days=d)).isoformat(), "minutes_off": off} for d, off in ((1, 10), (2, 14))]
+    summary = weekly.summarize(history, nights, now)
+    assert summary["text"] == "Bed 12 min after target on average · 1 snoozes a morning · 1 backstop fired · 1 morning changed (Snow delay) · 1 nap"
+    assert summary["change_reasons"] == ["Snow delay"]
+
+
+async def test_item15_sent_on_its_day_with_a_link_to_the_app(hass, ladder, hass_client_no_auth, freezer):
+    notes = async_mock_service(hass, "notify", "phone")
+    await ladder(notify_service="notify.phone")
+    # 27 Oct 2026 is a Tuesday; Sunday 6 PM is 1 Nov.
+    await send(hass_client_no_auth, {"type": "context", "data": {"weekly_summary": {"enabled": True, "weekday": 6, "time": "18:00"}}})
+    await send(hass_client_no_auth, {"type": "nap_started", "data": {"alarm_times": [local("21:00", day=27).isoformat()], "minutes": 20}})
+    await at(hass, freezer, local("18:00", day=31))
+    assert not [c for c in notes if c.data.get("title") == "Your week"]
+    await at(hass, freezer, datetime(2026, 11, 1, 18, 0, tzinfo=dt_util.get_time_zone(TZ)))
+    sent = [c for c in notes if c.data.get("title") == "Your week"]
+    assert sent and sent[0].data["data"]["url"] == "bedtimebridge://summary"
+    assert "1 nap" in hass.states.get("sensor.bedtime_bridge_weekly_summary").state

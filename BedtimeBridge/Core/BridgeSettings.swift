@@ -177,6 +177,24 @@ struct BridgeSettings: Codable, Equatable {
     /// "Start wind-down now" shows from this long before go to bed (also on When options show).
     var startWindDownHours = 2
 
+    // MARK: Shortcuts & controls (v0.4.3 item 16)
+
+    /// Quick actions per moment ("daytime", "evening", "morning"); a moment not here uses its defaults.
+    var quickActions: [String: [String]] = [:]
+    /// The Wind-down control opens the app first instead of acting directly.
+    var windDownControlOpensApp = false
+    /// The Nap control naps with the first quick length straight away instead of opening the nap screen.
+    var napControlNapsNow = false
+    /// The Next alarm widget always opens Tonight instead of what matters now.
+    var widgetTapAlwaysTonight = false
+
+    // MARK: Weekly summary (v0.4.3 item 15)
+
+    var weeklySummaryEnabled = true
+    /// 0 = Monday … 6 = Sunday.
+    var weeklySummaryWeekday = 6
+    var weeklySummaryTime = "18:00"
+
     // MARK: Plug in your phone (v0.4.3 item 10)
 
     /// At bedtime (and go to bed with wind-down on): under this battery and not charging, a reminder.
@@ -440,13 +458,25 @@ final class SettingsStore {
             defaults.set(data, forKey: Self.key)
         }
         HomeAssistantLinks.everyMessage = Self.everyMessage(settings)
+        Self.sharedHoursToStartWindDown = settings.startWindDownHours
+        // The controls and the widget's tap read these from the shared snapshot (v0.4.3 item 16).
+        var snapshot = NextAlarmSnapshot.load()
+        snapshot.windDownControlOpensApp = settings.windDownControlOpensApp
+        snapshot.napControlNapsNow = settings.napControlNapsNow
+        snapshot.widgetTapAlwaysTonight = settings.widgetTapAlwaysTonight
+        snapshot.save()
+        ControlRefresh.reload()
     }
+
+    /// "Start wind-down now" window, readable without the main actor.
+    nonisolated(unsafe) static var sharedHoursToStartWindDown = 2
 
     /// Wind-down settings (v0.4.3 item 5) and when this install expires (item 9).
     static func everyMessage(_ settings: BridgeSettings) -> [String: Any] {
         var message: [String: Any] = [
             "wind_down_settings": settings.windDownForHomeAssistant,
             "charge_warning": ["enabled": settings.chargeWarningEnabled, "threshold": settings.chargeWarningThreshold],
+            "weekly_summary": ["enabled": settings.weeklySummaryEnabled, "weekday": settings.weeklySummaryWeekday, "time": settings.weeklySummaryTime],
         ]
         if let expires = AppExpiry.iso { message["app_expires"] = expires }
         return message

@@ -33,6 +33,14 @@ struct NextAlarmSnapshot: Codable, Equatable {
     /// "Bed in 42 min · first alarm 4:20".
     var windDownAt: Date? = nil
     var goToBedAt: Date? = nil
+    /// For the Wind-down control (v0.4.3 item 16): Home Assistant's status, and whether Start
+    /// wind-down now is open.
+    var windDownStatus: String? = nil
+    var windDownCanStart: Bool? = nil
+    /// Settings → Shortcuts & controls, read by the controls and the widget's tap.
+    var windDownControlOpensApp: Bool? = nil
+    var napControlNapsNow: Bool? = nil
+    var widgetTapAlwaysTonight: Bool? = nil
 
     /// Winding down at `date`: go to bed still ahead.
     func bedCountdown(at date: Date) -> Date? {

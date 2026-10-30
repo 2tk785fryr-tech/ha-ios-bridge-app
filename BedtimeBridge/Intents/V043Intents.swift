@@ -196,3 +196,16 @@ struct AddWakeUpEventIntent: AppIntent {
         return .result(dialog: "Added \(title).\(wake)")
     }
 }
+
+/// RUN_MORNING_UPDATE (v0.4.3 item 14): Home Assistant sends it hourly on a leave-by morning and
+/// when you leave home; this refreshes the morning Live Activity, or ends it.
+struct MorningUpdateIntent: AppIntent {
+    static var title: LocalizedStringResource = "Morning Update"
+    static var description = IntentDescription("Refreshes the morning Live Activity (drive, weather, next backstop), or ends it once you've left home.")
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        await BedtimeCoordinator.shared.updateMorningActivity(settings: SettingsStore.shared.settings)
+        return .result()
+    }
+}

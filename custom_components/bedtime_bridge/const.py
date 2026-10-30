@@ -101,9 +101,12 @@ CMD_NAP_END = "RUN_NAP_END"
 CMD_PLAN_PREVIEW = "RUN_PLAN_PREVIEW"
 CMD_WIND_DOWN = "RUN_WIND_DOWN"
 CMD_WIND_DOWN_CANCEL = "RUN_WIND_DOWN_CANCEL"
+# v0.4.3 item 14: the morning Live Activity can't get pushes on the free team, so this runs the
+# app (Morning Update - App) hourly on a leave-by morning and when you leave home.
+CMD_MORNING_UPDATE = "RUN_MORNING_UPDATE"
 COMMANDS = (
     CMD_DISARM, CMD_ARM, CMD_MORNING, CMD_BEDTIME, CMD_BACK_TO_BED, CMD_LEAVE_CHECK, CMD_NAP_START, CMD_NAP_END,
-    CMD_PLAN_PREVIEW, CMD_WIND_DOWN, CMD_WIND_DOWN_CANCEL,
+    CMD_PLAN_PREVIEW, CMD_WIND_DOWN, CMD_WIND_DOWN_CANCEL, CMD_MORNING_UPDATE,
 )
 # The wind-down warning's buttons (mobile_app_notification_action).
 WIND_DOWN_ACTION_LATER = "BEDTIME_BRIDGE_WIND_DOWN_LATER"
@@ -139,6 +142,7 @@ COMMAND_NAMES = {
     "RUN_PLAN_PREVIEW": "Preview Tomorrow - App",
     "RUN_WIND_DOWN": "Wind Down On - App",
     "RUN_WIND_DOWN_CANCEL": "Wind Down Off - App",
+    "RUN_MORNING_UPDATE": "Morning Update - App",
 }
 DEFAULT_RESTART_AUTOMATIONS = ["automation.wake_confirm_still_in_bed_after_alarm", "automation.wake_deadline_backstop"]
 RESTART_NOTIFICATION_TAGS = ("wake_backstop", "wake_confirm")

@@ -127,6 +127,8 @@ enum SettingsPages {
     static let weather = ["weatherSource", "weatherEntity", "weatherExtraMinutes", "badWeatherConditions", "weatherConditionMinutes", "addTimeWhenFreezing"]
     static let calendars = ["shiftCalendarIDs", "appointmentCalendarIDs", "newEventsCalendarID"]
     static let leave = ["leaveTitles"]
+    static let shortcuts = ["quickActions", "windDownControlOpensApp", "napControlNapsNow", "widgetTapAlwaysTonight"]
+    static let weekly = ["weeklySummaryEnabled", "weeklySummaryWeekday", "weeklySummaryTime"]
 
-    static let all = [main, alarms, ownAlarms, optionWindows, morningChange, nap, windDown, appointments, driveTime, homeAssistant, weather, calendars, leave]
+    static let all = [main, alarms, ownAlarms, optionWindows, morningChange, nap, windDown, appointments, driveTime, homeAssistant, weather, calendars, leave, weekly, shortcuts]
 }
