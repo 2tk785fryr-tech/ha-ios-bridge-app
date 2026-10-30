@@ -21,11 +21,13 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from . import ladder as ldr
+from .winddown import WindDown
 from .const import (
     BED_EMPTY_SECONDS,
     CMD_ARM,
     CMD_BACK_TO_BED,
     CMD_NAP_END,
+    CMD_PLAN_PREVIEW,
     CMD_NAP_START,
     CMD_LEAVE_CHECK,
     CMD_BEDTIME,
@@ -89,6 +91,8 @@ from .const import (
     MSG_COMMAND_RAN,
     MSG_MORNING_CHANGED,
     MSG_NAP_ENDED,
+    MSG_PREVIEW,
+    MSG_WIND_DOWN,
     MSG_NAP_STARTED,
     MSG_CANCELLED,
     MSG_CONTEXT,
@@ -212,6 +216,8 @@ class BedtimeBridge:
         self._command_unsubs: dict[str, Callable[[], None]] = {}
         # The leave checks still to send (item 17).
         self._leave_unsubs: list[Callable[[], None]] = []
+        # Tonight's wind-down (v0.4.3 item 5).
+        self.wind_down = WindDown(self)
 
     @property
     def options(self) -> dict[str, Any]:
@@ -245,6 +251,7 @@ class BedtimeBridge:
         # forecast every 15 minutes before leave-by.
         self.hass.async_create_task(self._recompute_ladder())
         self.entry.async_on_unload(async_track_time_interval(self.hass, self._weather_tick, timedelta(minutes=15)))
+        self.wind_down.async_start()
     def _save(self) -> None:
         self._store.async_delay_save(lambda: {"state": self.state, "settings": self.settings}, 1)
 
@@ -319,9 +326,13 @@ class BedtimeBridge:
             MSG_MORNING_CHANGED: self._morning_changed,
             MSG_NAP_STARTED: self._nap_started,
             MSG_NAP_ENDED: self._nap_ended,
+            MSG_PREVIEW: self._preview,
+            MSG_WIND_DOWN: self._wind_down_action,
         }.get(kind)
         if handler is None:
             return {"error": f"unknown message type: {kind}"}
+        # Every message may carry the app's wind-down settings (v0.4.3 item 5).
+        self.wind_down.adopt_settings(data.get("wind_down_settings"))
         result = await handler(data) or {}
         if kind in (MSG_PLANNED, MSG_CANCELLED, MSG_SKIPPED, MSG_UNSKIPPED, MSG_BEDTIME_UNDONE):
             await self._recompute_ladder()
@@ -332,7 +343,33 @@ class BedtimeBridge:
             # (v0.4.2 item 1, in _morning_changed).
             self.state["leave_reminders"] = []
             self._cancel_leave_checks()
-        return {"settings": self.settings_for_app(), **result}
+        if kind in (MSG_PLANNED, MSG_CANCELLED, MSG_SKIPPED, MSG_UNSKIPPED, MSG_MORNING_CHANGED):
+            changed = kind == MSG_MORNING_CHANGED
+            self.wind_down.refresh(
+                moved=True if changed else bool(data.get("first_alarm_moved")),
+                moved_reason=data.get("reason") if changed else data.get("moved_reason"),
+            )
+        return {"settings": self.settings_for_app(), "wind_down": self.wind_down.summary(), **result}
+
+    async def _preview(self, data: dict[str, Any]) -> dict[str, Any]:
+        """The phone's Preview tomorrow (RUN_PLAN_PREVIEW): sets nothing, gives the wind-down
+        tomorrow's first alarm."""
+        await self._clear_command(CMD_PLAN_PREVIEW)
+        self.wind_down.preview_answered(data)
+        return {}
+
+    async def _wind_down_action(self, data: dict[str, Any]) -> dict[str, Any]:
+        """From the app, a control or Siri: start, cancel, later or stop_reminders."""
+        action = data.get("action")
+        if action == "start":
+            return {"started": await self.wind_down.start_now()}
+        if action == "cancel":
+            await self.wind_down.cancel()
+        elif action == "later":
+            await self.wind_down.later()
+        elif action == "stop_reminders":
+            self.wind_down.stop_reminders()
+        return {}
 
     async def _context(self, data: dict[str, Any]) -> dict[str, Any]:
         """Shift override and HA's next shift, read before the app plans."""
@@ -349,6 +386,7 @@ class BedtimeBridge:
             # The override or HA's next shift changed after the plan (v0.4.1 item 10).
             "plan_outdated": bool(self.state.get("plan_outdated")),
             "outdated_reason": self.state.get("outdated_reason"),
+            "wind_down": self.wind_down.summary(),
             "curtains_open_at": self._curtains_open(_time(data.get("first_alarm")) or dt_util.utcnow()),
         }
 
@@ -1320,6 +1358,8 @@ class BedtimeBridge:
         """Up again after bedtime ran: alarms are off on the phone; here the house is
         disarmed, Awake For Day goes back on and Sleep In off. Once you're back in bed, bedtime
         runs again (RUN_BEDTIME, the same push the bedtime nudge sends)."""
+        # Wind-down doesn't restart; only its reminders run (v0.4.3 item 5).
+        self.wind_down.bedtime_undone()
         self.state.update(empty_state())
         now = dt_util.utcnow()
         self.state["undone_at"] = now.isoformat()
@@ -1564,6 +1604,7 @@ class BedtimeBridge:
 
     async def _bedtime(self, data: dict[str, Any]) -> dict[str, Any]:
         """Starts the bedtime routine by turning on its helper, only when you're home."""
+        await self.wind_down.bedtime_ran()
         at_home = self.is_home()
         helper = self.options.get(CONF_BEDTIME_HELPER)
         started = False

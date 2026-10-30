@@ -33,6 +33,11 @@ CONF_AWAKE_HELPER = "awake_helper"
 # v0.4.2 item 3: on while you nap at home (house automations on it are yours).
 CONF_NAP_HELPER = "napping_helper"
 CONF_RERUN_MINUTES = "rerun_minutes"
+# v0.4.3 item 5: wind-down. On while winding down at home; the bedroom door (closed + bed occupied
+# = in bed); where its notifications go (default the notify service above).
+CONF_WIND_DOWN_HELPER = "winding_down_helper"
+CONF_BEDROOM_DOOR = "bedroom_door_sensor"
+CONF_WIND_DOWN_NOTIFY = "wind_down_notify_service"
 
 # What Snooze/Stop on the phone do in Home Assistant.
 WAKE_BOTH = "both"
@@ -53,6 +58,8 @@ SUGGESTED = {
     CONF_SHIFT_OVERRIDE: "input_select.select_shift_override",
     CONF_SHIFT_SENSOR: "sensor.current_shift",
     CONF_WEATHER: "weather.forecast_home",
+    CONF_WIND_DOWN_HELPER: "input_boolean.winding_down",
+    CONF_BEDROOM_DOOR: "binary_sensor.aqara_door_and_window_sensor_door_2",
 }
 # Checked for the away bedtime summary ("Everything at home is good"), when they exist.
 SUGGESTED_HOME_CHECKS = [
@@ -85,7 +92,17 @@ CMD_LEAVE_CHECK = "RUN_LEAVE_CHECK"
 # v0.4.2 item 3: Nap Start - App / Nap End - App (nap Focus on and off), home or away.
 CMD_NAP_START = "RUN_NAP_START"
 CMD_NAP_END = "RUN_NAP_END"
-COMMANDS = (CMD_DISARM, CMD_ARM, CMD_MORNING, CMD_BEDTIME, CMD_BACK_TO_BED, CMD_LEAVE_CHECK, CMD_NAP_START, CMD_NAP_END)
+# v0.4.3 item 5: Preview tomorrow (the app answers with the first alarm), Wind Down On / Off - App.
+CMD_PLAN_PREVIEW = "RUN_PLAN_PREVIEW"
+CMD_WIND_DOWN = "RUN_WIND_DOWN"
+CMD_WIND_DOWN_CANCEL = "RUN_WIND_DOWN_CANCEL"
+COMMANDS = (
+    CMD_DISARM, CMD_ARM, CMD_MORNING, CMD_BEDTIME, CMD_BACK_TO_BED, CMD_LEAVE_CHECK, CMD_NAP_START, CMD_NAP_END,
+    CMD_PLAN_PREVIEW, CMD_WIND_DOWN, CMD_WIND_DOWN_CANCEL,
+)
+# The wind-down warning's buttons (mobile_app_notification_action).
+WIND_DOWN_ACTION_LATER = "BEDTIME_BRIDGE_WIND_DOWN_LATER"
+WIND_DOWN_ACTION_CANCEL = "BEDTIME_BRIDGE_WIND_DOWN_CANCEL"
 # Leave checks stop this long after leave-by.
 LEAVE_CHECK_TAIL_MINUTES = 15
 # Item 3 stops what's already running (until v0.5 fires the ladder itself): these automations
@@ -114,6 +131,9 @@ COMMAND_NAMES = {
     "RUN_LEAVE_CHECK": "the leave check",
     "RUN_NAP_START": "Nap Start - App",
     "RUN_NAP_END": "Nap End - App",
+    "RUN_PLAN_PREVIEW": "Preview Tomorrow - App",
+    "RUN_WIND_DOWN": "Wind Down On - App",
+    "RUN_WIND_DOWN_CANCEL": "Wind Down Off - App",
 }
 DEFAULT_RESTART_AUTOMATIONS = ["automation.wake_confirm_still_in_bed_after_alarm", "automation.wake_deadline_backstop"]
 RESTART_NOTIFICATION_TAGS = ("wake_backstop", "wake_confirm")
@@ -167,6 +187,10 @@ MSG_MORNING_CHANGED = "morning_changed"
 # v0.4.2 item 3: a nap's alarms were set / the nap ended.
 MSG_NAP_STARTED = "nap_started"
 MSG_NAP_ENDED = "nap_ended"
+# v0.4.3 item 5: the phone's Preview tomorrow answer, and wind-down actions from the app
+# (start, cancel, later, stop_reminders).
+MSG_PREVIEW = "preview"
+MSG_WIND_DOWN = "wind_down"
 EVENT_RERUN = "bedtime_rerun"
 EVENT_REARMED = "temporary_rearmed"
 # The bed sensor drops out for up to ~19 s while you're in it; "empty" must last longer.

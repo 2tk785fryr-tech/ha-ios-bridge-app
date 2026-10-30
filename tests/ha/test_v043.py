@@ -1,6 +1,7 @@
 """v0.4.3 integration tests, by spec item."""
 
 from homeassistant.setup import async_setup_component
+from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import async_capture_events
 
 from .test_ladder import TZ, ladder, calendar_days, local, plan, rungs, shift_sensor, status  # noqa: F401
@@ -64,3 +65,168 @@ async def test_no_alarms_with_the_shift_still_on_keeps_leave_by(hass, ladder, ha
     }})
     await hass.async_block_till_done()
     assert hass.states.get("sensor.bedtime_bridge_leave_by").state != "unknown"
+
+
+# MARK: Item 5, wind-down
+
+from datetime import timedelta  # noqa: E402
+
+from homeassistant.core import callback  # noqa: E402
+from pytest_homeassistant_custom_component.common import async_fire_time_changed, async_mock_service  # noqa: E402
+
+from custom_components.bedtime_bridge import winddown  # noqa: E402
+
+WIND = {"enabled": True}
+
+
+async def test_item5_times_from_the_first_alarm(hass):
+    await hass.config.async_set_time_zone(TZ)
+    first = local("04:20", day=28)
+    times = winddown.compute(first, sleep_goal=390, length=60, free=30, minimum=30)
+    assert (winddown.short(times.wind_down), winddown.short(times.go_to_bed)) == ("8:50", "9:50")
+
+
+async def test_item5_home_late_moves_bed_later_not_cutting_wind_down(hass):
+    await hass.config.async_set_time_zone(TZ)
+    first = local("04:20", day=28)
+    times = winddown.compute(first, sleep_goal=390, length=60, free=30, minimum=30, home_at=local("21:30", day=27))
+    # Home 9:30 + 30 free = wind-down 10:00, at least 30 min of it: bed 10:30 (less sleep).
+    assert (winddown.short(times.wind_down), winddown.short(times.go_to_bed)) == ("10:00", "10:30")
+    early = winddown.compute(first, sleep_goal=390, length=60, free=30, minimum=30, home_at=local("19:00", day=27))
+    assert winddown.short(early.wind_down) == "8:50", "home early changes nothing"
+
+
+async def wind_setup(hass, ladder, **options):
+    assert await async_setup_component(hass, "input_boolean", {"input_boolean": {"winding_down": {}}})
+    hass.states.async_set("binary_sensor.bed", "off")
+    hass.states.async_set("binary_sensor.door", "on")
+    notes = async_mock_service(hass, "notify", "phone")
+    await ladder(winding_down_helper="input_boolean.winding_down", bed_sensor="binary_sensor.bed",
+                 bedroom_door_sensor="binary_sensor.door", notify_service="notify.phone", phone_commands=True, **options)
+    return notes
+
+
+def days_plan(first="04:20"):
+    p = plan(local("05:45").isoformat())
+    p["data"]["alarm_times"] = [local(first).isoformat()]
+    p["data"]["wind_down_settings"] = WIND
+    return p
+
+
+async def at(hass, freezer, when):
+    freezer.move_to(when)
+    async_fire_time_changed(hass, when)
+    await hass.async_block_till_done()
+
+
+def messages(notes):
+    return [c.data.get("message") for c in notes]
+
+
+async def test_item5_evening_warning_wind_down_and_go_to_bed(hass, ladder, hass_client_no_auth, freezer):
+    notes = await wind_setup(hass, ladder)
+    reply = await send(hass_client_no_auth, days_plan())
+    assert reply["wind_down"]["status"] == "scheduled"
+    assert status_of(hass) == "scheduled"
+    await at(hass, freezer, local("20:45", day=27))
+    warning = [c for c in notes if c.data.get("message") == "Wind-down at 8:50 · bed 9:50"]
+    assert warning and [a["action"] for a in warning[0].data["data"]["actions"]] == [
+        "BEDTIME_BRIDGE_WIND_DOWN_LATER", "BEDTIME_BRIDGE_WIND_DOWN_CANCEL"]
+    await at(hass, freezer, local("20:50", day=27))
+    assert status_of(hass) == "winding_down"
+    assert hass.states.get("input_boolean.winding_down").state == "on"
+    assert "RUN_WIND_DOWN" in messages(notes)
+    assert not any("tomorrow" in (m or "") for m in messages(notes)), "a normal shift morning gets no notice"
+    await at(hass, freezer, local("21:50", day=27))
+    bed = [c for c in notes if c.data.get("message") == "Time for bed · first alarm 4:20"]
+    assert bed and bed[0].data["data"]["push"]["sound"]["critical"] == 1
+    assert hass.states.get("input_boolean.winding_down").state == "off"
+    # Not in bed: Still up every 10 min, at most 6, time-sensitive.
+    for minute in range(10, 80, 10):
+        await at(hass, freezer, local("21:50", day=27) + timedelta(minutes=minute))
+    still = [c for c in notes if (c.data.get("message") or "").startswith("Still up")]
+    assert len(still) == 6
+    assert still[0].data["data"]["push"]["interruption-level"] == "time-sensitive"
+
+
+def status_of(hass):
+    return hass.states.get("sensor.bedtime_bridge_wind_down_status").state
+
+
+async def test_item5_later_and_cancel_buttons(hass, ladder, hass_client_no_auth, freezer):
+    notes = await wind_setup(hass, ladder)
+    await send(hass_client_no_auth, days_plan())
+    hass.bus.async_fire("mobile_app_notification_action", {"action": "BEDTIME_BRIDGE_WIND_DOWN_LATER"})
+    await hass.async_block_till_done()
+    assert winddown.short(dt_util.parse_datetime(hass.states.get("sensor.bedtime_bridge_wind_down").state)) == "9:05"
+    assert winddown.short(dt_util.parse_datetime(hass.states.get("sensor.bedtime_bridge_go_to_bed").state)) == "9:50"
+    for _ in range(3):
+        hass.bus.async_fire("mobile_app_notification_action", {"action": "BEDTIME_BRIDGE_WIND_DOWN_LATER"})
+        await hass.async_block_till_done()
+    assert winddown.short(dt_util.parse_datetime(hass.states.get("sensor.bedtime_bridge_wind_down").state)) == "9:20", "never below the minimum"
+    hass.bus.async_fire("mobile_app_notification_action", {"action": "BEDTIME_BRIDGE_WIND_DOWN_CANCEL"})
+    await hass.async_block_till_done()
+    assert status_of(hass) == "cancelled"
+    assert "RUN_WIND_DOWN_CANCEL" in messages(notes)
+    await at(hass, freezer, local("22:30", day=27))
+    assert not any((m or "").startswith(("Time for bed", "Still up")) for m in messages(notes))
+
+
+async def test_item5_into_bed_early_ends_it_and_undo_runs_only_reminders(hass, ladder, hass_client_no_auth, freezer):
+    notes = await wind_setup(hass, ladder)
+    await send(hass_client_no_auth, days_plan())
+    await at(hass, freezer, local("21:00", day=27))
+    assert status_of(hass) == "winding_down"
+    await send(hass_client_no_auth, {"type": "bedtime", "data": {}})
+    assert status_of(hass) == "bedtime"
+    assert hass.states.get("input_boolean.winding_down").state == "off"
+    await send(hass_client_no_auth, {"type": "bedtime_undone", "data": {}})
+    await at(hass, freezer, local("21:50", day=27))
+    assert not any((m or "").startswith("Time for bed") for m in messages(notes)), "wind-down doesn't restart"
+    await at(hass, freezer, local("22:00", day=27))
+    assert any((m or "").startswith("Still up") for m in messages(notes))
+
+
+async def test_item5_in_bed_skips_go_to_bed_and_records_went_to_bed(hass, ladder, hass_client_no_auth, freezer):
+    notes = await wind_setup(hass, ladder)
+    await send(hass_client_no_auth, days_plan())
+    await at(hass, freezer, local("21:40", day=27))
+    hass.states.async_set("binary_sensor.door", "off")
+    hass.states.async_set("binary_sensor.bed", "on")
+    await hass.async_block_till_done()
+    await at(hass, freezer, local("22:10", day=27))
+    assert not any((m or "").startswith(("Time for bed", "Still up")) for m in messages(notes))
+    assert hass.states.get("sensor.bedtime_bridge_bedtime_off_target").state == "-10"
+
+
+async def test_item5_event_morning_says_so_at_wind_down(hass, ladder, hass_client_no_auth, freezer):
+    notes = await wind_setup(hass, ladder)
+    await send(hass_client_no_auth, {"type": "preview", "data": {
+        "first_alarm": local("05:00").isoformat(), "cause": "calendar", "event": "Ultrasound",
+        "event_start": local("07:00").isoformat(), "leave_by": local("06:15").isoformat(), "wind_down_settings": WIND}})
+    await at(hass, freezer, local("21:30", day=27))
+    assert "Ultrasound at 7:00 AM tomorrow · leave by 6:15 · first alarm 5:00" in messages(notes)
+
+
+async def test_item5_preview_unanswered_uses_the_calendar_and_says_so(hass, ladder, hass_client_no_auth, freezer):
+    freezer.move_to(local("17:00", day=27))
+    notes = await wind_setup(hass, ladder)
+    # Settings arrive with any message; nothing planned yet.
+    await send(hass_client_no_auth, {"type": "context", "data": {"wind_down_settings": WIND}})
+    await hass.async_block_till_done()
+    # Days 6:30 − 120 min lead = first alarm 4:30 → wind-down 9:00; preview 2 h before, at 7:00 PM.
+    await at(hass, freezer, local("19:00", day=27))
+    assert "RUN_PLAN_PREVIEW" in messages(notes)
+    await at(hass, freezer, local("19:11", day=27))
+    await at(hass, freezer, local("20:55", day=27))
+    assert "Wind-down at 9:00 · bed 10:00 (appointments not checked)" in messages(notes)
+
+
+async def test_item5_off_until_set_up(hass, ladder, hass_client_no_auth, freezer):
+    notes = await wind_setup(hass, ladder)
+    p = days_plan()
+    p["data"].pop("wind_down_settings")
+    await send(hass_client_no_auth, p)
+    assert status_of(hass) == "off"
+    await at(hass, freezer, local("22:30", day=27))
+    assert not any((m or "").startswith(("Wind-down", "Time for bed")) for m in messages(notes))
