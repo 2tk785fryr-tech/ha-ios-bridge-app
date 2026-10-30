@@ -423,25 +423,29 @@ final class BedtimeCoordinator {
         var plan = WakePlanner.plan(shift: shift, appointments: appointments, settings: settings, now: now)
 
         // Weather depends on the plan (wake-up until arrival), so check it second and re-plan.
-        if settings.checksWeather, let window = travelWindow(for: plan),
-           let source = weatherForecast(settings: settings, link: context == nil ? nil : link) {
+        // The forecast is read every time now, for Morning weather's plain forecast (v0.4.7 item 5).
+        var forecastHours: (hours: [ForecastHour], unit: String?)?
+        if settings.checksWeather, let source = weatherForecast(settings: settings, link: context == nil ? nil : link) {
             do {
-                let (forecast, unit) = try await source()
-                let freezing: Double? = settings.addTimeWhenFreezing ? ((unit ?? "°F").contains("C") ? 0 : 32) : nil
-                plan.freezingAt = freezing
-                if let adjustment = PlanAdjustments.weather(
-                    forecast: forecast,
-                    window: window,
-                    conditions: settings.badWeatherConditions,
-                    freezingAt: freezing,
-                    extraMinutes: settings.weatherExtraMinutes,
-                    minutes: settings.weatherConditionMinutes
-                ) {
-                    plan = WakePlanner.plan(shift: shift, appointments: appointments, settings: settings, now: now, weather: adjustment)
-                    plan.freezingAt = freezing
-                }
+                let (hours, unit) = try await source()
+                forecastHours = (hours, unit)
             } catch {
                 extraWarnings.append("Couldn't check the weather: \(error.localizedDescription)")
+            }
+        }
+        if let forecastHours, let window = travelWindow(for: plan) {
+            let freezing: Double? = settings.addTimeWhenFreezing ? ((forecastHours.unit ?? "°F").contains("C") ? 0 : 32) : nil
+            plan.freezingAt = freezing
+            if let adjustment = PlanAdjustments.weather(
+                forecast: forecastHours.hours,
+                window: window,
+                conditions: settings.badWeatherConditions,
+                freezingAt: freezing,
+                extraMinutes: settings.weatherExtraMinutes,
+                minutes: settings.weatherConditionMinutes
+            ) {
+                plan = WakePlanner.plan(shift: shift, appointments: appointments, settings: settings, now: now, weather: adjustment)
+                plan.freezingAt = freezing
             }
         }
 
@@ -466,6 +470,11 @@ final class BedtimeCoordinator {
         plan.atHome = context?.atHome
         if context?.atHome == false {
             extraWarnings.append("You're not home, so Home Assistant won't run your wake-up or bedtime routines.")
+        }
+        if let forecastHours {
+            let (moment, at) = MorningForecast.moment(leaveBy: plan.leaveBy(settings: settings), wakeUp: plan.wakeTime ?? plan.firstAlarm,
+                                                      goodMorningFrom: settings.noAlarmEarliest, now: now)
+            plan.forecast = MorningForecast.pick(hours: forecastHours.hours, at: at, moment: moment, unit: forecastHours.unit)
         }
         plan.warnings = extraWarnings + plan.warnings
         return (plan, settings)

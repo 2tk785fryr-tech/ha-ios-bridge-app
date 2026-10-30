@@ -1442,8 +1442,10 @@ private struct StatusCard: View {
 
     private var weatherText: String {
         guard settings.checksWeather, settings.weatherSource != .homeAssistant || link != nil else { return "Not checked" }
-        if let weather = plan?.weather { return "+\(weather.minutes) min, \(weather.reason)" }
-        return plan == nil ? "Checked when you plan" : "No extra time"
+        // The plain forecast first (v0.4.7 item 5), then what it does to the morning.
+        let forecast = plan?.forecast.map { $0.text() + " · " } ?? ""
+        if let weather = plan?.weather { return forecast + "+\(weather.minutes) min, \(weather.reason)" }
+        return plan == nil ? "Checked when you plan" : forecast + "no extra time"
     }
 }
 

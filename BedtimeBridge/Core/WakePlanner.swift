@@ -125,6 +125,8 @@ struct WakePlan: Equatable {
     var shift: ShiftCandidate?
     var appointment: AppointmentCandidate?
     var weather: WeatherAdjustment? = nil
+    /// The plain forecast for Morning weather (v0.4.7 item 5).
+    var forecast: MorningForecast? = nil
     /// From Home Assistant; nil when it couldn't tell.
     var atHome: Bool? = nil
     var warnings: [String] = []
