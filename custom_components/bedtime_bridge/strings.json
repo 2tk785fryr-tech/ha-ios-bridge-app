@@ -100,42 +100,132 @@
       "init": {
         "title": "Bedtime Bridge",
         "description": "To pair your iPhone, open this step in the Home Assistant app on the iPhone and tap:\n\n**[Pair Bedtime Bridge]({pair_link})**\n\nThat saves both addresses in the app. If the link doesn't open, copy it into the app's address field (Settings › Home Assistant):\n\n`{pair_link}`\n\nOr paste the addresses one by one:\n\n- **Anywhere** (Nabu Casa): `{remote_url}`\n- **At home only**: `{local_url}`\n\nThe app uses the first and falls back to the second if your internet is down at home. Keep them private: anyone with them can send alarm updates.",
+        "menu_options": {
+          "you": "You and home",
+          "wake": "Wake-up",
+          "bedroom": "Bedroom and bed",
+          "bedtime": "Bedtime and wind-down",
+          "shifts": "Shifts and calendar",
+          "phone": "Phone",
+          "backstops": "Backstops",
+          "keys": "Keys"
+        }
+      },
+      "you": {
+        "title": "You and home",
         "data": {
           "presence_entities": "You (person or tracker)",
           "home_only": "Only run routines when you're home",
-          "bedtime_helper": "Turn on to start the bedtime routine",
+          "home_check_entities": "Check these when I'm away"
+        },
+        "data_description": {
+          "home_only": "Snooze, stop and Start Bedtime Routine skip the helpers and wake events while you're away. If your location is unknown, you count as home.",
+          "home_check_entities": "Doors, locks and the garage the app's Away Bedtime Summary checks when you go to bed away from home. Anything open, unlocked or not responding is read out; otherwise it says everything at home is good."
+        }
+      },
+      "wake": {
+        "title": "Wake-up",
+        "data": {
           "wake_action": "When you snooze or stop an alarm",
           "snooze_helper": "Turn on when snoozed",
           "stop_helper": "Turn on when stopped",
           "early_wake_helper": "Turn on when I end the alarms before they ring",
-          "shift_override_entity": "Shift override",
-          "shift_sensor_entity": "Shift sensor (checks next_shift_start)",
-          "weather_entity": "Weather forecast",
-          "shift_types": "Shift types (comma separated, as they appear in calendar titles)",
-          "ladder_shift_types": "Backstop ladder for these shift types",
-          "calendar_entity": "Work calendar",
-          "restart_automations": "Restart when a morning changes",
-          "house_backstop_source": "House backstop reads",
-          "old_rung_sensors": "Old template's rung sensors",
-          "notify_service": "Notify action for your phone",
-          "replan_alert": "Tell me when my plan goes out of date",
-          "bed_sensor": "Bed sensor (your side)",
-          "exit_latch": "Left-the-bedroom helper",
-          "phone_commands": "Send phone commands",
-          "command_complete_minutes": "Warn if a phone shortcut doesn't finish within",
-          "rearm_minutes": "Re-arm after back in bed for",
           "sleep_in_helper": "Sleep In helper",
-          "curtain_offset_minutes": "Curtains open after sunrise",
-          "home_check_entities": "Check these when I'm away",
-          "awake_helper": "Awake For Day helper",
-          "napping_helper": "Napping helper",
-          "rerun_minutes": "Bedtime again after back in bed for",
-          "winding_down_helper": "Winding down helper",
+          "awake_helper": "Awake For Day helper"
+        },
+        "data_description": {
+          "wake_action": "Helpers: turn on the entities below, for blueprints that watch them (Wake Snooze Fade, Wake Sequence). Events: fire a bedtime_bridge event for automations and blueprints to trigger on. Both: do both.",
+          "sleep_in_helper": "Turned on when your first alarm is after the curtains open and off when it's before, each time the phone plans, and on when you skip a morning to sleep in. Only while you're home. Temporary alarms never touch it.",
+          "awake_helper": "Turned back on when you undo bedtime (\"Not going to sleep yet\" in the app), so the house is in day mode while you're up."
+        }
+      },
+      "bedroom": {
+        "title": "Bedroom and bed",
+        "data": {
+          "bed_sensor": "Bed sensor (your side)",
           "bedroom_door_sensor": "Bedroom door sensor",
           "hallway_sensors": "Hallway presence",
-          "wind_down_notify_service": "Wind-down notifications to",
+          "exit_latch": "Left-the-bedroom helper",
+          "rearm_minutes": "Re-arm after back in bed for",
+          "rerun_minutes": "Bedtime again after back in bed for"
+        },
+        "data_description": {
+          "bed_sensor": "With the helper below, tells the app whether you're really up when you stop an alarm, so it keeps the later alarms if you're still in bed. Empty only counts after a minute (the sensor drops out briefly).",
+          "bedroom_door_sensor": "Door closed and bed occupied counts as in bed: no go to bed notification, no Still up reminders, and when you went to bed.",
+          "hallway_sensors": "On a morning with no alarms: out of bed, then the bedroom door, then any of these sees you, and the house is disarmed (re-armed once you're back in bed). From the app's earliest time, staying up asks Up for the day? and runs good morning.",
+          "exit_latch": "e.g. input_boolean.bedroom_exited_today, set by Bedroom Exit Latch when you open the bedroom door.",
+          "rearm_minutes": "After a temporary alarm that disarmed the house, the bed sensor must read occupied this long without a break before RUN_ARM_STAY is sent. Not back in bed before your regular alarms (or within 6 hours): it doesn't re-arm.",
+          "rerun_minutes": "After undoing bedtime, once the bed reads occupied this long without a break, RUN_BEDTIME is sent so your bedtime shortcut runs again (within 6 hours)."
+        }
+      },
+      "bedtime": {
+        "title": "Bedtime and wind-down",
+        "data": {
+          "bedtime_helper": "Turn on to start the bedtime routine",
+          "winding_down_helper": "Winding down helper",
+          "napping_helper": "Napping helper",
+          "wind_down_notify_service": "Wind-down notifications to"
+        },
+        "data_description": {
+          "bedtime_helper": "Turned on by the app's Start Bedtime Routine action (e.g. input_boolean.bedtime_routine).",
+          "winding_down_helper": "Turned on at wind-down while you're home and off at go to bed, when you cancel or when you get into bed early (e.g. input_boolean.winding_down), for your own house automations.",
+          "napping_helper": "Turned on when you start a nap at home (Nap in the app) and off when it ends, for your own house automations. Leave empty for none.",
+          "wind_down_notify_service": "e.g. notify.mobile_app_mikes_iphone. Empty uses the notify action above. The warning, go to bed (critical) and Still up reminders go here, home or away."
+        }
+      },
+      "shifts": {
+        "title": "Shifts and calendar",
+        "data": {
+          "shift_override_entity": "Shift override",
+          "shift_sensor_entity": "Shift sensor (checks next_shift_start)",
+          "shift_types": "Shift types (comma separated, as they appear in calendar titles)",
+          "calendar_entity": "Work calendar",
+          "weather_entity": "Weather forecast",
+          "curtain_offset_minutes": "Curtains open after sunrise"
+        },
+        "data_description": {
+          "shift_types": "Each one gets a lead-time setting, and its name is sent as the alarm cause.",
+          "calendar_entity": "Read to tell a first day back (no shift the day before) when the phone hasn't planned.",
+          "curtain_offset_minutes": "Match your curtain automation's open time (sunrise plus this)."
+        }
+      },
+      "phone": {
+        "title": "Phone",
+        "data": {
+          "notify_service": "Notify action for your phone",
+          "phone_commands": "Send phone commands",
+          "replan_alert": "Tell me when my plan goes out of date",
           "phone_battery_sensor": "Phone battery level",
           "phone_battery_state_sensor": "Phone battery state",
+          "command_complete_minutes": "Warn if a phone shortcut doesn't finish within"
+        },
+        "data_description": {
+          "notify_service": "e.g. notify.mobile_app_mikes_iphone. Used for the re-plan notification and phone commands.",
+          "phone_commands": "Pushes RUN_DISARM, RUN_ARM_STAY, RUN_GOOD_MORNING and RUN_BEDTIME to the notify action above, for Shortcuts \"When I receive a notification\" automations on the phone: disarm and re-arm around a temporary alarm, your morning shortcut when you stop an app alarm (they don't trigger Clock automations), and bedtime again after you undo it. Snooze needs none: it turns on the snooze helper above.",
+          "replan_alert": "If the shift override or your next shift changes after you planned (and before you wake), send a notification with a Re-plan button.",
+          "phone_battery_sensor": "The companion app's battery level (e.g. sensor.mikes_iphone_battery_level), for Plug in your phone at go to bed and the second reminder.",
+          "phone_battery_state_sensor": "The companion app's battery state (Charging, Not Charging, Full).",
+          "command_complete_minutes": "Once a shortcut has reported Completed (Report Shortcut Ran as its last step), a later run that reports Started but not Completed within this long sends you a notification and a command_incomplete event."
+        }
+      },
+      "backstops": {
+        "title": "Backstops",
+        "data": {
+          "house_backstop_source": "House backstop reads",
+          "old_rung_sensors": "Old template's rung sensors",
+          "restart_automations": "Restart when a morning changes",
+          "ladder_shift_types": "Backstop ladder for these shift types"
+        },
+        "data_description": {
+          "house_backstop_source": "What the Wake Deadline Backstop fires on. Leave on the old template until the cutover; the app then shows those times.",
+          "old_rung_sensors": "Early, deadline and late from current_shift.yaml, in that order (sensor.wake_rung_*).",
+          "restart_automations": "When you move or cancel a morning's alarms, these are turned off and back on, which stops anything they're running (Wake Confirm's nudges, a Backstop loop). Until the integration fires the ladder itself.",
+          "ladder_shift_types": "Shift mornings that get the leave-by backstop ladder (early, deadline, late before leave-by). Appointments with a location always get one."
+        }
+      },
+      "keys": {
+        "title": "Keys",
+        "data": {
           "apns_key": "Apple push key (.p8)",
           "apns_key_id": "Apple push Key ID",
           "drive_time_source": "Drive times from",
@@ -145,34 +235,6 @@
           "google_key": "Google key"
         },
         "data_description": {
-          "wake_action": "Helpers: turn on the entities below, for blueprints that watch them (Wake Snooze Fade, Wake Sequence). Events: fire a bedtime_bridge event for automations and blueprints to trigger on. Both: do both.",
-          "shift_types": "Each one gets a lead-time setting, and its name is sent as the alarm cause.",
-          "home_only": "Snooze, stop and Start Bedtime Routine skip the helpers and wake events while you're away. If your location is unknown, you count as home.",
-          "bedtime_helper": "Turned on by the app's Start Bedtime Routine action (e.g. input_boolean.bedtime_routine).",
-          "ladder_shift_types": "Shift mornings that get the leave-by backstop ladder (early, deadline, late before leave-by). Appointments with a location always get one.",
-          "calendar_entity": "Read to tell a first day back (no shift the day before) when the phone hasn't planned.",
-          "restart_automations": "When you move or cancel a morning's alarms, these are turned off and back on, which stops anything they're running (Wake Confirm's nudges, a Backstop loop). Until the integration fires the ladder itself.",
-          "house_backstop_source": "What the Wake Deadline Backstop fires on. Leave on the old template until the cutover; the app then shows those times.",
-          "old_rung_sensors": "Early, deadline and late from current_shift.yaml, in that order (sensor.wake_rung_*).",
-          "notify_service": "e.g. notify.mobile_app_mikes_iphone. Used for the re-plan notification and phone commands.",
-          "replan_alert": "If the shift override or your next shift changes after you planned (and before you wake), send a notification with a Re-plan button.",
-          "bed_sensor": "With the helper below, tells the app whether you're really up when you stop an alarm, so it keeps the later alarms if you're still in bed. Empty only counts after a minute (the sensor drops out briefly).",
-          "exit_latch": "e.g. input_boolean.bedroom_exited_today, set by Bedroom Exit Latch when you open the bedroom door.",
-          "phone_commands": "Pushes RUN_DISARM, RUN_ARM_STAY, RUN_GOOD_MORNING and RUN_BEDTIME to the notify action above, for Shortcuts \"When I receive a notification\" automations on the phone: disarm and re-arm around a temporary alarm, your morning shortcut when you stop an app alarm (they don't trigger Clock automations), and bedtime again after you undo it. Snooze needs none: it turns on the snooze helper above.",
-          "command_complete_minutes": "Once a shortcut has reported Completed (Report Shortcut Ran as its last step), a later run that reports Started but not Completed within this long sends you a notification and a command_incomplete event.",
-          "rearm_minutes": "After a temporary alarm that disarmed the house, the bed sensor must read occupied this long without a break before RUN_ARM_STAY is sent. Not back in bed before your regular alarms (or within 6 hours): it doesn't re-arm.",
-          "sleep_in_helper": "Turned on when your first alarm is after the curtains open and off when it's before, each time the phone plans, and on when you skip a morning to sleep in. Only while you're home. Temporary alarms never touch it.",
-          "curtain_offset_minutes": "Match your curtain automation's open time (sunrise plus this).",
-          "home_check_entities": "Doors, locks and the garage the app's Away Bedtime Summary checks when you go to bed away from home. Anything open, unlocked or not responding is read out; otherwise it says everything at home is good.",
-          "awake_helper": "Turned back on when you undo bedtime (\"Not going to sleep yet\" in the app), so the house is in day mode while you're up.",
-          "napping_helper": "Turned on when you start a nap at home (Nap in the app) and off when it ends, for your own house automations. Leave empty for none.",
-          "rerun_minutes": "After undoing bedtime, once the bed reads occupied this long without a break, RUN_BEDTIME is sent so your bedtime shortcut runs again (within 6 hours).",
-          "winding_down_helper": "Turned on at wind-down while you're home and off at go to bed, when you cancel or when you get into bed early (e.g. input_boolean.winding_down), for your own house automations.",
-          "bedroom_door_sensor": "Door closed and bed occupied counts as in bed: no go to bed notification, no Still up reminders, and when you went to bed.",
-          "hallway_sensors": "On a morning with no alarms: out of bed, then the bedroom door, then any of these sees you, and the house is disarmed (re-armed once you're back in bed). From the app's earliest time, staying up asks Up for the day? and runs good morning.",
-          "wind_down_notify_service": "e.g. notify.mobile_app_mikes_iphone. Empty uses the notify action above. The warning, go to bed (critical) and Still up reminders go here, home or away.",
-          "phone_battery_sensor": "The companion app's battery level (e.g. sensor.mikes_iphone_battery_level), for Plug in your phone at go to bed and the second reminder.",
-          "phone_battery_state_sensor": "The companion app's battery state (Charging, Not Charging, Full).",
           "apns_key": "Paste the whole AuthKey_….p8 file, BEGIN and END lines included, from developer.apple.com → Keys (Apple Push Notifications service). With it and the Key ID, Home Assistant starts, updates and ends the app's Live Activities by push; without them, RUN_MORNING_UPDATE stands in.",
           "apns_key_id": "The key's 10-character Key ID.",
           "drive_time_source": "Phone: each leave check wakes the phone (RUN_LEAVE_CHECK), which re-checks the drive. Apple Maps, TomTom, Google or Longest of all: Home Assistant re-checks the drive itself, arriving by your arrive-by with the traffic expected then, moves leave-by and tells you (works with the phone asleep). Falls back to the phone if a service doesn't answer.",

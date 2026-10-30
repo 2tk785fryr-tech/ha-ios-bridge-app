@@ -139,3 +139,50 @@ async def test_item2_check_here_sends_the_silent_leave_checked_push(hass, ladder
     assert silent, "the app's own token got the push"
     assert silent[0].args[1] == {"aps": {"content-available": 1}, "bedtime_bridge": "leave_checked"}
     assert silent[0].kwargs == {"environment": "development", "topic": "io.example.bedtime", "priority": 5, "push_type": "background"}
+
+
+# MARK: Item 9, Configure as a menu of pages
+
+from homeassistant import config_entries  # noqa: E402
+from homeassistant.data_entry_flow import FlowResultType  # noqa: E402
+
+from custom_components.bedtime_bridge import config_flow as cf  # noqa: E402
+from custom_components.bedtime_bridge.const import CONF_BED_SENSOR, CONF_NOTIFY, CONF_SLEEP_IN, DOMAIN  # noqa: E402
+
+from .conftest import make_entry  # noqa: E402
+
+
+def test_item9_every_option_is_on_one_page():
+    paged = [key for keys in cf.PAGES.values() for key in keys]
+    assert sorted(paged) == sorted(set(cf.OPTION_KEYS)) and len(paged) == len(set(paged))
+    assert list(cf.PAGES) == ["you", "wake", "bedroom", "bedtime", "shifts", "phone", "backstops", "keys"]
+
+
+async def test_item9_menu_pages_save_only_their_own(hass):
+    hass.states.async_set("binary_sensor.bed", "off")
+    entry = make_entry(bed_sensor="binary_sensor.bed", notify_service="notify.phone")
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert result["type"] is FlowResultType.MENU and result["menu_options"] == list(cf.PAGES)
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"next_step_id": "bedroom"})
+    assert result["type"] is FlowResultType.FORM and result["step_id"] == "bedroom"
+    assert {marker.schema for marker in result["data_schema"].schema} == set(cf.PAGES["bedroom"])
+    await hass.config_entries.options.async_configure(result["flow_id"], {CONF_BED_SENSOR: "binary_sensor.bed", "rearm_minutes": 7, "rerun_minutes": 15})
+    await hass.async_block_till_done()
+    assert entry.options["rearm_minutes"] == 7
+    assert entry.options[CONF_NOTIFY] == "notify.phone", "the phone page wasn't touched"
+
+
+async def test_item9_adding_asks_only_what_pairing_needs(hass):
+    from homeassistant.setup import async_setup_component
+    assert await async_setup_component(hass, "input_boolean", {"input_boolean": {"sleep_in": {}}})
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+    assert {marker.schema for marker in result["data_schema"].schema} == set(cf.SETUP_KEYS)
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {"wake_action": "both", "shift_types": "Days, Swings"})
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    options = result["options"]
+    assert options[CONF_SLEEP_IN] == "input_boolean.sleep_in", "suggestions that exist are kept, as the full form did"
+    assert options["rearm_minutes"] == 5, "defaults are kept"
