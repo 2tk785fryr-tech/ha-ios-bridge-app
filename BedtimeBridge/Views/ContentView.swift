@@ -22,6 +22,9 @@ struct ContentView: View {
     @State private var morningEnd: MorningEnd?
     @State private var backToBed = false
     @State private var notReadyForBed = false
+    /// A quiet look at tomorrow on opening found no shift or event (v0.4.7 item 8), so the bar
+    /// can offer Set alarms for a time without a preview first.
+    @State private var nothingAhead = false
     /// The minute the screen last redrew for (v0.4.6 item 3); the bar reads it, so a tick redraws.
     @State private var tick = Date.now
     /// A protected action waiting for its slide-and-hold in the bottom bar (v0.4.2 item 6).
@@ -229,6 +232,7 @@ struct ContentView: View {
             .safeAreaInset(edge: .bottom) { actions }
             .toolbar(.hidden, for: .navigationBar)
             .onAppear {
+                lookAhead()
                 coordinator.watchCalendar()
                 Task { await coordinator.scheduleBackToWork(settings: store.settings) }
                 coordinator.dropLeaveRemindersIfEventGone(settings: store.settings)
@@ -252,6 +256,7 @@ struct ContentView: View {
             // app was in the background: show what's set now, not the plan from before.
             .onChange(of: scenePhase) { _, phase in
                 guard phase == .active else { return }
+                lookAhead()
                 let before = scheduled
                 refreshScheduled()
                 if scheduled != before { plan = coordinator.lastAppliedPlan }
@@ -448,6 +453,22 @@ struct ContentView: View {
         )
     }
 
+    /// On opening (or coming back) with nothing set and no preview on screen, plans tomorrow
+    /// quietly, as a preview would, without showing it or setting anything (v0.4.7 item 8). No
+    /// shift or event: the bar offers Set alarms for a time and Nap straight away.
+    private func lookAhead() {
+        guard plan == nil, skippedMorning == nil, coordinator.scheduledAlarmTimes().isEmpty else { return }
+        Task {
+            let peek = try? await coordinator.buildPlan(settings: store.settings)
+            nothingAhead = Self.nothingAhead(peek)
+        }
+    }
+
+    /// A quiet plan that has no alarm means nothing is coming; one that couldn't be made says nothing.
+    static func nothingAhead(_ peek: WakePlan?) -> Bool {
+        peek.map { !$0.hasAlarm } ?? false
+    }
+
     /// The bar holds Set alarms for a time and Add a temporary alarm (v0.4.7 item 8).
     private var nothingSetBar: Bool { !BottomBar.make(barInputs).actionRow.isEmpty }
 
@@ -483,7 +504,7 @@ struct ContentView: View {
         }
         i.evening = ScreenClock.isEvening(now)
         i.awakeOffered = NoAlarmMorning.offered
-        i.nothingFound = plan.map { !$0.hasAlarm } ?? false
+        i.nothingFound = plan.map { !$0.hasAlarm } ?? (nothingAhead && set.isEmpty)
         i.alarmStyleApp = store.settings.alarmStyle == .app
         return i
     }
