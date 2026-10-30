@@ -233,8 +233,8 @@ updates and ends the wind-down and morning Live Activities by push, without the 
 control's notice are time-sensitive, so they come through Focus. **Settings → Notifications**
 sets each notification to Normal, Time-sensitive or Critical (Critical for the ones Home
 Assistant sends). **Apple Weather** is a third forecast source (Settings → Bad weather), next to
-Home Assistant and Open-Meteo. Get-ready time, arriving early and the home address moved to
-**Settings → Mornings & home**.
+Home Assistant and Open-Meteo. Get-ready time and arriving early moved to **Settings → Mornings**,
+and the home address to **Settings → Home**.
 
 **New in v0.4.3:**
 - **Set alarms asks first:** a manual Plan and set alarms shows a preview with Set alarms and

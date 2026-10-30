@@ -36,9 +36,11 @@ struct SettingsView: View {
             }
 
             Section {
-                SettingsLink(title: "Mornings & home", icon: "sunrise",
-                             value: "Get ready \(settings.getReadyMinutes) min" + (settings.homeAddress.isEmpty ? "" : " · home set")) {
-                    MorningsHomeSettings(settings: $store.settings)
+                SettingsLink(title: "Mornings", icon: "sunrise", value: "Get ready \(settings.getReadyMinutes) min") {
+                    MorningsSettings(settings: $store.settings)
+                }
+                SettingsLink(title: "Home", icon: "house.fill", value: settings.homeAddress.isEmpty ? "Current location" : "Set") {
+                    HomeSettings(settings: $store.settings)
                 }
                 SettingsLink(title: "Alarms", icon: "alarm", value: "\(settings.alarmCount) alarms, \(settings.alarmSpacingMinutes) min apart") {
                     SettingsPage(title: "Alarms") { AlarmSettingsSection(settings: $store.settings) }
@@ -127,12 +129,12 @@ struct SettingsView: View {
     }
 }
 
-/// Settings → Mornings & home: get-ready time, arriving early, and where drives start.
-private struct MorningsHomeSettings: View {
+/// Settings → Mornings: get-ready time, arriving early and waking early enough.
+private struct MorningsSettings: View {
     @Binding var settings: BridgeSettings
 
     var body: some View {
-        SettingsPage(title: "Mornings & home") {
+        SettingsPage(title: "Mornings") {
             Section {
                 DefaultStepper(value: $settings.getReadyMinutes, in: 0...240, step: 5, defaultValue: BridgeSettings().getReadyMinutes, note: { "\($0) min" }) { "Get ready: \($0) min" }
                 DefaultStepper(value: $settings.workArrivalBufferMinutes, in: 0...60, step: 5, defaultValue: BridgeSettings().workArrivalBufferMinutes, note: { "\($0) min" }) { "Arrive at work early: \($0) min" }
@@ -143,6 +145,17 @@ private struct MorningsHomeSettings: View {
                 Text("When a shift's event has a location, Tonight shows when to leave to arrive this early. If the drive or bad weather leaves less than the get-ready time, you're warned and can wake earlier for that night; with the switch on, shift alarms move earlier by themselves. Appointments always plan the get-ready time.")
             }
 
+            ResetPageSection { settings.resetToDefaults(SettingsPages.mornings) }
+        }
+    }
+}
+
+/// Settings → Home: where drives start.
+private struct HomeSettings: View {
+    @Binding var settings: BridgeSettings
+
+    var body: some View {
+        SettingsPage(title: "Home") {
             Section {
                 HomeAddressField(address: $settings.homeAddress)
             } header: {
@@ -151,8 +164,8 @@ private struct MorningsHomeSettings: View {
                 Text("Where drives to appointments start. Blank uses your current location (Apple Maps only).")
             }
 
-            ResetPageSection(detail: "Get ready, arrive early, wake early and the home address go back to their defaults (no home address).") {
-                settings.resetToDefaults(SettingsPages.morningsHome)
+            ResetPageSection(detail: "The home address is cleared; drives start from your current location (Apple Maps only).") {
+                settings.resetToDefaults(SettingsPages.home)
             }
         }
     }
