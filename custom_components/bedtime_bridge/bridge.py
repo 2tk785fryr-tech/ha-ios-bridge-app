@@ -1166,8 +1166,18 @@ class BedtimeBridge:
             # Already left, or the shift came off the calendar: no more checks.
             self.state["leave_reminders"] = []
             self._cancel_leave_checks()
+            if self.is_home():
+                self._drop_leave_by()
             return
         await self._command(CMD_LEAVE_CHECK)
+
+    def _drop_leave_by(self) -> None:
+        """The shift behind leave-by is gone: leave-by goes too, so nothing shows a morning
+        that isn't happening."""
+        self.state["leave_by"] = None
+        self.state["leave_reminders"] = []
+        self._cancel_leave_checks()
+        self._changed()
 
     def _leave_shift_still_on(self) -> bool:
         """With no alarms left on a work morning, the checks run only while the calendar still
@@ -1246,6 +1256,9 @@ class BedtimeBridge:
             await self._sync_sleep_in(blocking=True)
         else:
             await self._set_sleep_in(bool(data.get("sleep_in", True)), blocking=True)
+            if not self._leave_shift_still_on():
+                # No alarms, and the shift is already off the calendar: no leave-by either.
+                self._drop_leave_by()
         at_home = self.is_home()
         if phase in ("bedtime", "edit"):
             # Sleep later before bed (item 12) or an edited alarm (item 13): nothing in the house,

@@ -209,6 +209,7 @@ struct ContentView: View {
             .toolbar(.hidden, for: .navigationBar)
             .onAppear {
                 coordinator.watchCalendar()
+                coordinator.dropLeaveRemindersIfEventGone(settings: store.settings)
                 refreshScheduled()
             }
             // The bedtime shortcut (or a phone command) may have set or cleared alarms while the
@@ -218,6 +219,7 @@ struct ContentView: View {
                 let before = scheduled
                 refreshScheduled()
                 if scheduled != before { plan = coordinator.lastAppliedPlan }
+                coordinator.dropLeaveRemindersIfEventGone(settings: store.settings)
                 Task { await coordinator.recheckDriveOnOpen(settings: store.settings) }
             }
             // bedtimebridge://replan, from Home Assistant's "plan out of date" and

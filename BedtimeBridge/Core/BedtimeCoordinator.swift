@@ -1306,7 +1306,11 @@ final class BedtimeCoordinator {
             "early_gap_minutes": settings.earlyBackstopGapMinutes,
             "changed_by": changedBy,
         ]
-        if change.alarmTimes.isEmpty { data["sleep_in"] = sleepIn }
+        if change.alarmTimes.isEmpty {
+            data["sleep_in"] = sleepIn
+            // No alarms keeps leave-by only while the shift is still on the calendar.
+            dropLeaveRemindersIfEventGone(settings: settings)
+        }
         if let reason { data["reason"] = reason }
         if let note, !note.isEmpty { data["note"] = note }
         // Home Assistant can refuse (shift alarms only past the late backstop): say so. If it
@@ -1439,12 +1443,22 @@ final class BedtimeCoordinator {
 
     /// With no alarms left, the leave reminders stay only while the calendar still shows the
     /// shift or appointment (v0.4.2 item 1, the same rule as Home Assistant's checks).
+    /// Also takes the leave-by off the widget once its event is gone, so a deleted shift doesn't
+    /// leave "Leave by 5:48 · Alarms done" on the Lock Screen. Checked on calendar changes, when
+    /// the app opens and after a change to no alarms.
     func dropLeaveRemindersIfEventGone(settings: BridgeSettings) {
-        guard let trip = leaveReminder.pendingTrip, setAlarmTimes().isEmpty else { return }
-        // An empty choice means every calendar.
-        let ids = settings.shiftCalendarIDs.isEmpty || settings.appointmentCalendarIDs.isEmpty ? [] : settings.shiftCalendarIDs.union(settings.appointmentCalendarIDs)
-        let found = calendar.events(from: trip.start.addingTimeInterval(-60), to: trip.start.addingTimeInterval(60), calendarIDs: ids)
-        if !Self.tripStillOnCalendar(trip, events: found.map { ($0.title ?? "", $0.startDate) }) { leaveReminder.clear() }
+        guard setAlarmTimes().isEmpty, EKEventStore.authorizationStatus(for: .event) == .fullAccess else { return }
+        if let trip = leaveReminder.pendingTrip {
+            // An empty choice means every calendar.
+            let ids = settings.shiftCalendarIDs.isEmpty || settings.appointmentCalendarIDs.isEmpty ? [] : settings.shiftCalendarIDs.union(settings.appointmentCalendarIDs)
+            let found = calendar.events(from: trip.start.addingTimeInterval(-60), to: trip.start.addingTimeInterval(60), calendarIDs: ids)
+            guard !Self.tripStillOnCalendar(trip, events: found.map { ($0.title ?? "", $0.startDate) }) else { return }
+            leaveReminder.clear()
+        }
+        // No trip left behind it: the widget's leave-by is stale.
+        if let leaveBy = NextAlarmSnapshot.load().leaveBy, leaveBy > .now {
+            updateWidget { $0.leaveBy = nil }
+        }
     }
 
     nonisolated static func tripStillOnCalendar(_ trip: PendingTrip, events: [(title: String, start: Date)]) -> Bool {
