@@ -167,7 +167,7 @@ async def test_item5_later_and_cancel_buttons(hass, ladder, hass_client_no_auth,
     hass.bus.async_fire("mobile_app_notification_action", {"action": "BEDTIME_BRIDGE_WIND_DOWN_CANCEL"})
     await hass.async_block_till_done()
     assert status_of(hass) == "cancelled"
-    assert "RUN_WIND_DOWN_CANCEL" in messages(notes)
+    assert "RUN_CANCEL_WIND_DOWN" in messages(notes)
     await at(hass, freezer, local("22:30", day=27))
     assert not any((m or "").startswith(("Time for bed", "Still up")) for m in messages(notes))
 

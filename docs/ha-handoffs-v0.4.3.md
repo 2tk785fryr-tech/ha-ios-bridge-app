@@ -44,7 +44,7 @@ Nothing to build in Home Assistant for these; the integration handles them:
   event or moved mornings, go to bed, and Still up every 10 min for an hour. Away overnight: the
   warning and go to bed still reach the phone; no helper, no reminders.
 - **Phone commands** (with *Send phone commands* on): `RUN_PLAN_PREVIEW`, `RUN_WIND_DOWN`,
-  `RUN_WIND_DOWN_CANCEL`, `RUN_MORNING_UPDATE`. Phone side in `docs/shortcuts.md`.
+  `RUN_CANCEL_WIND_DOWN`, `RUN_MORNING_UPDATE`. Phone side in `docs/shortcuts.md`.
 - **Reset** (new `reset` message from the app's Settings → Reset): clears the alarm state, the
   ladder's delay and weather moves, pending leave checks and phone commands, turns the napping
   and winding-down helpers off, fires a `reset` event, then recalculates the ladder from the

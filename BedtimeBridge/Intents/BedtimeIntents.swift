@@ -270,7 +270,7 @@ enum PhoneCommand: String, AppEnum {
     // v0.4.3 item 5
     case planPreview = "RUN_PLAN_PREVIEW"
     case windDown = "RUN_WIND_DOWN"
-    case windDownCancel = "RUN_WIND_DOWN_CANCEL"
+    case windDownCancel = "RUN_CANCEL_WIND_DOWN"
     // v0.4.3 item 14
     case morningUpdate = "RUN_MORNING_UPDATE"
 
@@ -286,7 +286,7 @@ enum PhoneCommand: String, AppEnum {
         .napEnd: "Nap end (RUN_NAP_END)",
         .planPreview: "Preview tomorrow (RUN_PLAN_PREVIEW)",
         .windDown: "Wind down on (RUN_WIND_DOWN)",
-        .windDownCancel: "Wind down off (RUN_WIND_DOWN_CANCEL)",
+        .windDownCancel: "Wind down off (RUN_CANCEL_WIND_DOWN)",
         .morningUpdate: "Morning update (RUN_MORNING_UPDATE)",
     ]
 }

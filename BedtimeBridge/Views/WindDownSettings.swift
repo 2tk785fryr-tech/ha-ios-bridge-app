@@ -123,14 +123,14 @@ struct WindDownPhoneGuide: View {
                 Text("2. Wind Down On (RUN_WIND_DOWN)")
             }
             Section {
-                step("Report Shortcut Ran: RUN_WIND_DOWN_CANCEL, Started")
+                step("Report Shortcut Ran: RUN_CANCEL_WIND_DOWN, Started")
                 step("Set Focus: Wind Down off")
                 step("Set Reduce White Point: off")
                 step("Set Night Shift: off (or leave it to its schedule)")
                 step("No brightness step: auto-brightness takes over")
-                step("Report Shortcut Ran: RUN_WIND_DOWN_CANCEL, Completed")
+                step("Report Shortcut Ran: RUN_CANCEL_WIND_DOWN, Completed")
             } header: {
-                Text("3. Wind Down Off (RUN_WIND_DOWN_CANCEL)")
+                Text("3. Wind Down Off (RUN_CANCEL_WIND_DOWN)")
             } footer: {
                 Text("No Dark Mode step: Appearance is Automatic, and Shortcuts can't set it back to Automatic.")
             }
@@ -141,7 +141,7 @@ struct WindDownPhoneGuide: View {
                 Text("4. Preview Tomorrow (RUN_PLAN_PREVIEW)")
             }
             Section {
-                Text("For each shortcut: Shortcuts → Automation → + → Notification → App: Home Assistant, Message contains the command (RUN_WIND_DOWN, RUN_WIND_DOWN_CANCEL, RUN_PLAN_PREVIEW) → Run Immediately, Notify When Run off.")
+                Text("For each shortcut: Shortcuts → Automation → + → Notification → App: Home Assistant, Message contains the command (RUN_WIND_DOWN, RUN_CANCEL_WIND_DOWN, RUN_PLAN_PREVIEW) → Run Immediately, Notify When Run off.")
             } header: {
                 Text("5. Automations")
             } footer: {
