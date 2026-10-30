@@ -830,7 +830,7 @@ final class BedtimeCoordinator {
         recordShortfall(planned: planned, actual: actual)
 
         if settings.leaveReminderEnabled, let trip = Self.trip(for: plan, settings: settings) {
-            await leaveReminder.schedule(trip, offsets: settings.leaveReminderOffsets)
+            await leaveReminder.schedule(trip, offsets: Self.localLeaveOffsets(settings, atHome: plan.atHome))
         } else {
             leaveReminder.clear()
         }
@@ -862,6 +862,18 @@ final class BedtimeCoordinator {
         if let moved = Self.movedFromUsual(plan, settings: settings) {
             payload["first_alarm_moved"] = true
             payload["moved_reason"] = moved
+        }
+        // The morning's drive, so Home Assistant can re-check it itself (drive times there, 0.4.4).
+        if let trip = Self.trip(for: plan, settings: settings) {
+            var tripBody: [String: Any] = [
+                "title": trip.title, "location": trip.location, "start": Self.iso(trip.start),
+                "arrive_by": Self.iso(trip.arriveBy), "planned_minutes": Int((trip.plannedTravelSeconds / 60).rounded()),
+            ]
+            if let latitude = trip.latitude, let longitude = trip.longitude {
+                tripBody["latitude"] = latitude
+                tripBody["longitude"] = longitude
+            }
+            payload["trip"] = tripBody
         }
         // Home Assistant sends RUN_LEAVE_CHECK at each of these (item 17).
         payload["leave_reminders"] = Self.trip(for: plan, settings: settings) != nil && settings.leaveReminderEnabled ? settings.leaveReminderOffsets.sorted(by: >) : []
@@ -903,6 +915,12 @@ final class BedtimeCoordinator {
         guard let dayBefore = Calendar.current.date(byAdding: .day, value: -1, to: day) else { return false }
         return !calendar.events(from: dayBefore, to: day, calendarIDs: settings.shiftCalendarIDs)
             .contains { WakePlanner.matchingRule(forTitle: $0.title ?? "", rules: settings.shiftRules) != nil }
+    }
+
+    /// The phone's own leave reminders: none while home when Home Assistant re-checks the drive
+    /// itself (it notifies instead); all of them when away, or Home Assistant can't be reached.
+    nonisolated static func localLeaveOffsets(_ settings: BridgeSettings, atHome: Bool?, checksHere: Bool = HomeAssistantLinks.driveChecksHere) -> [Int] {
+        checksHere && atHome == true ? [] : settings.leaveReminderOffsets
     }
 
     /// The morning's drive, for the leave-by reminder: an appointment with a place, or a
@@ -1423,7 +1441,7 @@ final class BedtimeCoordinator {
             // A delayed start (a snow delay) moves the leave-by reminder with it.
             trip.start += shift
             trip.arriveBy += shift
-            await leaveReminder.schedule(trip, offsets: settings.leaveReminderOffsets)
+            await leaveReminder.schedule(trip, offsets: Self.localLeaveOffsets(settings, atHome: lastAppliedPlan?.atHome))
         }
         updateWidget { snapshot in
             snapshot.snoozedUntil = nil
@@ -1564,7 +1582,8 @@ final class BedtimeCoordinator {
         guard settings.leaveReminderEnabled, leaveReminder.pendingTrip != nil,
               let provider = try? travel.provider(for: settings),
               let origin = try? await origin(settings: settings),
-              let trip = await leaveReminder.recheck(using: provider, origin: origin, travel: travel, offsets: settings.leaveReminderOffsets, notify: notify)
+              let trip = await leaveReminder.recheck(using: provider, origin: origin, travel: travel,
+                                                     offsets: Self.localLeaveOffsets(settings, atHome: lastAppliedPlan?.atHome), notify: notify)
         else { return nil }
         updateWidget { $0.leaveBy = trip.leaveBy }
         await updateMorningActivity(settings: settings)

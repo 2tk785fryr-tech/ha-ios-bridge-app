@@ -10,6 +10,7 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import Event, EventStateChangedData, HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import (
     async_call_later,
@@ -20,6 +21,7 @@ from homeassistant.helpers.event import (
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
+from . import drivetime as dtm
 from . import ladder as ldr
 from . import weekly
 from .liveactivity import LiveActivities
@@ -46,6 +48,11 @@ from .const import (
     CONF_WIND_DOWN_HELPER,
     CONF_PHONE_BATTERY,
     CONF_PHONE_BATTERY_STATE,
+    CONF_DRIVE_SOURCE,
+    CONF_GOOGLE_KEY,
+    CONF_MAPS_KEY,
+    CONF_MAPS_KEY_ID,
+    CONF_TOMTOM_KEY,
     CONF_BED_SENSOR,
     CONF_BEDTIME_HELPER,
     CONF_CURTAIN_OFFSET,
@@ -228,6 +235,8 @@ class BedtimeBridge:
         self.wind_down = WindDown(self)
         # Live Activities by Apple push (0.4.4).
         self.live = LiveActivities(self)
+        # Apple Maps' client keeps its access token between checks.
+        self._maps: dtm.AppleMaps | None = None
         # RUN_MORNING_UPDATE timers for the morning Live Activity (v0.4.3 item 14).
         self._morning_unsubs: list[Callable[[], None]] = []
         # The weekly summary's timer (v0.4.3 item 15).
@@ -397,7 +406,12 @@ class BedtimeBridge:
                 moved=True if changed else bool(data.get("first_alarm_moved")),
                 moved_reason=data.get("reason") if changed else data.get("moved_reason"),
             )
-        return {"settings": self.settings_for_app(), "wind_down": self.wind_down.summary(), **result}
+        return {
+            "settings": self.settings_for_app(), "wind_down": self.wind_down.summary(),
+            # The app skips its own leave reminders while home when the checks happen here.
+            "drive_checks_here": bool(self._drive_services()),
+            **result,
+        }
 
     # MARK: Plug in your phone (v0.4.3 item 10)
 
@@ -674,6 +688,8 @@ class BedtimeBridge:
         self.state["plan_error"] = None
         self.state["ladder_plan"] = data.get("ladder") or {}
         self.state["leave_reminders"] = [int(m) for m in data.get("leave_reminders") or []]
+        # Where and when the morning's drive arrives, for drive checks here (0.4.4).
+        self.state["trip"] = data.get("trip") if isinstance(data.get("trip"), dict) else None
         self._check_alarms_set(data)
         if (data.get("ladder") or {}).get("work_buffer_minutes") is not None:
             self.state["work_buffer_minutes"] = int(data["ladder"]["work_buffer_minutes"])
@@ -1433,7 +1449,73 @@ class BedtimeBridge:
             if self.is_home():
                 self._drop_leave_by()
             return
+        if await self._drive_check_here():
+            return
         await self._command(CMD_LEAVE_CHECK)
+
+    # MARK: Drive times here (0.4.4)
+
+    def _drive_services(self) -> list[Any]:
+        """The services chosen in the options, as far as their keys are in; empty means the phone."""
+        source = self.options.get(CONF_DRIVE_SOURCE) or dtm.SOURCE_PHONE
+        if source == dtm.SOURCE_PHONE:
+            return []
+        session = async_get_clientsession(self.hass)
+        live = self.state.get("live_activity") or {}
+        services: dict[str, Any] = {}
+        if self.options.get(CONF_MAPS_KEY) and self.options.get(CONF_MAPS_KEY_ID) and live.get("team_id"):
+            if self._maps is None:
+                self._maps = dtm.AppleMaps(session, self.options[CONF_MAPS_KEY], self.options[CONF_MAPS_KEY_ID], live["team_id"])
+            services[dtm.SOURCE_APPLE] = self._maps
+        if self.options.get(CONF_TOMTOM_KEY):
+            services[dtm.SOURCE_TOMTOM] = dtm.TomTom(session, self.options[CONF_TOMTOM_KEY])
+        if self.options.get(CONF_GOOGLE_KEY):
+            services[dtm.SOURCE_GOOGLE] = dtm.Google(session, self.options[CONF_GOOGLE_KEY], live.get("bundle_id"))
+        if source == dtm.SOURCE_LONGEST:
+            return list(services.values())
+        return [services[source]] if source in services else []
+
+    def _home_place(self) -> dtm.Place | None:
+        home = self.hass.states.get("zone.home")
+        if home is None or home.attributes.get("latitude") is None:
+            if self.hass.config.latitude is None:
+                return None
+            return dtm.Place("home", self.hass.config.latitude, self.hass.config.longitude)
+        return dtm.Place("home", home.attributes["latitude"], home.attributes["longitude"])
+
+    async def _drive_check_here(self) -> bool:
+        """A leave check worked out here: the drive arriving by the trip's arrive-by with the
+        traffic expected then; leave-by moves and you're told. False: ask the phone instead."""
+        services = self._drive_services()
+        trip = self.state.get("trip") or {}
+        arrive_by = _time(trip.get("arrive_by"))
+        origin = self._home_place()
+        if not services or arrive_by is None or origin is None or not (trip.get("location") or trip.get("latitude") is not None):
+            return False
+        destination = dtm.Place(trip.get("location") or "", trip.get("latitude"), trip.get("longitude"))
+        try:
+            seconds = await dtm.drive_seconds(services, origin, destination, arrive_by)
+        except dtm.DriveTimeError as err:
+            _LOGGER.warning("Bedtime Bridge couldn't check the drive here, asking the phone: %s", err)
+            return False
+        planned = int(trip.get("planned_minutes") or self.state.get("drive_minutes") or 0)
+        minutes = round(seconds / 60)
+        leave_by = arrive_by - timedelta(seconds=seconds)
+        await self._leave_by({"leave_by": leave_by.isoformat(), "drive_minutes": minutes, "note": "checked by Home Assistant"})
+        await self._notify_leave(leave_by, minutes, planned, trip)
+        if self.live.configured and self.state.get("morning_updates_until"):
+            await self.live.morning()
+        return True
+
+    async def _notify_leave(self, leave_by: datetime, minutes: int, planned: int, trip: dict[str, Any]) -> None:
+        """"Leave by 5:48 · 32 min drive (5 min worse than planned)", or "Leave now · …", as the app says it."""
+        now = dt_util.utcnow()
+        head = "Leave now" if leave_by <= now + timedelta(minutes=1) else f"Leave by {dt_util.as_local(leave_by).strftime('%-I:%M')}"
+        difference = minutes - planned if planned else 0
+        change = f" ({abs(difference)} min {'worse' if difference > 0 else 'lighter'} than planned)" if abs(difference) >= 3 else ""
+        start = _time(trip.get("start"))
+        body = f"{trip.get('title') or 'Your drive'}" + (f" at {dt_util.as_local(start).strftime('%-I:%M %p')}." if start else ".")
+        await self.wind_down._notify(f"{head} · {minutes} min drive{change}", body, tag="leave_check", time_sensitive=True)
 
     def _drop_leave_by(self) -> None:
         """The shift behind leave-by is gone: leave-by goes too, so nothing shows a morning
@@ -1518,6 +1600,9 @@ class BedtimeBridge:
         leave_by = _time(self.state.get("leave_by"))
         if times and scope == "wake_up" and delay and leave_by is not None:
             self.state["leave_by"] = (leave_by + timedelta(minutes=delay)).isoformat()
+            trip = self.state.get("trip") or {}
+            if _time(trip.get("arrive_by")):
+                trip["arrive_by"] = (_time(trip["arrive_by"]) + timedelta(minutes=delay)).isoformat()
             self._schedule_leave_checks()
         if phase not in ("bedtime", "edit"):
             await self._restart_wake_automations()

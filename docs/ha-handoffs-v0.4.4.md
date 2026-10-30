@@ -48,3 +48,39 @@ you've seen a morning work by push, then delete both.
   (Settings → System → Logs, search "Live Activity push").
 - First evening with wind-down on: the Lock Screen shows "Bed in …" at wind-down time without
   opening the app.
+
+## 5. Drive times worked out in Home Assistant (optional)
+
+Today each leave check wakes the phone (`RUN_LEAVE_CHECK`) to re-check the drive. With a drive
+service chosen, Home Assistant re-checks it itself: the drive from home arriving by your
+arrive-by, with the traffic expected then. It moves leave-by, updates the Live Activity, and sends
+"Leave by 5:48 · 32 min drive (5 min worse than planned)" (level on the app's Settings →
+Notifications page, *Leave by (checked by Home Assistant)*). It works with the phone asleep. If
+the service doesn't answer, it asks the phone as before.
+
+The app's own drive times don't change: it still plans at bedtime and re-checks when you stop an
+alarm or open it, wherever you are. While Home Assistant does the checks and you're home at
+bedtime, the app skips its own leave reminders (Home Assistant's replace them); away, or when Home
+Assistant can't be reached, it schedules them as before.
+
+**Integration options** (Configure):
+
+| Option | What |
+| --- | --- |
+| Drive times from | Phone (default) · Apple Maps · TomTom · Google · Longest of all |
+| Apple Maps key (.p8) and Key ID | For Apple Maps (below) |
+| TomTom key | The same key the app uses |
+| Google key | A Routes API key; the app's works unless it's restricted to the iOS app only |
+
+The drive starts from Home Assistant's home zone.
+
+**Apple Maps key** (Michael, on developer.apple.com; registering is a credential step):
+
+1. Certificates, Identifiers & Profiles → **Identifiers** → **+** → **Maps IDs** → Continue.
+   Description *Bedtime Bridge*, identifier `maps.io.github.2tk785fryr-tech.bedtimebridge` →
+   Register.
+2. **Keys** → **+** → name *Bedtime Bridge Maps*, tick **MapKit JS** (it covers the Maps Server
+   API) → Configure → choose that Maps ID → Save → Continue → **Register**.
+3. **Download** the `AuthKey_….p8` (once only; keep it with the push key) and note its Key ID.
+4. Paste both into the integration's options and set *Drive times from* to Apple Maps (or Longest
+   of all).

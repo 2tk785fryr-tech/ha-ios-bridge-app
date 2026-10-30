@@ -40,6 +40,8 @@ enum NotificationKind: String, CaseIterable, Identifiable {
     case plugIn = "charge"
     case appExpiry = "app_expiry"
     case weekly
+    /// A leave check worked out in Home Assistant (drive times there, 0.4.4).
+    case leaveCheck = "leave_check"
 
     var id: String { rawValue }
 
@@ -64,13 +66,14 @@ enum NotificationKind: String, CaseIterable, Identifiable {
         case .plugIn: "Plug in your phone"
         case .appExpiry: "Reinstall the app"
         case .weekly: "Your week"
+        case .leaveCheck: "Leave by (checked by Home Assistant)"
         }
     }
 
     var defaultLevel: NotificationLevel {
         switch self {
         case .goToBed: .critical
-        case .leaveReminder, .planChanged, .napControl, .stillUp, .plugIn: .timeSensitive
+        case .leaveReminder, .planChanged, .napControl, .stillUp, .plugIn, .leaveCheck: .timeSensitive
         default: .normal
         }
     }

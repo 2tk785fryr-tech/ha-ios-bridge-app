@@ -133,6 +133,11 @@ enum HomeAssistantLinks {
 
     private static let cachedSettingsKey = "homeAssistantSettings.v1"
 
+    static let driveChecksHereKey = "homeAssistantDriveChecks.v1"
+
+    /// Home Assistant re-checks the drive itself at each leave check (drive times there, 0.4.4).
+    static var driveChecksHere: Bool { UserDefaults.standard.bool(forKey: driveChecksHereKey) }
+
     /// Last settings Home Assistant sent back, so snooze/stop in the morning use them
     /// without another round trip.
     static var cachedSettings: [String: Any] {
@@ -278,6 +283,9 @@ struct IntegrationLink: HomeAssistantLink {
         }
         if let windDown = reply["wind_down"] as? [String: Any] {
             WindDownState.cached = WindDownState(windDown)
+        }
+        if let here = reply["drive_checks_here"] as? Bool {
+            UserDefaults.standard.set(here, forKey: HomeAssistantLinks.driveChecksHereKey)
         }
         if let week = reply["weekly_summary"] as? [String: Any] {
             WeeklySummary.cached = WeeklySummary(week)

@@ -45,6 +45,13 @@ CONF_PHONE_BATTERY_STATE = "phone_battery_state_sensor"
 # from the phone). Without them, RUN_MORNING_UPDATE stands in.
 CONF_APNS_KEY = "apns_key"
 CONF_APNS_KEY_ID = "apns_key_id"
+# Drive times in Home Assistant (0.4.4): "phone" asks the phone (RUN_LEAVE_CHECK); "apple",
+# "tomtom", "google" or "longest" re-check here. Apple Maps needs a Maps key (.p8) and Key ID.
+CONF_DRIVE_SOURCE = "drive_time_source"
+CONF_MAPS_KEY = "maps_key"
+CONF_MAPS_KEY_ID = "maps_key_id"
+CONF_TOMTOM_KEY = "tomtom_key"
+CONF_GOOGLE_KEY = "google_key"
 
 # What Snooze/Stop on the phone do in Home Assistant.
 WAKE_BOTH = "both"

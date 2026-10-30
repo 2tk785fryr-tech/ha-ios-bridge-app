@@ -32,3 +32,19 @@ final class LeaveAndEventTests: XCTestCase {
         XCTAssertTrue(BottomBar.menu(BottomBar.Inputs(), alarmStyleApp: true, morningKnown: false).contains(.addLeave))
     }
 }
+
+/// Drive times in Home Assistant (0.4.4): the phone's own reminders step aside only at home.
+final class LocalLeaveReminderTests: XCTestCase {
+    func testPhoneRemindersOnlyWhenHomeAssistantIsntChecking() {
+        let settings = BridgeSettings()
+        XCTAssertEqual(BedtimeCoordinator.localLeaveOffsets(settings, atHome: true, checksHere: true), [], "home and HA checks: HA notifies")
+        XCTAssertEqual(BedtimeCoordinator.localLeaveOffsets(settings, atHome: false, checksHere: true), settings.leaveReminderOffsets, "away: the phone's own")
+        XCTAssertEqual(BedtimeCoordinator.localLeaveOffsets(settings, atHome: nil, checksHere: true), settings.leaveReminderOffsets, "HA unreachable: the phone's own")
+        XCTAssertEqual(BedtimeCoordinator.localLeaveOffsets(settings, atHome: true, checksHere: false), settings.leaveReminderOffsets, "phone mode: unchanged")
+    }
+
+    func testLeaveCheckNotificationIsOnTheNotificationsPage() {
+        XCTAssertTrue(NotificationKind.leaveCheck.fromHomeAssistant)
+        XCTAssertEqual(NotificationKind.leaveCheck.defaultLevel, .timeSensitive)
+    }
+}

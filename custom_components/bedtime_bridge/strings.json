@@ -40,7 +40,12 @@
           "phone_battery_sensor": "Phone battery level",
           "phone_battery_state_sensor": "Phone battery state",
           "apns_key": "Apple push key (.p8)",
-          "apns_key_id": "Apple push Key ID"
+          "apns_key_id": "Apple push Key ID",
+          "drive_time_source": "Drive times from",
+          "maps_key": "Apple Maps key (.p8)",
+          "maps_key_id": "Apple Maps Key ID",
+          "tomtom_key": "TomTom key",
+          "google_key": "Google key"
         },
         "data_description": {
           "wake_action": "Helpers: turn on the entities below, for blueprints that watch them (Wake Snooze Fade, Wake Sequence). Events: fire a bedtime_bridge event for automations and blueprints to trigger on. Both: do both.",
@@ -71,7 +76,12 @@
           "phone_battery_sensor": "The companion app's battery level (e.g. sensor.mikes_iphone_battery_level), for Plug in your phone at go to bed and the second reminder.",
           "phone_battery_state_sensor": "The companion app's battery state (Charging, Not Charging, Full).",
           "apns_key": "Paste the whole AuthKey_….p8 file, BEGIN and END lines included, from developer.apple.com → Keys (Apple Push Notifications service). With it and the Key ID, Home Assistant starts, updates and ends the app's Live Activities by push; without them, RUN_MORNING_UPDATE stands in.",
-          "apns_key_id": "The key's 10-character Key ID."
+          "apns_key_id": "The key's 10-character Key ID.",
+          "drive_time_source": "Phone: each leave check wakes the phone (RUN_LEAVE_CHECK), which re-checks the drive. Apple Maps, TomTom, Google or Longest of all: Home Assistant re-checks the drive itself, arriving by your arrive-by with the traffic expected then, moves leave-by and tells you (works with the phone asleep). Falls back to the phone if a service doesn't answer.",
+          "maps_key": "For Apple Maps: paste the whole AuthKey_….p8 of a Maps key (developer.apple.com → Keys → Maps), BEGIN and END lines included.",
+          "maps_key_id": "That Maps key's 10-character Key ID.",
+          "tomtom_key": "For TomTom: the same key the app uses (developer.tomtom.com).",
+          "google_key": "For Google: a Routes API key (the app's key works if it isn't restricted to the iOS app only)."
         }
       },
       "pair": {
@@ -124,7 +134,12 @@
           "phone_battery_sensor": "Phone battery level",
           "phone_battery_state_sensor": "Phone battery state",
           "apns_key": "Apple push key (.p8)",
-          "apns_key_id": "Apple push Key ID"
+          "apns_key_id": "Apple push Key ID",
+          "drive_time_source": "Drive times from",
+          "maps_key": "Apple Maps key (.p8)",
+          "maps_key_id": "Apple Maps Key ID",
+          "tomtom_key": "TomTom key",
+          "google_key": "Google key"
         },
         "data_description": {
           "wake_action": "Helpers: turn on the entities below, for blueprints that watch them (Wake Snooze Fade, Wake Sequence). Events: fire a bedtime_bridge event for automations and blueprints to trigger on. Both: do both.",
@@ -155,7 +170,12 @@
           "phone_battery_sensor": "The companion app's battery level (e.g. sensor.mikes_iphone_battery_level), for Plug in your phone at go to bed and the second reminder.",
           "phone_battery_state_sensor": "The companion app's battery state (Charging, Not Charging, Full).",
           "apns_key": "Paste the whole AuthKey_….p8 file, BEGIN and END lines included, from developer.apple.com → Keys (Apple Push Notifications service). With it and the Key ID, Home Assistant starts, updates and ends the app's Live Activities by push; without them, RUN_MORNING_UPDATE stands in.",
-          "apns_key_id": "The key's 10-character Key ID."
+          "apns_key_id": "The key's 10-character Key ID.",
+          "drive_time_source": "Phone: each leave check wakes the phone (RUN_LEAVE_CHECK), which re-checks the drive. Apple Maps, TomTom, Google or Longest of all: Home Assistant re-checks the drive itself, arriving by your arrive-by with the traffic expected then, moves leave-by and tells you (works with the phone asleep). Falls back to the phone if a service doesn't answer.",
+          "maps_key": "For Apple Maps: paste the whole AuthKey_….p8 of a Maps key (developer.apple.com → Keys → Maps), BEGIN and END lines included.",
+          "maps_key_id": "That Maps key's 10-character Key ID.",
+          "tomtom_key": "For TomTom: the same key the app uses (developer.tomtom.com).",
+          "google_key": "For Google: a Routes API key (the app's key works if it isn't restricted to the iOS app only)."
         }
       }
     }
@@ -172,6 +192,15 @@
       "options": {
         "old": "Old template (sensor.wake_rung_*)",
         "bridge": "Bedtime Bridge ladder"
+      }
+    },
+    "drive_time_source": {
+      "options": {
+        "phone": "Phone (wakes the app)",
+        "apple": "Apple Maps",
+        "tomtom": "TomTom",
+        "google": "Google",
+        "longest": "Longest of all"
       }
     }
   },

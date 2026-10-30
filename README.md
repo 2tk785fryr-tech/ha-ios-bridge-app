@@ -234,7 +234,9 @@ control's notice are time-sensitive, so they come through Focus. **Settings → 
 sets each notification to Normal, Time-sensitive or Critical (Critical for the ones Home
 Assistant sends). **Apple Weather** is a third forecast source (Settings → Bad weather), next to
 Home Assistant and Open-Meteo. Get-ready time and arriving early moved to **Settings → Mornings**,
-and the home address to **Settings → Home**.
+and the home address to **Settings → Home**. Home Assistant can **re-check the drive itself** at
+each leave check (Apple Maps, TomTom, Google or the longest), so the checks work with the phone
+asleep; the app's own drive times are unchanged.
 
 **New in v0.4.3:**
 - **Set alarms asks first:** a manual Plan and set alarms shows a preview with Set alarms and
