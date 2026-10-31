@@ -299,6 +299,20 @@ def _schema(hass: HomeAssistant, current: dict[str, Any]) -> vol.Schema:
     )
 
 
+PAGE_NAMES = {
+    "you": "You and home", "wake": "Wake-up", "bedroom": "Bedroom and bed", "bedtime": "Bedtime and wind-down",
+    "shifts": "Shifts and calendar", "phone": "Phone", "backstops": "Backstops", "keys": "Keys",
+}
+
+
+def changed_text(pages: list[str]) -> str:
+    """The menu's line about unsaved pages (v0.4.8 item 10)."""
+    if not pages:
+        return "Pick a page. Each page comes back here; **Save and close** saves your changes."
+    names = ", ".join(PAGE_NAMES.get(page, page) for page in pages)
+    return f"**Changed: {names}.** Not saved until you choose **Save and close**; closing with ✕ drops them."
+
+
 class BedtimeBridgeConfigFlow(ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
@@ -335,20 +349,40 @@ class BedtimeBridgeConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class BedtimeBridgeOptionsFlow(OptionsFlow):
-    """A menu of pages (v0.4.7 item 9); each page saves its own options."""
+    """A menu of pages (v0.4.7 item 9). A page goes back to the menu with its changes kept;
+    Save and close saves every changed page at once (v0.4.8 item 10)."""
+
+    def __init__(self) -> None:
+        self._changes: dict[str, Any] = {}
+        self._changed_pages: list[str] = []
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        placeholders = await async_placeholders(self.hass, self.config_entry.data[CONF_WEBHOOK_ID])
+        placeholders["changed"] = changed_text(self._changed_pages)
         return self.async_show_menu(
             step_id="init",
-            menu_options=list(PAGES),
-            description_placeholders=await async_placeholders(self.hass, self.config_entry.data[CONF_WEBHOOK_ID]),
+            menu_options=[*PAGES, "save"],
+            description_placeholders=placeholders,
         )
 
+    async def async_step_save(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        return self.async_create_entry(data={**self.config_entry.options, **self._changes})
+
     async def _page(self, page: str, user_input: dict[str, Any] | None) -> ConfigFlowResult:
-        current = dict(self.config_entry.options)
+        current = {**self.config_entry.options, **self._changes}
         if user_input is not None:
             # A field cleared on this page stays cleared; other pages keep theirs.
-            return self.async_create_entry(data={**current, **{key: None for key in PAGES[page]}, **user_input})
+            new = {**{key: None for key in PAGES[page]}, **user_input}
+            # An option the entry never stored, left at its default, isn't a change.
+            try:
+                defaults = _subset(_schema(self.hass, current), PAGES[page])({})
+            except vol.Invalid:
+                defaults = {}
+            changed = any(current.get(key, defaults.get(key)) != value for key, value in new.items())
+            if changed and page not in self._changed_pages:
+                self._changed_pages.append(page)
+            self._changes.update(new)
+            return await self.async_step_init()
         # Only what the entry has stored: cleared fields (None) stay empty, options it has never
         # had get a suggestion.
         return self.async_show_form(step_id=page, data_schema=_subset(_schema(self.hass, current), PAGES[page]))

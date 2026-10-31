@@ -95,7 +95,7 @@ struct SettingsView: View {
                 SettingsLink(title: "Notifications", icon: "bell.badge", value: "") {
                     NotificationSettings(settings: $store.settings)
                 }
-                SettingsLink(title: "Shortcuts & controls", icon: "square.grid.2x2", value: "") {
+                SettingsLink(title: "Shortcuts, controls and Siri", icon: "square.grid.2x2", value: "") {
                     ShortcutsSettings(settings: $store.settings)
                 }
                 SettingsLink(title: "App icon", icon: "app.badge", value: AppIconChoice.current.title) {
@@ -116,6 +116,16 @@ struct SettingsView: View {
                             Text("How times show in the app, the widgets and Live Activities, and in Home Assistant's notifications. Phone setting follows Settings → General → Date & Time.")
                         }
                     }
+                }
+            }
+
+            // v0.4.8 items 9 and 12.
+            Section("About") {
+                SettingsLink(title: "Testing reports", icon: "ladybug", value: TestingReports.enabled ? "On" : "Off") {
+                    TestingReportsPage(settings: store.settings)
+                }
+                SettingsLink(title: "Testing checklist", icon: "checklist", value: "\(TestingChecklist.ticked.count) of \(TestingChecklist.Item.allCases.count)") {
+                    TestingChecklistPage()
                 }
             }
 

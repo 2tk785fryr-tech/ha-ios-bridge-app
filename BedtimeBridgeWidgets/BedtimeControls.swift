@@ -55,6 +55,18 @@ struct WindDownControlProvider: ControlValueProvider {
     }
 }
 
+/// "Report something" (v0.4.8 item 9): opens the app's testing report, from Control Center, the
+/// Lock Screen or the Action button.
+struct ReportControl: ControlWidget {
+    var body: some ControlWidgetConfiguration {
+        StaticControlConfiguration(kind: "io.bedtimebridge.control.report") {
+            ControlWidgetButton(action: OpenURLIntent(URL(string: "bedtimebridge://report")!)) { Label("Report something", systemImage: "ladybug") }
+        }
+        .displayName("Report something")
+        .description("Opens a testing report with the app's state as it is now.")
+    }
+}
+
 /// "Tonight": opens tonight's plan and alarm status.
 struct TonightControl: ControlWidget {
     var body: some ControlWidgetConfiguration {

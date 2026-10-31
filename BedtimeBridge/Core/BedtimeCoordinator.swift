@@ -329,6 +329,13 @@ final class BedtimeCoordinator {
     /// back to Home Assistant's next shift; if that isn't available either, it tells HA the
     /// plan failed (so the missing-plan blueprint can warn you) and rethrows.
     func planAndSchedule(settings: BridgeSettings) async throws -> WakePlan {
+        let hadOwnAlarms = ownAlarmsSet
+        defer {
+            // v0.4.8 item 11: planning should never clear your own alarms any more.
+            if hadOwnAlarms, !ownAlarmsSet {
+                Task { await TestingReports.automatic("own_alarms_cleared", saw: "Planning cleared your own alarms", settings: settings) }
+            }
+        }
         let result: (WakePlan, BridgeSettings)
         do {
             result = try await makePlan(settings: settings, now: .now)
@@ -512,6 +519,8 @@ final class BedtimeCoordinator {
     func scheduleManual(wakeTime: Date, wakeIs: WakeTimeAlarm? = nil, ownBackstops: Bool? = nil,
                         exactly chosen: SkipReplacement? = nil, settings phoneSettings: BridgeSettings) async throws -> WakePlan {
         let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
+        // v0.4.8 item 6: what was there before, for Undo, as after a preview.
+        let undoBefore = undoBaseline(kind: .set)
         let wake = Self.nextOccurrence(ofTimeIn: wakeTime)
         let replacement = chosen ?? SkipReplacement(wake: wake, wakeIs: wakeIs ?? settings.wakeTimeIs)
         var plan = manualPlan(replacement, settings: settings)
@@ -523,7 +532,9 @@ final class BedtimeCoordinator {
             skippedMorning = nil
             plan.reason = "Day off alarm"
         }
+        clearedMorning = nil
         try await apply(plan, settings: settings)
+        saveUndo(undoBefore, left: setAlarmTimes())
         return plan
     }
 
@@ -806,6 +817,11 @@ final class BedtimeCoordinator {
     /// notification with a Re-plan action. Never moves or removes alarms itself.
     func checkPlanStillMatches(settings: BridgeSettings) async -> String? {
         let set = setAlarmTimes().filter { $0 > .now }
+        // Your own alarms aren't from the calendar, so it can't put them out of date (v0.4.8 item 3).
+        if ownAlarmsSet {
+            calendarChangedSinceSet = false
+            return nil
+        }
         guard !set.isEmpty, let new = try? await buildPlan(settings: settings) else { return nil }
         let snapshot = NextAlarmSnapshot.load()
         // Compared with the plan as it was set, so Sleep later, edits and morning changes (which
@@ -829,6 +845,8 @@ final class BedtimeCoordinator {
     /// Sets (or clears) alarms, the leave-by reminder and the HA sensor for a plan.
     private func apply(_ plan: WakePlan, settings: BridgeSettings) async throws {
         lastAppliedPlan = plan
+        // v0.4.8 item 5: Good night until bedtime runs, unless this is bedtime's own plan.
+        if plan.hasAlarm, GoodNight.countsAsBeforeBedtime(bedtimeRanAt: bedtimeRanAt) { GoodNight.alarmsSetAt = .now }
         var actual = plan.alarmTimes
         if plan.hasAlarm, settings.alarmStyle == .app {
             actual = try await alarms.replaceAlarms(
@@ -1241,7 +1259,7 @@ final class BedtimeCoordinator {
             MainActor.assumeIsolated {
                 guard let self else { return }
                 self.dropLeaveRemindersIfEventGone(settings: SettingsStore.shared.settings)
-                guard !self.alarmSeries.isEmpty else { return }
+                guard !self.alarmSeries.isEmpty, !self.ownAlarmsSet else { return }
                 self.calendarChangedSinceSet = true
                 // Say what changed, by notification; never move the alarms (v0.4.3 item 4).
                 Task { _ = await self.checkPlanStillMatches(settings: SettingsStore.shared.settings) }
@@ -1299,6 +1317,8 @@ final class BedtimeCoordinator {
         let wasSnoozing = alarms.scheduledAlarms().contains { $0.date <= .now && !keptAlarms.contains($0.id) }
         // The edit ended every snooze: the bedroom goes back to before the wake fade.
         let snoozeEnded = wasSnoozing && keptSnoozing.isEmpty
+        // v0.4.8 item 6: Change times from Change plan can be undone; not mid-morning.
+        let undoBefore = wasSnoozing ? nil : undoBaseline(kind: .set)
         for alarm in alarms.scheduledAlarms() where alarm.date <= .now && !keptAlarms.contains(alarm.id) && !keptSnoozing.contains(alarm.id) {
             alarms.stop(alarm.id)
             alarms.cancel(alarm.id)
@@ -1322,6 +1342,7 @@ final class BedtimeCoordinator {
             snapshot.alarmTimes = all
             if snoozeEnded { snapshot.snoozedUntil = nil }
         }
+        if let undoBefore { saveUndo(undoBefore, left: all) }
         let wake = MorningChange.currentWake(series: all, wakeIs: seriesPattern(settings: settings).wakeIs)
         var data: [String: Any] = [
             "alarm_times": all.map(Self.iso),
@@ -1528,6 +1549,36 @@ final class BedtimeCoordinator {
         return StopDescription.make(kind: kind, alarmTime: time, series: alarmSeries, remaining: remaining)
     }
 
+    /// v0.4.8 item 4: Stop on the banner or Lock Screen. A series alarm snoozes instead (a new
+    /// alarm at the snooze time, reported as a snooze) and returns that alarm for the Stop
+    /// screen. Already up (Home Assistant), or anything else (test, nap, temporary): a real stop.
+    func bannerStopped(id: UUID, settings phoneSettings: BridgeSettings) async -> (id: UUID, ringsAgain: Date)? {
+        let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
+        guard settings.alarmStyle == .app, stopDescription(for: id).kind == .series else {
+            await alarmStopped(id: id, settings: phoneSettings)
+            return nil
+        }
+        if await HomeAssistantLinks.current(settings)?.isUp(settings: settings) == true {
+            await alarmStopped(id: id, settings: phoneSettings)
+            return nil
+        }
+        let ringsAgain = Date.now.addingTimeInterval(Double(settings.snoozeMinutes) * 60)
+        let title = lastAppliedPlan.map(alarmTitle(for:)) ?? "Wake up"
+        guard let again = try? await alarms.scheduleSingle(at: ringsAgain, title: title, cause: lastCause,
+                                                           snoozeMinutes: settings.snoozeMinutes, sound: settings.alarmSound) else {
+            // Couldn't set the snooze: the stop stands, and it's worth a report (item 11).
+            await alarmStopped(id: id, settings: phoneSettings)
+            await TestingReports.automatic("banner_stop_ended", saw: "Stop on the banner ended the alarm: the snooze alarm couldn't be set", settings: phoneSettings)
+            return nil
+        }
+        morningAlarms = Array(Set(morningAlarms + [ringsAgain])).sorted()
+        await alarmSnoozed(id: id, settings: phoneSettings)
+        BannerStop.pending = again
+        ActivityLog.add("Banner Stop: snoozed to \(WakePlanner.format(ringsAgain))")
+        TestingChecklist.tick(.bannerStopSnoozed)
+        return (again, ringsAgain)
+    }
+
     /// - Parameter all: the slide-and-hold on the Stop screen (item 2): ends every alarm left in
     ///   this wake-up's series, without asking Home Assistant whether you're up. Temporary
     ///   alarms and other mornings stay.
@@ -1686,6 +1737,8 @@ final class BedtimeCoordinator {
             data.merge(PhoneBattery.reading()) { $1 }
         }
         await report(.commandRan, data: data, settings: settings)
+        // Its last step: the alarms are set, so check the morning (v0.4.8 item 14).
+        if command == "RUN_BEDTIME", outcome == "completed" { await bedtimeHealthCheck(settings: settings) }
     }
 
     /// Clock app mode: the Shortcuts "Alarm is snoozed/stopped" automations call this instead
@@ -1728,6 +1781,21 @@ final class BedtimeCoordinator {
     private var lastCause: String {
         get { UserDefaults.standard.string(forKey: Self.lastCauseKey) ?? AlarmCause.none }
         set { UserDefaults.standard.set(newValue, forKey: Self.lastCauseKey) }
+    }
+
+    /// Your own alarms (Set alarms for a time, Set Wake-Up Alarms) are set for the coming
+    /// morning (v0.4.8 items 2 and 3). They aren't from the calendar, so it never makes them
+    /// out of date.
+    var ownAlarmsSet: Bool {
+        lastCause == AlarmCause.manual && setAlarmTimes().contains { $0 > .now }
+    }
+
+    /// Your own alarms as a plan, to hand back to the bedtime shortcut unchanged (v0.4.8 item 2).
+    func keptOwnPlan(now: Date = .now) -> WakePlan {
+        let times = setAlarmTimes().filter { $0 > now }
+        var plan = WakePlan(source: .manual, wakeTime: NextAlarmSnapshot.load().wakeTime ?? times.last, alarmTimes: times, reason: "Your own time")
+        plan.ownBackstops = lastAppliedPlan?.ownBackstops
+        return plan
     }
 
     private static let startsFromHereKey = "drivesStartFromHere"
@@ -1887,8 +1955,82 @@ final class BedtimeCoordinator {
 
     /// Tells Home Assistant. Best effort: HA being down never stops alarms from being set.
     private func report(_ event: BridgeEvent, data: [String: Any], settings: BridgeSettings) async {
-        guard let link = HomeAssistantLinks.current(settings) else { return }
-        try? await link.report(event, data: data, settings: settings)
+        guard let link = HomeAssistantLinks.current(settings) else {
+            ActivityLog.add("→ \(event.rawValue) (no Home Assistant)")
+            return
+        }
+        do {
+            try await link.report(event, data: data, settings: settings)
+            ActivityLog.add("→ \(event.rawValue)" + Self.logDetail(data))
+        } catch {
+            ActivityLog.add("→ \(event.rawValue) failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// The few fields worth a line in the activity log (v0.4.8 item 9).
+    private static func logDetail(_ data: [String: Any]) -> String {
+        let keys = ["alarm_times", "alarm_cause", "command", "outcome", "sleep_in", "phase", "reason", "rings_again"]
+        let parts = keys.compactMap { key in data[key].map { "\(key)=\($0)" } }
+        return parts.isEmpty ? "" : " " + parts.joined(separator: " ")
+    }
+
+    // MARK: Testing (v0.4.8 items 9, 11 and 14)
+
+    /// What the app can see now, for a testing report. The bar's own text comes from the screen
+    /// when you report from there.
+    func reportSnapshot(settings phoneSettings: BridgeSettings, now: Date = .now) -> [String: Any] {
+        let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
+        let snapshot = NextAlarmSnapshot.load()
+        var app: [String: Any] = [
+            "alarms_set": setAlarmTimes().map(Self.iso),
+            "series": alarmSeries.map(Self.iso),
+            "cause": lastCause,
+            "own_alarms": ownAlarmsSet,
+            "reason": snapshot.reason ?? "",
+            "snoozed_until": snapshot.snoozedUntil.map(Self.iso) ?? "",
+            "temporary": temporaryAlarms.map { Self.iso($0.time) },
+            "nap": napAlarms.map { Self.iso($0.time) },
+            "bedtime_ran_at": bedtimeRanAt.map(Self.iso) ?? "",
+            "good_night_offered": goodNightOffered,
+            "windows": [
+                "up_early": morningEnd(settings: settings) != nil,
+                "not_ready_for_bed": notReadyForBedAvailable(settings: settings),
+                "sleep_later": sleepLaterAvailable(settings: settings),
+                "back_to_bed": backToBedAvailable(settings: settings),
+            ],
+            "undo": availableUndo().map { $0.kind.rawValue } ?? "",
+            "calendar_changed": calendarChangedSinceSet,
+            "change_this_morning": morningChangeReason ?? "",
+            "cleared_morning": clearedMorning.map(Self.iso) ?? "",
+            "skipped_morning": skippedMorning.map(Self.iso) ?? "",
+            "alarm_style": settings.alarmStyle.rawValue,
+            "health": BedtimeHealth.issue ?? "",
+        ]
+        if let plan = lastAppliedPlan { app["plan"] = ["source": plan.source.rawValue, "reason": plan.reason, "times": plan.alarmTimes.map(Self.iso)] }
+        return app
+    }
+
+    /// v0.4.8 item 14: once bedtime has run, checks what should be true for the morning. An
+    /// issue goes on the bar in one line and becomes an automatic report; nothing interrupts
+    /// bedtime.
+    func bedtimeHealthCheck(settings phoneSettings: BridgeSettings) async {
+        let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
+        guard settings.alarmStyle == .app else { return }
+        let local = setAlarmTimes().filter { $0 > .now }
+        let expectsBackstops = lastAppliedPlan?.source == .shift || lastAppliedPlan?.ownBackstops == true
+        let reply: [String: Any]?
+        if let link = HomeAssistantLinks.current(settings) as? IntegrationLink {
+            reply = try? await link.reply(.health, data: [:])
+        } else {
+            reply = nil
+        }
+        let issues = BedtimeHealth.issues(reply: reply, localAlarms: local, expectsBackstops: expectsBackstops)
+        BedtimeHealth.issue = issues.first
+        BedtimeHealth.checkedAt = .now
+        ActivityLog.add("Bedtime check: " + (issues.isEmpty ? "all good" : issues.joined(separator: "; ")))
+        guard let first = issues.first else { return }
+        await TestingReports.automatic("health_" + first.lowercased().replacingOccurrences(of: " ", with: "_"),
+                                       saw: "Bedtime check: " + issues.joined(separator: "; "), settings: phoneSettings)
     }
 
     private static func iso(_ date: Date) -> String {

@@ -171,9 +171,17 @@ Drive times from**, and:
 ### 12. *(optional)* Add controls and widgets
 - [ ] **Widgets:** long-press the Home Screen → **Edit → Add Widget → Bedtime Bridge** (every size).
 - [ ] **Lock Screen controls:** long-press the Lock Screen → **Customize → Lock Screen** → tap a
-      bottom button → **Bedtime Bridge** → Nap, Wind-down, Tonight or I'm awake.
+      bottom button → **Bedtime Bridge** → Nap, Wind-down, Tonight, I'm awake or Report
+      something (0.4.8, for the testing phase).
 - [ ] **Control Center:** swipe down → **+ → Add a Control → Bedtime Bridge**.
 - [ ] **Action button:** Settings → Action Button → **Controls → Bedtime Bridge**.
+
+### 13. *(0.4.8)* Bedtime pending and testing reports
+- [ ] **Bedtime Nudge blueprint:** the three edits in `docs/ha-handoffs-v0.4.8.md`, section 2,
+      so getting into bed after midnight still starts bedtime when alarms are set.
+- [ ] **Reports for Claude:** after the first *Report something* (⋯ in the app), add
+      `bedtime_bridge_reports` as a custom directory in the ha-mcp settings
+      (`docs/ha-handoffs-v0.4.8.md`, section 4).
 
 ---
 

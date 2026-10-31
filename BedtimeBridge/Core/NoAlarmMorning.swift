@@ -45,6 +45,7 @@ extension BedtimeCoordinator {
         if reply["away"] as? Bool == true { return .away }
         guard reply["good_morning"] as? Bool == true else { return .notSent }
         NoAlarmMorning.offered = false
+        TestingChecklist.tick(.imAwake)
         return .done
     }
 }

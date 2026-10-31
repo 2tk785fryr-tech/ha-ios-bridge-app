@@ -1,6 +1,6 @@
 # Phone shortcuts
 
-What each shortcut on the iPhone does, step by step, as of 29 Oct 2026. These are the "- App"
+What each shortcut on the iPhone does, step by step, as of 31 Oct 2026. These are the "- App"
 versions built for Bedtime Bridge (imported from `shortcuts/`, which stays out of git because the
 signed files hold the Home Assistant server and ecobee home IDs). Steps only: no addresses, tokens
 or home IDs.
@@ -11,7 +11,7 @@ or home IDs.
 
 | Trigger | Runs |
 | --- | --- |
-| Home Assistant push `RUN_BEDTIME` (Bedtime Nudge, or the integration after *Not going to sleep yet*) | I'm Ready For Bed - App |
+| Home Assistant push `RUN_BEDTIME` (Bedtime Nudge, the integration after *Not going to sleep yet*, or Good night in the app or Siri, 0.4.8) | I'm Ready For Bed - App |
 | Home Assistant push `RUN_GOOD_MORNING` (integration, when a regular alarm is stopped at home; on a morning with no alarms, *Up for the day?* or *I'm awake*, 0.4.6) | Good Morning - App |
 | Home Assistant push `RUN_DISARM` (temporary alarm in disarm mode stopped; *Not going to sleep yet*; leaving the bedroom on a morning with no alarms, 0.4.6) | Set Disarm |
 | Home Assistant push `RUN_ARM_STAY` (back in bed after a temporary alarm, or after leaving the bedroom on a morning with no alarms) | Set Arm Stay |
@@ -30,6 +30,11 @@ automation, filtering on the message text, set to run immediately.
 
 ## I'm Ready For Bed - App (the bedtime shortcut)
 
+It runs once a night (Michael, 31 Oct 2026): it starts by reading `MorningState` and stops if it's
+already `sleeping`, and `sleeping` stays until Good Morning runs. So Good night after the nudge
+(or the other way round) does nothing the second time. Check the order on the phone against the
+steps below, which were written before that check was described.
+
 0. Bedtime Bridge **Report Shortcut Ran** (`RUN_BEDTIME`, Outcome **Started**), so Home Assistant
    clears the push that ran it (added 27 Oct 2026; harmless when run by hand).
 1. Dismiss Siri.
@@ -38,6 +43,9 @@ automation, filtering on the message text, set to run immediately.
 4. **At home:**
    1. Run **Set Arm Stay** (house alarm on).
    2. Bedtime Bridge **Plan Wake-Up Alarms**, with *Set Alarms* on. Keep the result as `Alarmtimes`.
+      From 0.4.8, if your own alarms (*Set alarms for a time*) are set, it keeps them and returns
+      them, so the readout announces them. Run by hand it first asks "Keep your alarms at …?"
+      (Keep, Change time, No alarms); run by Home Assistant's push it never asks.
    3. If the plan says "No alarm": ask "Would you like wake-up alarms?"
       - **Set wake-up alarms:** ask for the first wake-up time (default: 6 hours from now), then
         Bedtime Bridge **Set Wake-Up Alarms** with that time as the *first* alarm. `Alarmtimes` =
@@ -231,6 +239,20 @@ They don't report back yet: add Bedtime Bridge **Report Shortcut Ran** as the fi
 `RUN_ARM_STAY`. Home Assistant clears the push on the first and, once it has seen a Completed,
 notifies you if a later run starts but doesn't finish within 5 minutes (for example, the house
 didn't disarm).
+
+## Your own Siri phrase (0.4.8 item 8)
+
+The app's Siri phrases can't be changed (Apple fixes them, with "Bedtime Bridge" in each; the
+list is in the app under Settings → Shortcuts, controls and Siri → Siri phrases). For a phrase
+of your own:
+
+1. Shortcuts → **+**.
+2. Add the Bedtime Bridge action, e.g. **Good Night** (it asks "Start bedtime now?" first).
+3. Name the shortcut what you want to say, e.g. *Let's go sleepy bye*.
+4. "Hey Siri, let's go sleepy bye."
+
+Avoid names close to another shortcut's: *I'm ready for bed* is too close to *I'm Ready For Bed
+- App*, and Siri may ask which one you meant.
 
 ## Retired
 

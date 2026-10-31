@@ -84,14 +84,14 @@ async def test_options_change_wake_action_and_add_shift(hass: HomeAssistant):
     await hass.async_block_till_done()
 
     result = await open_page(hass, entry, "wake")
-    result = await hass.config_entries.options.async_configure(result["flow_id"], {CONF_WAKE_ACTION: WAKE_EVENTS})
+    result = await save_page(hass, result, {CONF_WAKE_ACTION: WAKE_EVENTS})
     assert result["type"] is FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
     assert entry.options[CONF_WAKE_ACTION] == WAKE_EVENTS
     assert entry.options[CONF_SNOOZE_HELPER] is None  # cleared, and stays cleared
 
     result = await open_page(hass, entry, "shifts")
-    await hass.config_entries.options.async_configure(result["flow_id"], {CONF_SHIFT_TYPES: "Days, Swings, Nights"})
+    await save_page(hass, result, {CONF_SHIFT_TYPES: "Days, Swings, Nights"})
     await hass.async_block_till_done()
     assert entry.options[CONF_WAKE_ACTION] == WAKE_EVENTS, "another page's options stay"
     assert hass.states.get("number.bedtime_bridge_nights_lead_time") is not None
@@ -103,6 +103,13 @@ async def open_page(hass, entry, page):
     assert result["type"] is FlowResultType.MENU and result["step_id"] == "init"
     assert page in result["menu_options"]
     return await hass.config_entries.options.async_configure(result["flow_id"], {"next_step_id": page})
+
+
+async def save_page(hass, result, data):
+    """A page goes back to the menu; Save and close saves it (v0.4.8 item 10)."""
+    result = await hass.config_entries.options.async_configure(result["flow_id"], data)
+    assert result["type"] is FlowResultType.MENU
+    return await hass.config_entries.options.async_configure(result["flow_id"], {"next_step_id": "save"})
 
 
 def suggested(result, key):
@@ -138,7 +145,7 @@ async def test_cleared_option_stays_cleared(hass: HomeAssistant):
     await hass.async_block_till_done()
     result = await open_page(hass, entry, "phone")
     # Save without a notify action (the field cleared).
-    await hass.config_entries.options.async_configure(result["flow_id"], {})
+    await save_page(hass, result, {})
     await hass.async_block_till_done()
     assert entry.options[CONF_NOTIFY] is None
     result = await open_page(hass, entry, "phone")

@@ -165,11 +165,12 @@ async def test_item9_menu_pages_save_only_their_own(hass):
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
     result = await hass.config_entries.options.async_init(entry.entry_id)
-    assert result["type"] is FlowResultType.MENU and result["menu_options"] == list(cf.PAGES)
+    assert result["type"] is FlowResultType.MENU and result["menu_options"] == [*cf.PAGES, "save"]
     result = await hass.config_entries.options.async_configure(result["flow_id"], {"next_step_id": "bedroom"})
     assert result["type"] is FlowResultType.FORM and result["step_id"] == "bedroom"
     assert {marker.schema for marker in result["data_schema"].schema} == set(cf.PAGES["bedroom"])
-    await hass.config_entries.options.async_configure(result["flow_id"], {CONF_BED_SENSOR: "binary_sensor.bed", "rearm_minutes": 7, "rerun_minutes": 15})
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {CONF_BED_SENSOR: "binary_sensor.bed", "rearm_minutes": 7, "rerun_minutes": 15})
+    await hass.config_entries.options.async_configure(result["flow_id"], {"next_step_id": "save"})
     await hass.async_block_till_done()
     assert entry.options["rearm_minutes"] == 7
     assert entry.options[CONF_NOTIFY] == "notify.phone", "the phone page wasn't touched"

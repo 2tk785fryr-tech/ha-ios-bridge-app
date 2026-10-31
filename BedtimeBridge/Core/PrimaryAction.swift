@@ -8,13 +8,16 @@ struct PrimaryAction: Equatable {
     /// "Changed this morning: Tired"
     var note: String?
 
+    /// `ownAlarms`: your own alarms are set; the calendar and the plan can't put them out of
+    /// date (v0.4.8 item 3).
     static func make(alarmsSet: Bool, defaultTitle: String, changedThisMorning: String?, missingAlarms: Bool,
-                     calendarChanged: Bool, planChanged: Bool) -> PrimaryAction {
+                     calendarChanged: Bool, planChanged: Bool, ownAlarms: Bool = false) -> PrimaryAction {
         guard alarmsSet || missingAlarms else { return PrimaryAction(buttonTitle: defaultTitle) }
         if let changedThisMorning {
             return PrimaryAction(note: "Changed this morning: \(changedThisMorning)")
         }
         if missingAlarms { return PrimaryAction(buttonTitle: "Set the missing alarms") }
+        if ownAlarms { return PrimaryAction() }
         if calendarChanged { return PrimaryAction(buttonTitle: "Calendar changed: re-plan alarms") }
         if planChanged { return PrimaryAction(buttonTitle: "Plan changed: update alarms") }
         return PrimaryAction()

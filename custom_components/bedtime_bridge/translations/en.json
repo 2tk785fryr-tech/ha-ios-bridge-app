@@ -99,7 +99,7 @@
     "step": {
       "init": {
         "title": "Bedtime Bridge",
-        "description": "To pair your iPhone, open this step in the Home Assistant app on the iPhone and tap:\n\n**[Pair Bedtime Bridge]({pair_link})**\n\nThat saves both addresses in the app. If the link doesn't open, copy it into the app's address field (Settings › Home Assistant):\n\n`{pair_link}`\n\nOr paste the addresses one by one:\n\n- **Anywhere** (Nabu Casa): `{remote_url}`\n- **At home only**: `{local_url}`\n\nThe app uses the first and falls back to the second if your internet is down at home. Keep them private: anyone with them can send alarm updates.",
+        "description": "{changed}\n\nTo pair your iPhone, open this step in the Home Assistant app on the iPhone and tap:\n\n**[Pair Bedtime Bridge]({pair_link})**\n\nThat saves both addresses in the app. If the link doesn't open, copy it into the app's address field (Settings › Home Assistant):\n\n`{pair_link}`\n\nOr paste the addresses one by one:\n\n- **Anywhere** (Nabu Casa): `{remote_url}`\n- **At home only**: `{local_url}`\n\nThe app uses the first and falls back to the second if your internet is down at home. Keep them private: anyone with them can send alarm updates.",
         "menu_options": {
           "you": "You and home",
           "wake": "Wake-up",
@@ -108,7 +108,8 @@
           "shifts": "Shifts and calendar",
           "phone": "Phone",
           "backstops": "Backstops",
-          "keys": "Keys"
+          "keys": "Keys",
+          "save": "Save and close"
         }
       },
       "you": {
@@ -358,6 +359,9 @@
     "binary_sensor": {
       "snoozing": {
         "name": "Snoozing"
+      },
+      "bedtime_pending": {
+        "name": "Bedtime pending"
       },
       "plan_outdated": {
         "name": "Plan out of date"

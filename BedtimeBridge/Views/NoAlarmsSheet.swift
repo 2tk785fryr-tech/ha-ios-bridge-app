@@ -12,6 +12,9 @@ struct NoAlarmsSheet: View {
     @State private var working = false
     @Environment(\.dismiss) private var dismiss
 
+    /// "this morning" once it's that morning (v0.4.8 item 7).
+    private var when: String { Calendar.current.isDateInToday(morning) ? "this morning" : "tomorrow" }
+
     static func backstopNote(shift: (cause: String, start: Date)?) -> String {
         guard let shift else { return "Nothing's on your calendar that morning, so the backstops are off too." }
         return "\(shift.cause) at \(WakePlanner.format(shift.start)) is still on your calendar, so the backstops stay on. Delete the shift or use Skip if you're not working."
@@ -34,7 +37,7 @@ struct NoAlarmsSheet: View {
                 Section {
                     HoldSlider(label: "Slide and hold", holdLabel: { "Turning off in \($0)…" },
                                knobSymbol: "stop.fill", tint: Theme.danger, onHold: commit,
-                               accessibilityHint: "Turns tomorrow's alarms off.")
+                               accessibilityHint: "Turns \(when)'s alarms off.")
                         .frame(height: 72)
                         .disabled(working)
                         .listRowBackground(Color.clear)
@@ -44,7 +47,7 @@ struct NoAlarmsSheet: View {
             }
             .scrollContentBackground(.hidden)
             .background(Theme.ground.ignoresSafeArea())
-            .navigationTitle("No alarms tomorrow")
+            .navigationTitle("No alarms \(when)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
