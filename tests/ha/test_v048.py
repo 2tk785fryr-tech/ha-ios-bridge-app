@@ -115,6 +115,15 @@ async def test_item5_good_night_sends_run_bedtime_once(hass, hass_client_no_auth
     assert _messages(notify) == ["RUN_BEDTIME"]
 
 
+async def test_item2_replies_say_when_bedtime_came_from_a_push(hass, hass_client_no_auth, freezer):
+    await _start(hass, freezer, _local(30, "23:00"))
+    assert (await send(hass_client_no_auth, {"type": "health", "data": {}}))["bedtime_by_push"] is False
+    await send(hass_client_no_auth, {"type": "good_night", "data": {}})
+    assert (await send(hass_client_no_auth, {"type": "health", "data": {}}))["bedtime_by_push"] is True
+    await _tick(hass, freezer, 16)
+    assert (await send(hass_client_no_auth, {"type": "health", "data": {}}))["bedtime_by_push"] is False
+
+
 async def test_item5_good_night_without_phone_commands_says_not_sent(hass, hass_client_no_auth, freezer):
     await _start(hass, freezer, _local(30, "23:00"), phone_commands=False)
     reply = await send(hass_client_no_auth, {"type": "good_night", "data": {}})
@@ -230,3 +239,19 @@ async def test_item10_a_page_submitted_unchanged_is_just_back(hass, freezer):
     result = await hass.config_entries.options.async_configure(result["flow_id"], {"notify_service": "notify.phone"})
     assert result["type"] is FlowResultType.MENU
     assert "Changed" not in result["description_placeholders"]["changed"]
+
+
+# MARK: Item 7, no alarms this morning
+
+from .test_ladder import calendar_days, ladder, own_plan, rungs, shift_sensor, status  # noqa: E402,F401
+
+
+async def test_item7_no_alarms_turns_your_own_backstops_off(hass, ladder, hass_client_no_auth):
+    shift_sensor(hass, start=None)
+    await ladder()
+    await send(hass_client_no_auth, own_plan("08:00", on=True))
+    await hass.async_block_till_done()
+    assert rungs(hass) == ["08:15", "08:30", "08:45"]
+    await send(hass_client_no_auth, {"type": "cancelled", "data": {"sleep_in": True}})
+    await hass.async_block_till_done()
+    assert rungs(hass) is None and status(hass) != "armed"

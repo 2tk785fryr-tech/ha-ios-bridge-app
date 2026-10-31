@@ -512,6 +512,8 @@ final class BedtimeCoordinator {
     func scheduleManual(wakeTime: Date, wakeIs: WakeTimeAlarm? = nil, ownBackstops: Bool? = nil,
                         exactly chosen: SkipReplacement? = nil, settings phoneSettings: BridgeSettings) async throws -> WakePlan {
         let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
+        // v0.4.8 item 6: what was there before, for Undo, as after a preview.
+        let undoBefore = undoBaseline(kind: .set)
         let wake = Self.nextOccurrence(ofTimeIn: wakeTime)
         let replacement = chosen ?? SkipReplacement(wake: wake, wakeIs: wakeIs ?? settings.wakeTimeIs)
         var plan = manualPlan(replacement, settings: settings)
@@ -523,7 +525,9 @@ final class BedtimeCoordinator {
             skippedMorning = nil
             plan.reason = "Day off alarm"
         }
+        clearedMorning = nil
         try await apply(plan, settings: settings)
+        saveUndo(undoBefore, left: setAlarmTimes())
         return plan
     }
 
@@ -806,6 +810,11 @@ final class BedtimeCoordinator {
     /// notification with a Re-plan action. Never moves or removes alarms itself.
     func checkPlanStillMatches(settings: BridgeSettings) async -> String? {
         let set = setAlarmTimes().filter { $0 > .now }
+        // Your own alarms aren't from the calendar, so it can't put them out of date (v0.4.8 item 3).
+        if ownAlarmsSet {
+            calendarChangedSinceSet = false
+            return nil
+        }
         guard !set.isEmpty, let new = try? await buildPlan(settings: settings) else { return nil }
         let snapshot = NextAlarmSnapshot.load()
         // Compared with the plan as it was set, so Sleep later, edits and morning changes (which
@@ -1241,7 +1250,7 @@ final class BedtimeCoordinator {
             MainActor.assumeIsolated {
                 guard let self else { return }
                 self.dropLeaveRemindersIfEventGone(settings: SettingsStore.shared.settings)
-                guard !self.alarmSeries.isEmpty else { return }
+                guard !self.alarmSeries.isEmpty, !self.ownAlarmsSet else { return }
                 self.calendarChangedSinceSet = true
                 // Say what changed, by notification; never move the alarms (v0.4.3 item 4).
                 Task { _ = await self.checkPlanStillMatches(settings: SettingsStore.shared.settings) }
@@ -1299,6 +1308,8 @@ final class BedtimeCoordinator {
         let wasSnoozing = alarms.scheduledAlarms().contains { $0.date <= .now && !keptAlarms.contains($0.id) }
         // The edit ended every snooze: the bedroom goes back to before the wake fade.
         let snoozeEnded = wasSnoozing && keptSnoozing.isEmpty
+        // v0.4.8 item 6: Change times from Change plan can be undone; not mid-morning.
+        let undoBefore = wasSnoozing ? nil : undoBaseline(kind: .set)
         for alarm in alarms.scheduledAlarms() where alarm.date <= .now && !keptAlarms.contains(alarm.id) && !keptSnoozing.contains(alarm.id) {
             alarms.stop(alarm.id)
             alarms.cancel(alarm.id)
@@ -1322,6 +1333,7 @@ final class BedtimeCoordinator {
             snapshot.alarmTimes = all
             if snoozeEnded { snapshot.snoozedUntil = nil }
         }
+        if let undoBefore { saveUndo(undoBefore, left: all) }
         let wake = MorningChange.currentWake(series: all, wakeIs: seriesPattern(settings: settings).wakeIs)
         var data: [String: Any] = [
             "alarm_times": all.map(Self.iso),
@@ -1728,6 +1740,21 @@ final class BedtimeCoordinator {
     private var lastCause: String {
         get { UserDefaults.standard.string(forKey: Self.lastCauseKey) ?? AlarmCause.none }
         set { UserDefaults.standard.set(newValue, forKey: Self.lastCauseKey) }
+    }
+
+    /// Your own alarms (Set alarms for a time, Set Wake-Up Alarms) are set for the coming
+    /// morning (v0.4.8 items 2 and 3). They aren't from the calendar, so it never makes them
+    /// out of date.
+    var ownAlarmsSet: Bool {
+        lastCause == AlarmCause.manual && setAlarmTimes().contains { $0 > .now }
+    }
+
+    /// Your own alarms as a plan, to hand back to the bedtime shortcut unchanged (v0.4.8 item 2).
+    func keptOwnPlan(now: Date = .now) -> WakePlan {
+        let times = setAlarmTimes().filter { $0 > now }
+        var plan = WakePlan(source: .manual, wakeTime: NextAlarmSnapshot.load().wakeTime ?? times.last, alarmTimes: times, reason: "Your own time")
+        plan.ownBackstops = lastAppliedPlan?.ownBackstops
+        return plan
     }
 
     private static let startsFromHereKey = "drivesStartFromHere"

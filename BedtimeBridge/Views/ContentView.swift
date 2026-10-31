@@ -449,7 +449,8 @@ struct ContentView: View {
             changedThisMorning: coordinator.morningChangeReason,
             missingAlarms: coordinator.alarmShortfall != nil,
             calendarChanged: coordinator.calendarChangedSinceSet,
-            planChanged: morningContext?.planOutdated == true || coordinator.settingsChangedSinceSet(store.settings)
+            planChanged: morningContext?.planOutdated == true || coordinator.settingsChangedSinceSet(store.settings),
+            ownAlarms: coordinator.ownAlarmsSet
         )
     }
 
@@ -496,7 +497,8 @@ struct ContentView: View {
         if let plan, plan.hasAlarm, !isSet(plan) { i.planReady = (plan.alarmTimes.count, plan.wakeTime) }
         i.tomorrow = plan?.wakeTime ?? plan?.firstAlarm
         i.napEnabled = store.settings.napEnabled && store.settings.alarmStyle == .app
-        i.undo = coordinator.availableUndo(now: now)?.status(alarmsSet: set.count)
+        i.undo = coordinator.availableUndo(now: now)?.status(
+            alarmsSet: set.count, thisMorning: coordinator.clearedMorning.map { Calendar.current.isDate($0, inSameDayAs: now) } ?? false)
         i.tomorrowHasAlarm = plan?.hasAlarm == true
         if store.settings.windDownEnabled {
             i.windDown = coordinator.windDown

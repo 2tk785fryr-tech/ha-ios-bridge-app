@@ -43,6 +43,11 @@ enum BarAction: String, CaseIterable, Identifiable {
         }
     }
 
+    /// The bar's day is today's: after midnight, "No alarms this morning" (v0.4.8 item 7).
+    static func isToday(_ day: String, now: Date = .now) -> Bool {
+        day == now.formatted(.dateTime.weekday(.wide))
+    }
+
     func title(day: String) -> String {
         switch self {
         case .setAlarms: "Set alarms"
@@ -64,7 +69,7 @@ enum BarAction: String, CaseIterable, Identifiable {
         case .addTemporary: "Add a temporary alarm"
         case .settings: "Settings"
         case .undo: "Undo"
-        case .noAlarmsTomorrow: "No alarms tomorrow"
+        case .noAlarmsTomorrow: Self.isToday(day) ? "No alarms this morning" : "No alarms tomorrow"
         case .startWindDown: "Start wind-down now"
         case .cancelWindDown: "Cancel wind-down"
         case .stopReminders: "Stop bedtime reminders"
@@ -87,7 +92,7 @@ enum BarAction: String, CaseIterable, Identifiable {
         case .backToBed: "Back to bed: move this morning's alarms or turn them off"
         case .skip: "Skip \(day)'s wake-up and sleep in"
         case .undo: "Undo: put back the alarms from before"
-        case .noAlarmsTomorrow: "Turn tomorrow's alarms off"
+        case .noAlarmsTomorrow: Self.isToday(day) ? "Turn this morning's alarms off" : "Turn tomorrow's alarms off"
         case .imAwake: "Good morning: Sleep In off, wake the house"
         default: title(day: day)
         }
@@ -172,7 +177,8 @@ struct BottomBar: Equatable {
             let rings = i.snoozingUntil.map { " · rings \(format($0))" } ?? ""
             return BottomBar(top: .status("Snoozing" + rings, .snoozing), buttons: [.endAlarms, .wakeLater])
         }
-        if let changed = i.plansChanged {
+        // v0.4.8 item 3: in the up-early window that window's bar wins over a re-plan prompt.
+        if let changed = i.plansChanged, !i.upEarlyWindow {
             return BottomBar(top: .main(.replan, changed), buttons: [.previewPlan, .editAlarms])
         }
         if !i.upEarlyWindow, !i.backToBedWindow, let wind = windDownBar(i) { return wind }
@@ -230,7 +236,9 @@ struct BottomBar: Equatable {
         if i.sleepLaterWindow { items.append(.sleepLater) }
         if i.napEnabled && i.napUpAt == nil { items.append(.nap) }
         if i.snoozing || (i.alarmsSet > 0 && i.upEarlyWindow) || i.backToBedWindow { items.append(.changeMorning) }
-        let morning = i.snoozing || i.upEarlyWindow || i.backToBedWindow
+        // v0.4.8 item 7: up to the first alarm, the 2-hour window included.
+        let beforeFirst = i.upEarlyWindow && (i.firstAlarm ?? i.now) > i.now
+        let morning = i.snoozing || (i.upEarlyWindow && !beforeFirst) || i.backToBedWindow
         if !morning && (i.alarmsSet > 0 || i.tomorrowHasAlarm) { items.append(.noAlarmsTomorrow) }
         if morningKnown { items.append(.skip) }
         if i.notReadyWindow { items.append(.notGoingToSleep) }

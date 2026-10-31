@@ -43,11 +43,12 @@ struct UndoRecord: Codable, Equatable {
         return plan
     }
 
-    /// The bottom bar's status for this: "3 alarms set · Undo" or "No alarms tomorrow · Undo".
-    func status(alarmsSet: Int) -> String {
+    /// The bottom bar's status for this: "3 alarms set · Undo" or "No alarms tomorrow · Undo"
+    /// ("this morning" once it's that morning, v0.4.8 item 7).
+    func status(alarmsSet: Int, thisMorning: Bool = false) -> String {
         switch kind {
         case .set: "\(alarmsSet == 1 ? "1 alarm" : "\(alarmsSet) alarms") set · Undo"
-        case .noAlarms: "No alarms tomorrow · Undo"
+        case .noAlarms: "No alarms \(thisMorning ? "this morning" : "tomorrow") · Undo"
         }
     }
 }

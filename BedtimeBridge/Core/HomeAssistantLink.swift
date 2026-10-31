@@ -33,6 +33,11 @@ enum BridgeEvent: String {
     case liveActivity = "live_activity"
     /// v0.4.6 item 2: I'm awake on a morning with no alarms.
     case awake
+    /// v0.4.8: Good night (item 5), a testing report (items 9 and 11), the bedtime health check
+    /// (item 14).
+    case goodNight = "good_night"
+    case report
+    case health
 }
 
 /// For item 3's confirm screen: the backstops now, and when the curtains open that morning.

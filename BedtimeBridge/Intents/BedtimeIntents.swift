@@ -11,22 +11,56 @@ struct PlanWakeAlarmsIntent: AppIntent {
     @Parameter(title: "Set Alarms", description: "Turn off to only preview the plan.", default: true)
     var setAlarms: Bool
 
+    /// Asked only when you choose Change time for your own alarms (v0.4.8 item 2).
+    @Parameter(title: "First Alarm", description: "Only asked when you change your own alarms' time.")
+    var newTime: Date?
+
     static var parameterSummary: some ParameterSummary {
         Summary("Plan wake-up alarms") {
             \.$setAlarms
         }
     }
 
-    /// Never asks anything: the bedtime shortcut runs with nobody tapping. Questions (like a
-    /// "wake up" appointment with no location) arrive as notifications instead.
+    /// Never asks anything when the bedtime shortcut runs from Home Assistant's push. Questions
+    /// (like a "wake up" appointment with no location) arrive as notifications instead. The one
+    /// exception (v0.4.8 item 2): your own alarms are set and you ran the shortcut yourself.
     @MainActor
     func perform() async throws -> some IntentResult & ReturnsValue<WakePlanEntity> {
         let settings = SettingsStore.shared.settings
         let coordinator = BedtimeCoordinator.shared
+        if setAlarms, coordinator.ownAlarmsSet {
+            return .result(value: WakePlanEntity(plan: try await keepOwnAlarms(coordinator, settings: settings)))
+        }
         let plan = setAlarms
             ? try await coordinator.planAndSchedule(settings: settings)
             : try await coordinator.buildPlan(settings: settings)
         return .result(value: WakePlanEntity(plan: plan))
+    }
+
+    /// Your own alarms stay (v0.4.8 item 2). Run by the push: kept without asking. By hand:
+    /// Keep, Change time or No alarms; anything that can't be answered keeps them.
+    @MainActor
+    private func keepOwnAlarms(_ coordinator: BedtimeCoordinator, settings: BridgeSettings) async throws -> WakePlan {
+        let kept = coordinator.keptOwnPlan()
+        if await coordinator.bedtimeByPush(settings: settings) { return kept }
+        let found = try? await coordinator.buildPlan(settings: settings)
+        let keep = IntentChoiceOption(title: "Keep")
+        let change = IntentChoiceOption(title: "Change time")
+        let none = IntentChoiceOption(title: "No alarms", style: .destructive)
+        let question = OwnAlarmsKept.question(kept: kept.alarmTimes, found: found)
+        guard let choice = try? await requestChoice(between: [keep, change, none], dialog: IntentDialog(stringLiteral: question)) else {
+            return kept
+        }
+        if choice == change {
+            guard let time = try? await $newTime.requestValue("What time is your first alarm?") else { return kept }
+            let own = OwnAlarmSeries.replacement(wake: BedtimeCoordinator.nextOccurrence(ofTimeIn: time), wakeIs: nil, settings: settings)
+            return try await coordinator.scheduleManual(wakeTime: time, wakeIs: own.wakeIs, exactly: own, settings: settings)
+        }
+        if choice == none {
+            try await coordinator.cancelAlarms(settings: settings)
+            return WakePlan(source: .none, wakeTime: nil, alarmTimes: [], reason: "No alarm: you turned your own alarms off")
+        }
+        return kept
     }
 }
 

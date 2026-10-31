@@ -211,6 +211,8 @@ def pending_record() -> dict[str, Any]:
 # Pushes whose shortcut should report it ran within 10 minutes (v0.4.8 item 11).
 WATCHED_COMMANDS = (CMD_BEDTIME, CMD_MORNING, CMD_LEAVE_CHECK)
 COMMAND_RAN_WAIT = timedelta(minutes=10)
+# A bedtime shortcut run this soon after RUN_BEDTIME was sent counts as run by the push.
+BEDTIME_BY_PUSH = timedelta(minutes=15)
 
 
 def _command_tag(message: str) -> str:
@@ -441,12 +443,19 @@ class BedtimeBridge:
             "no_alarm_morning": self.awake.summary(),
             # The app skips its own leave reminders while home when the checks happen here.
             "drive_checks_here": bool(self._drive_services()),
+            # v0.4.8 item 2: the bedtime shortcut is running because of a push, so Plan Wake-Up
+            # Alarms doesn't ask anything.
+            "bedtime_by_push": self._bedtime_by_push(),
             **result,
         }
 
     async def _awake(self, data: dict[str, Any]) -> dict[str, Any]:
         """I'm awake from the app, Siri or a control: good morning now (v0.4.6 item 2)."""
         return await self.awake.good_morning(by_hand=True)
+
+    def _bedtime_by_push(self) -> bool:
+        pushed = _time(self.state.get("bedtime_push_at"))
+        return pushed is not None and dt_util.utcnow() - pushed < BEDTIME_BY_PUSH
 
     async def _good_night(self, data: dict[str, Any]) -> dict[str, Any]:
         """Good night from the app's bar or Siri: RUN_BEDTIME (v0.4.8 item 5)."""
@@ -1907,6 +1916,8 @@ class BedtimeBridge:
         )
         if sent:
             self._pending_commands.add(message)
+            if message == CMD_BEDTIME:
+                self.state["bedtime_push_at"] = dt_util.utcnow().isoformat()
             if message in WATCHED_COMMANDS:
                 self._check_command_ran(message)
         return sent
@@ -2025,6 +2036,9 @@ class BedtimeBridge:
         follows the calendar alone (armed while a covered shift is on it)."""
         self.state.update(empty_state())
         self.pending.cleared()
+        # v0.4.8 item 7: your own alarms' backstops go with them; a shift's follow the calendar.
+        if (self.state.get("ladder_plan") or {}).get("type") == "own":
+            self.state["ladder_plan"] = {}
         if "sleep_in" in data:
             await self._set_sleep_in(bool(data["sleep_in"]))
         self._event(MSG_CANCELLED, sleep_in=data.get("sleep_in"), morning=data.get("morning"))
