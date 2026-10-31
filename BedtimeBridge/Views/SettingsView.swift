@@ -95,7 +95,7 @@ struct SettingsView: View {
                 SettingsLink(title: "Notifications", icon: "bell.badge", value: "") {
                     NotificationSettings(settings: $store.settings)
                 }
-                SettingsLink(title: "Shortcuts & controls", icon: "square.grid.2x2", value: "") {
+                SettingsLink(title: "Shortcuts, controls and Siri", icon: "square.grid.2x2", value: "") {
                     ShortcutsSettings(settings: $store.settings)
                 }
                 SettingsLink(title: "App icon", icon: "app.badge", value: AppIconChoice.current.title) {

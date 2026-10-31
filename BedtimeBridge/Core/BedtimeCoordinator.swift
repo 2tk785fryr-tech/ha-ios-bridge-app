@@ -838,6 +838,8 @@ final class BedtimeCoordinator {
     /// Sets (or clears) alarms, the leave-by reminder and the HA sensor for a plan.
     private func apply(_ plan: WakePlan, settings: BridgeSettings) async throws {
         lastAppliedPlan = plan
+        // v0.4.8 item 5: Good night until bedtime runs, unless this is bedtime's own plan.
+        if plan.hasAlarm, GoodNight.countsAsBeforeBedtime(bedtimeRanAt: bedtimeRanAt) { GoodNight.alarmsSetAt = .now }
         var actual = plan.alarmTimes
         if plan.hasAlarm, settings.alarmStyle == .app {
             actual = try await alarms.replaceAlarms(

@@ -420,17 +420,19 @@ struct BedtimeBridgeShortcuts: AppShortcutsProvider {
             shortTitle: "Sleep Later",
             systemImageName: "clock.arrow.circlepath"
         )
+        // v0.4.8 item 13: Start and Cancel wind-down share one, so Good night has a slot.
         AppShortcut(
-            intent: StartWindDownIntent(),
-            phrases: ["Start wind-down in \(.applicationName)", "Start winding down with \(.applicationName)"],
-            shortTitle: "Start Wind-Down",
+            intent: WindDownIntent(),
+            phrases: ["\(\.$choice) wind-down in \(.applicationName)", "\(\.$choice) winding down with \(.applicationName)"],
+            shortTitle: "Wind-Down",
             systemImageName: "moon.zzz"
         )
+        // v0.4.8 item 5
         AppShortcut(
-            intent: CancelWindDownIntent(),
-            phrases: ["Cancel wind-down in \(.applicationName)"],
-            shortTitle: "Cancel Wind-Down",
-            systemImageName: "moon.zzz.fill"
+            intent: GoodNightIntent(),
+            phrases: ["Good night in \(.applicationName)", "\(.applicationName) good night"],
+            shortTitle: "Good Night",
+            systemImageName: "moon.stars"
         )
         AppShortcut(
             intent: AddLeaveIntent(),

@@ -1,13 +1,23 @@
 import SwiftUI
 
-/// Settings → Shortcuts & controls (v0.4.3 item 16): quick actions per moment, placing the
-/// controls, each control's options and the widget's tap.
+/// Settings → Shortcuts, controls and Siri (v0.4.3 item 16, renamed in v0.4.8 item 8): Siri
+/// phrases, quick actions per moment, placing the controls, each control's options and the
+/// widget's tap.
 struct ShortcutsSettings: View {
     @Binding var settings: BridgeSettings
     private let d = BridgeSettings()
 
     var body: some View {
-        SettingsPage(title: "Shortcuts & controls") {
+        SettingsPage(title: "Shortcuts, controls and Siri") {
+            Section {
+                NavigationLink {
+                    SiriPhrasesPage()
+                } label: {
+                    Label("Siri phrases", systemImage: "waveform")
+                }
+            } footer: {
+                Text("Everything you can say to Siri, and how to add your own phrase.")
+            }
             ForEach(QuickActionMoment.allCases) { moment in
                 Section {
                     let chosen = QuickActions.items(for: moment, settings: settings)
@@ -75,5 +85,43 @@ struct ShortcutsSettings: View {
         var list = QuickActions.items(for: moment, settings: settings)
         change(&list)
         settings.quickActions[moment.rawValue] = Array(list.prefix(4)).map(\.rawValue)
+    }
+}
+
+
+/// Every phrase the app answers to (v0.4.8 item 8), and how to add your own.
+struct SiriPhrasesPage: View {
+    @Environment(\.openURL) private var openURL
+
+    var body: some View {
+        SettingsPage(title: "Siri phrases") {
+            ForEach(SiriPhrases.groups) { group in
+                Section(group.title) {
+                    ForEach(group.entries) { entry in
+                        VStack(alignment: .leading, spacing: 4) {
+                            ForEach(entry.phrases, id: \.self) { phrase in
+                                Text("\u{201C}\(phrase)\u{201D}").font(.body.weight(.semibold))
+                            }
+                            Text(entry.does).font(.footnote).foregroundStyle(Theme.textMuted)
+                        }
+                        .padding(.vertical, 2)
+                    }
+                }
+            }
+            Section {
+                ForEach(Array(SiriPhrases.ownPhraseSteps.enumerated()), id: \.offset) { index, step in
+                    Label(step, systemImage: "\(index + 1).circle")
+                }
+                Button {
+                    if let url = URL(string: "shortcuts://create-shortcut") { openURL(url) }
+                } label: {
+                    Label("Add your own phrase", systemImage: "plus.circle")
+                }
+            } header: {
+                Text("Your own phrase")
+            } footer: {
+                Text("Apple doesn't let an app's own phrases be changed; they always include \u{201C}Bedtime Bridge\u{201D}. A shortcut named what you want to say works instead. " + SiriPhrases.ownPhraseNote)
+            }
+        }
     }
 }

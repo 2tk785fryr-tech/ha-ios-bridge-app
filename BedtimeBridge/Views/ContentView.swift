@@ -52,6 +52,8 @@ struct ContentView: View {
         case addWakeUp
         /// v0.4.3 item 15, from the weekly notification.
         case weeklySummary
+        /// v0.4.8 item 5.
+        case changePlan
         var id: String {
             switch self {
             case .changeMorning(let phase): "changeMorning-\(phase.rawValue)"
@@ -180,14 +182,8 @@ struct ContentView: View {
                         SleepLaterCard(settings: store.settings, canGoBack: coordinator.backToPlannedAvailable(), changed: refreshScheduled)
                     }
 
-                    if let morningEnd {
-                        EndMorningCard(status: morningEnd) {
-                            Task {
-                                await coordinator.endMorning(settings: store.settings)
-                                refreshScheduled()
-                            }
-                        }
-                    }
+                    // v0.4.8 item 3: the up-early window's End alarms lives in the bar only
+                    // (I'm up early / Sleep later, End alarms once one has rung).
 
                     if skippedMorning == nil, let morning = scheduled.first ?? plan?.firstAlarm {
                         ScheduledAlarmsCard(times: store.settings.alarmStyle == .app ? scheduled : [], morning: morning, isShift: plan?.source == .shift, notReadyForBed: notReadyForBed) {
@@ -310,6 +306,9 @@ struct ContentView: View {
                     }
                 case .weeklySummary:
                     WeeklySummaryView(settings: store.settings, justEnded: true)
+                case .changePlan:
+                    ChangePlanSheet(items: BottomBar.changePlanItems(barInputs), times: scheduled, day: barDay,
+                                    undoPutsBack: coordinator.availableUndo()?.previousTimes ?? [], choose: changePlan)
                 case .addLeave(let title):
                     AddLeaveSheet(settings: store.settings, title: title) {
                         refreshScheduled()
@@ -508,6 +507,7 @@ struct ContentView: View {
         i.awakeOffered = NoAlarmMorning.offered
         i.nothingFound = plan.map { !$0.hasAlarm } ?? (nothingAhead && set.isEmpty)
         i.alarmStyleApp = store.settings.alarmStyle == .app
+        i.goodNight = coordinator.goodNightOffered
         return i
     }
 
@@ -602,6 +602,27 @@ struct ContentView: View {
                 let outcome = await coordinator.imAwake(settings: store.settings)
                 if outcome != .done { errorMessage = NoAlarmMorning.dialog(outcome) }
                 refreshScheduled()
+            }
+        case .goodNight:
+            Task {
+                let outcome = await coordinator.goodNight(settings: store.settings)
+                if outcome != .sent { errorMessage = GoodNight.dialog(outcome) }
+                refreshScheduled()
+            }
+        case .changePlan: sheet = .changePlan
+        }
+    }
+
+    /// A choice on Change plan (v0.4.8 item 5): its own screen or slide-and-hold, once the sheet
+    /// has gone.
+    private func changePlan(_ action: BarAction) {
+        sheet = nil
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(450))
+            switch action {
+            case .undo: barSlider = .undo
+            case .replan: preview(replan: true)
+            default: perform(action)
             }
         }
     }
@@ -1582,37 +1603,6 @@ private struct OwnBackstopsToggle: View {
     }
 }
 
-/// Item 8: end the rest of this morning's alarms without waiting for one to ring.
-private struct EndMorningCard: View {
-    let status: MorningEnd
-    let end: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(status.title)
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(Theme.text)
-            Text(status.detail)
-                .font(.footnote)
-                .foregroundStyle(Theme.textMuted)
-            HoldSlider(
-                label: "Slide and hold to end them",
-                holdLabel: { "Ending this morning's alarms in \($0)…" },
-                knobSymbol: "alarm.waves.left.and.right",
-                onHold: end,
-                accessibilityHint: "Ends every alarm left this morning. Temporary alarms stay."
-            )
-            Text(status.early
-                 ? "Ends this morning's alarms before they ring. Home Assistant starts your early wake-up and Good Morning; the backstops stay on."
-                 : "Ends the snoozing alarms and the ones still to ring. Temporary alarms stay; the backstops stay on.")
-                .font(.footnote)
-                .foregroundStyle(Theme.textFaint)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .nightfallCard()
-    }
-}
-
 private struct SnoozedAlarm: Identifiable {
     let id: UUID
 }
@@ -1893,6 +1883,36 @@ private struct BottomBarView: View {
                     .frame(height: 72)
                     .id(action)
                 }
+            } else if let hold = bar.hold {
+                // Alarms set, bedtime to come (v0.4.8 item 5): the status line with Undo, Good
+                // night's slide-and-hold, then Change plan and Temporary alarm outlined.
+                VStack(spacing: Self.spacing) {
+                    HStack(spacing: 8) {
+                        top
+                        Spacer(minLength: 8)
+                        if bar.undoOffered {
+                            Button { slider = .undo } label: {
+                                Text("Undo")
+                                    .font(.system(size: 15, weight: .bold))
+                                    .foregroundStyle(Theme.amber)
+                                    .frame(minWidth: 44, minHeight: Self.statusHeight)
+                            }
+                            .accessibilityHint("Puts back the alarms from before")
+                        }
+                    }
+                    .frame(height: Self.statusHeight)
+                    HoldSlider(
+                        label: "Slide and hold · \(hold.title(day: day))",
+                        holdLabel: { "Hold \($0)…" },
+                        knobSymbol: knobSymbol(hold),
+                        tint: Theme.accent,
+                        onHold: { perform(hold) },
+                        accessibilityHint: hold.caption(day: day)
+                    )
+                    .frame(height: Self.rowHeight)
+                    .id(hold)
+                    buttonRow(outline: Theme.buttonOutline)
+                }
             } else if !bar.actionRow.isEmpty {
                 // Nothing set (v0.4.7 item 8): a small status line, the filled actions, then the
                 // outlined buttons.
@@ -1913,7 +1933,7 @@ private struct BottomBarView: View {
                 }
             }
         }
-        .frame(height: bar.actionRow.isEmpty || slider != nil
+        .frame(height: (bar.actionRow.isEmpty && bar.hold == nil) || slider != nil
                ? Self.topHeight + Self.rowHeight + Self.spacing
                : Self.statusHeight + 2 * Self.rowHeight + 2 * Self.spacing)
         .disabled(working)
@@ -1978,7 +1998,7 @@ private struct BottomBarView: View {
     private func button(_ action: BarAction, outline: Color) -> some View {
         let tint = action.isProtected ? Theme.amber : Theme.accentText
         // The nothing-set bar's second row is short on room (v0.4.7 item 8).
-        let title = action == .addTemporary && !bar.actionRow.isEmpty ? "Temporary alarm" : action.title(day: day)
+        let title = action == .addTemporary && (!bar.actionRow.isEmpty || bar.hold != nil) ? "Temporary alarm" : action.title(day: day)
         return Button { tap(action) } label: {
             Text(title)
                 .font(.system(size: 15, weight: .semibold))
