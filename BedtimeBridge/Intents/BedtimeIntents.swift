@@ -42,6 +42,8 @@ struct PlanWakeAlarmsIntent: AppIntent {
     @MainActor
     private func keepOwnAlarms(_ coordinator: BedtimeCoordinator, settings: BridgeSettings) async throws -> WakePlan {
         let kept = coordinator.keptOwnPlan()
+        TestingChecklist.tick(.ownAlarmsKept)
+        ActivityLog.add("Plan Wake-Up Alarms kept your own alarms")
         if await coordinator.bedtimeByPush(settings: settings) { return kept }
         let found = try? await coordinator.buildPlan(settings: settings)
         let keep = IntentChoiceOption(title: "Keep")

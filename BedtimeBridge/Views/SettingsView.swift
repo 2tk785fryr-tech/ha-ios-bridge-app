@@ -119,6 +119,16 @@ struct SettingsView: View {
                 }
             }
 
+            // v0.4.8 items 9 and 12.
+            Section("About") {
+                SettingsLink(title: "Testing reports", icon: "ladybug", value: TestingReports.enabled ? "On" : "Off") {
+                    TestingReportsPage(settings: store.settings)
+                }
+                SettingsLink(title: "Testing checklist", icon: "checklist", value: "\(TestingChecklist.ticked.count) of \(TestingChecklist.Item.allCases.count)") {
+                    TestingChecklistPage()
+                }
+            }
+
             Section {
                 SettingsLink(title: "Reset", icon: "arrow.counterclockwise", value: "") {
                     ResetSettings(settings: $store.settings)

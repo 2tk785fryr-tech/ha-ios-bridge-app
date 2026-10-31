@@ -20,10 +20,17 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
                      fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
         guard userInfo["bedtime_bridge"] as? String == LeaveReminder.checkedSignal else { return completionHandler(.noData) }
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [LeaveReminder.backupID])
+        TestingChecklist.tick(.backupLeaveWithdrawn)
         completionHandler(.newData)
     }
 
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+        // "Snoozed · slide to end" (v0.4.8 item 4): the Stop screen.
+        if response.notification.request.content.categoryIdentifier == BannerStop.category,
+           let url = (response.notification.request.content.userInfo["url"] as? String).flatMap(URL.init(string:)) {
+            await MainActor.run { UIApplication.shared.open(url) }
+            return
+        }
         // "Tomorrow changed … Re-plan?" (v0.4.3 item 4): opens the preview, which changes nothing
         // until you confirm.
         if response.notification.request.content.categoryIdentifier == PlanChangeNotice.category,

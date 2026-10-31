@@ -17,6 +17,8 @@ enum BarAction: String, CaseIterable, Identifiable {
     case setAlarmsForTime
     /// v0.4.8 item 5: start bedtime, and every way to change tonight's alarms.
     case goodNight, changePlan
+    /// v0.4.8 item 9: a testing report.
+    case report
 
     var id: String { rawValue }
 
@@ -81,6 +83,7 @@ enum BarAction: String, CaseIterable, Identifiable {
         case .setAlarmsForTime: "Set alarms for a time"
         case .goodNight: "Good night"
         case .changePlan: "Change plan"
+        case .report: "Report something"
         }
     }
 
@@ -160,6 +163,10 @@ struct BottomBar: Equatable {
         var alarmStyleApp = true
         /// Alarms set and bedtime not run since (v0.4.8 item 5).
         var goodNight = false
+        /// Testing reports are on (v0.4.8 item 9): Report something heads ⋯.
+        var reporting = false
+        /// The bedtime check found something (v0.4.8 item 14).
+        var healthIssue: String?
     }
 
     /// Wind-down's states (9 before, 10 during, 11 after go to bed and not in bed).
@@ -222,7 +229,9 @@ struct BottomBar: Equatable {
                 return BottomBar(top: .status(count + next, .good), buttons: [.endAlarms, .wakeLater])
             }
             if i.notReadyWindow {
-                return BottomBar(top: .status("✓ " + count, .good), buttons: [.notReadyForBed, .sleepLater])
+                // v0.4.8 item 14: after bedtime, what the check found, in one line.
+                let top: Top = i.healthIssue.map { .status("⚠ " + $0, .snoozing) } ?? .status("✓ " + count, .good)
+                return BottomBar(top: top, buttons: [.notReadyForBed, .sleepLater])
             }
             // v0.4.3 item 3: No alarms tomorrow takes Edit alarms' place (Edit stays in ⋯).
             return BottomBar(top: .status("✓ " + count, .good), buttons: i.sleepLaterWindow ? [.sleepLater, .noAlarmsTomorrow] : [.noAlarmsTomorrow, .editAlarms])
@@ -262,7 +271,7 @@ struct BottomBar: Equatable {
 
     /// The ⋯ list: the same list in every state, hiding what doesn't apply.
     static func menu(_ i: Inputs, alarmStyleApp: Bool, morningKnown: Bool) -> [BarAction] {
-        var items: [BarAction] = [.previewPlan]
+        var items: [BarAction] = (i.reporting ? [.report] : []) + [.previewPlan]
         if i.alarmsSet > 0 { items.append(.editAlarms) }
         if i.sleepLaterWindow { items.append(.sleepLater) }
         if i.napEnabled && i.napUpAt == nil { items.append(.nap) }

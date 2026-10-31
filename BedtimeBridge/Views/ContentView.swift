@@ -20,6 +20,9 @@ struct ContentView: View {
     @State private var napAlarms: [NapAlarm] = []
     @State private var napStatus: String?
     @State private var morningEnd: MorningEnd?
+    /// Report something (v0.4.8 item 9): the screen and its picture when it was opened.
+    @State private var reportScreen: [String: Any] = [:]
+    @State private var reportPicture: Data?
     @State private var backToBed = false
     @State private var notReadyForBed = false
     /// A quiet look at tomorrow on opening found no shift or event (v0.4.7 item 8), so the bar
@@ -52,8 +55,8 @@ struct ContentView: View {
         case addWakeUp
         /// v0.4.3 item 15, from the weekly notification.
         case weeklySummary
-        /// v0.4.8 item 5.
-        case changePlan
+        /// v0.4.8 items 5 and 9.
+        case changePlan, report
         var id: String {
             switch self {
             case .changeMorning(let phase): "changeMorning-\(phase.rawValue)"
@@ -242,6 +245,13 @@ struct ContentView: View {
             // Redraw at each minute while open, so the bar changes on time (v0.4.6 item 3).
             .task(id: scenePhase) {
                 guard scenePhase == .active else { return }
+                // v0.4.8 item 4: Stop on the banner snoozed; the slide-and-hold ends it.
+                if let id = BannerStop.takePending() {
+                    BannerStop.clearNotification()
+                    stoppingAlarm = SnoozedAlarm(id: id)
+                }
+                // Reports saved while Home Assistant was out of reach (v0.4.8 item 9).
+                Task { await TestingReports.sendUnsent(settings: store.settings) }
                 while !Task.isCancelled {
                     try? await Task.sleep(for: .seconds(ScreenClock.secondsToNextMinute(.now)))
                     if Task.isCancelled { return }
@@ -273,6 +283,8 @@ struct ContentView: View {
                 if url.host == "action", let action = QuickAction(rawValue: url.lastPathComponent) { open(action) }
                 if url.host == "tonight" { sheet = nil }
                 if url.host == "now" { openWhatMattersNow() }
+                // bedtimebridge://report, from the Report something control (v0.4.8 item 9).
+                if url.host == "report" { openReport() }
                 // bedtimebridge://pair?…, tapped on the integration's pairing screen.
                 if url.host == "pair" {
                     pairingMessage = HomeAssistantLinks.pair(with: url)
@@ -306,6 +318,8 @@ struct ContentView: View {
                     }
                 case .weeklySummary:
                     WeeklySummaryView(settings: store.settings, justEnded: true)
+                case .report:
+                    ReportSheet(screen: reportScreen, screenshot: reportPicture, settings: store.settings)
                 case .changePlan:
                     ChangePlanSheet(items: BottomBar.changePlanItems(barInputs), times: scheduled, day: barDay,
                                     undoPutsBack: coordinator.availableUndo()?.previousTimes ?? [], choose: changePlan)
@@ -508,6 +522,8 @@ struct ContentView: View {
         i.nothingFound = plan.map { !$0.hasAlarm } ?? (nothingAhead && set.isEmpty)
         i.alarmStyleApp = store.settings.alarmStyle == .app
         i.goodNight = coordinator.goodNightOffered
+        i.reporting = TestingReports.enabled
+        i.healthIssue = BedtimeHealth.current(now: now)
         return i
     }
 
@@ -610,7 +626,24 @@ struct ContentView: View {
                 refreshScheduled()
             }
         case .changePlan: sheet = .changePlan
+        case .report: openReport()
         }
+    }
+
+    /// Report something (v0.4.8 item 9): the screen as it is, before the sheet covers it.
+    private func openReport() {
+        let bar = BottomBar.make(barInputs)
+        reportScreen = [
+            "bar_top": String(describing: bar.top),
+            "bar_buttons": bar.buttons.map { $0.title(day: barDay) },
+            "bar_hold": bar.hold.map { $0.title(day: barDay) } ?? "",
+            "bar_row": bar.actionRow.map { $0.title(day: barDay) },
+            "primary_action": primaryAction.buttonTitle ?? "",
+            "plan_on_screen": plan.map { "\($0.reason) · \($0.alarmTimes.map(WakePlanner.format).joined(separator: ", "))" } ?? "",
+            "error": errorMessage ?? "",
+        ]
+        reportPicture = AppScreenshot.capture()
+        sheet = .report
     }
 
     /// A choice on Change plan (v0.4.8 item 5): its own screen or slide-and-hold, once the sheet
@@ -815,6 +848,10 @@ struct ContentView: View {
         backToBed = coordinator.backToBedAvailable(settings: store.settings)
         notReadyForBed = coordinator.notReadyForBedAvailable(settings: store.settings)
         sleepLater = coordinator.sleepLaterAvailable(settings: store.settings)
+        // v0.4.8 item 11: a re-plan prompt in the up-early window is worth a report.
+        if morningEnd != nil, !scheduled.isEmpty, let title = primaryAction.buttonTitle {
+            Task { await TestingReports.automatic("replan_in_up_early", saw: "The re-plan prompt (\(title)) showed in the up-early window", settings: store.settings) }
+        }
         // After a change this morning, the old plan's times are no longer what's set: show the
         // alarms AlarmKit holds instead (v0.4.1 items 4 and 10).
         if coordinator.morningChangeReason != nil { plan = nil }

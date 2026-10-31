@@ -56,6 +56,8 @@ extension BedtimeCoordinator {
         guard let link = HomeAssistantLinks.current(settings) as? IntegrationLink,
               let reply = try? await link.reply(.goodNight, data: [:]) else { return .noHomeAssistant }
         if reply["already"] as? Bool == true { return .already }
-        return reply["good_night"] as? Bool == true ? .sent : .notSent
+        guard reply["good_night"] as? Bool == true else { return .notSent }
+        TestingChecklist.tick(.goodNightSent)
+        return .sent
     }
 }
