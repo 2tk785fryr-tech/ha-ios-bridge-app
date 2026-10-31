@@ -228,6 +228,10 @@ MSG_LIVE_ACTIVITY = "live_activity"
 MSG_WIND_DOWN = "wind_down"
 # v0.4.6 item 2: I'm awake (app, Siri, controls) on a morning with no alarms.
 MSG_AWAKE = "awake"
+# v0.4.8: Good night (item 5), a testing report (items 9 and 11), the bedtime health check (item 14).
+MSG_GOOD_NIGHT = "good_night"
+MSG_REPORT = "report"
+MSG_HEALTH = "health"
 EVENT_RERUN = "bedtime_rerun"
 EVENT_REARMED = "temporary_rearmed"
 # The bed sensor drops out for up to ~19 s while you're in it; "empty" must last longer.

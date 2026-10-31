@@ -23,9 +23,10 @@ from homeassistant.util import dt as dt_util
 
 from . import drivetime as dtm
 from . import ladder as ldr
-from . import timefmt, weekly
+from . import reports, timefmt, weekly
 from .awake import NoAlarmMorning
 from .liveactivity import LiveActivities
+from .pending import BedtimePending
 from .winddown import WindDown
 from .const import (
     BED_EMPTY_SECONDS,
@@ -109,6 +110,9 @@ from .const import (
     MSG_RESET,
     MSG_LIVE_ACTIVITY,
     MSG_AWAKE,
+    MSG_GOOD_NIGHT,
+    MSG_HEALTH,
+    MSG_REPORT,
     MSG_WIND_DOWN,
     MSG_NAP_STARTED,
     MSG_CANCELLED,
@@ -204,6 +208,11 @@ def pending_record() -> dict[str, Any]:
     }
 
 
+# Pushes whose shortcut should report it ran within 10 minutes (v0.4.8 item 11).
+WATCHED_COMMANDS = (CMD_BEDTIME, CMD_MORNING, CMD_LEAVE_CHECK)
+COMMAND_RAN_WAIT = timedelta(minutes=10)
+
+
 def _command_tag(message: str) -> str:
     return f"{COMMAND_TAG}_{message.lower()}"
 
@@ -239,6 +248,10 @@ class BedtimeBridge:
         self.live = LiveActivities(self)
         # Mornings with no alarms (v0.4.6 item 2).
         self.awake = NoAlarmMorning(self)
+        # Bedtime pending and Good night (v0.4.8 items 1 and 5).
+        self.pending = BedtimePending(self)
+        # Command pushes waiting for their shortcut to report it ran (v0.4.8 item 11).
+        self._command_check_unsubs: dict[str, Callable[[], None]] = {}
         # Apple Maps' client keeps its access token between checks.
         self._maps: dtm.AppleMaps | None = None
         # RUN_MORNING_UPDATE timers for the morning Live Activity (v0.4.3 item 14).
@@ -281,6 +294,7 @@ class BedtimeBridge:
         self.entry.async_on_unload(async_track_time_interval(self.hass, self._weather_tick, timedelta(minutes=15)))
         self.wind_down.async_start()
         self.awake.async_start()
+        self.pending.async_start()
         presence = self.options.get(CONF_PRESENCE) or []
         if isinstance(presence, str):
             presence = [presence]
@@ -368,6 +382,9 @@ class BedtimeBridge:
             MSG_RESET: self._reset,
             MSG_LIVE_ACTIVITY: self._live_activity,
             MSG_AWAKE: self._awake,
+            MSG_GOOD_NIGHT: self._good_night,
+            MSG_REPORT: self._report,
+            MSG_HEALTH: self._health,
         }.get(kind)
         if handler is None:
             return {"error": f"unknown message type: {kind}"}
@@ -430,6 +447,26 @@ class BedtimeBridge:
     async def _awake(self, data: dict[str, Any]) -> dict[str, Any]:
         """I'm awake from the app, Siri or a control: good morning now (v0.4.6 item 2)."""
         return await self.awake.good_morning(by_hand=True)
+
+    async def _good_night(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Good night from the app's bar or Siri: RUN_BEDTIME (v0.4.8 item 5)."""
+        return await self.pending.good_night()
+
+    async def _report(self, data: dict[str, Any]) -> dict[str, Any]:
+        """A testing report from the app (v0.4.8 items 9 and 11), with what Home Assistant
+        knows added."""
+        return await reports.save(self, {**data, "source": data.get("source") or "app", "home_assistant": reports.snapshot(self)})
+
+    async def _health(self, data: dict[str, Any]) -> dict[str, Any]:
+        """For the app's bedtime health check (v0.4.8 item 14)."""
+        notify = (self.options.get(CONF_NOTIFY) or "").strip()
+        return {
+            "alarm_times": self.state.get("alarm_times") or [],
+            "ladder": (self.state.get("ladder") or {}).get("status"),
+            "push_token": bool(((self.state.get("live_activity") or {}).get("device") or {}).get("token")),
+            "phone_commands": bool(notify and self.options.get(CONF_PHONE_COMMANDS)),
+            "bedtime_pending": self.pending.is_on,
+        }
 
     # MARK: Plug in your phone (v0.4.3 item 10)
 
@@ -552,7 +589,9 @@ class BedtimeBridge:
     async def bedtime_started(self, data: dict[str, Any]) -> None:
         """Bedtime ran (the bedtime shortcut's Report Shortcut Ran RUN_BEDTIME, or Start Bedtime
         Routine): wind-down ends (v0.4.3 item 5), the expiry warning (item 9) and Plug in your
-        phone (item 10), each once a night."""
+        phone (item 10), each once a night. Bedtime is no longer pending (v0.4.8 item 1)."""
+        self.pending.bedtime_started()
+        self._changed()
         await self.wind_down.bedtime_ran()
         await self._warn_app_expiry()
         today = dt_util.as_local(dt_util.utcnow()).date().isoformat()
@@ -579,6 +618,7 @@ class BedtimeBridge:
         alone (armed again if a covered shift is on it). Settings, the override, Sleep In and
         Awake For Day are left as they are."""
         self.state.update(empty_state())
+        self.pending.cleared()
         self.state["last_morning_change"] = None
         self.state["ladder"] = {}
         self.state["ladder_plan"] = {}
@@ -744,6 +784,11 @@ class BedtimeBridge:
             outcome = "planned_for_clock"
         else:
             outcome = "alarms_set"
+        # v0.4.8 item 1: alarms set, so getting into bed is bedtime until bedtime runs.
+        if outcome == "alarms_set":
+            self.pending.alarms_set()
+        else:
+            self.pending.cleared()
         self._event(MSG_PLANNED, last_event=outcome, alarms_set=outcome == "alarms_set")
 
     async def _up_check(self, data: dict[str, Any]) -> dict[str, Any]:
@@ -1444,6 +1489,9 @@ class BedtimeBridge:
         for command in list(self._command_unsubs):
             self._unwatch_command(command)
         self._cancel_leave_checks()
+        for unsub in self._command_check_unsubs.values():
+            unsub()
+        self._command_check_unsubs = {}
 
     # MARK: Leave checks (v0.4.1 item 17)
 
@@ -1610,6 +1658,7 @@ class BedtimeBridge:
         self._check_alarms_set(data)
         if not times:
             self.state["alarm_cause"] = "noalarm"
+            self.pending.cleared()
         if data.get("phase") not in ("bedtime", "edit"):
             # Mornings changed, for the weekly summary: once per morning, not Sleep later or edits.
             history = self.state.setdefault("history", [])
@@ -1858,7 +1907,26 @@ class BedtimeBridge:
         )
         if sent:
             self._pending_commands.add(message)
+            if message in WATCHED_COMMANDS:
+                self._check_command_ran(message)
         return sent
+
+    @callback
+    def _check_command_ran(self, message: str) -> None:
+        """v0.4.8 item 11: a push that isn't reported as ran within 10 minutes is an automatic
+        report."""
+        if old := self._command_check_unsubs.pop(message, None):
+            old()
+
+        @callback
+        def check(_now: datetime) -> None:
+            self._command_check_unsubs.pop(message, None)
+            if message in self._pending_commands:
+                self.hass.async_create_task(reports.automatic(
+                    self, f"not_ran_{message.lower()}",
+                    f"{message} was sent to the phone 10 minutes ago and its shortcut hasn't reported it ran"))
+
+        self._command_check_unsubs[message] = async_call_later(self.hass, COMMAND_RAN_WAIT, check)
 
     async def _clear_command(self, message: str) -> None:
         """Takes a command's push off the phone once its shortcut has run."""
@@ -1956,6 +2024,7 @@ class BedtimeBridge:
         """Alarms cleared. "No alarms tomorrow" (v0.4.3 item 3) sends sleep_in; the ladder then
         follows the calendar alone (armed while a covered shift is on it)."""
         self.state.update(empty_state())
+        self.pending.cleared()
         if "sleep_in" in data:
             await self._set_sleep_in(bool(data["sleep_in"]))
         self._event(MSG_CANCELLED, sleep_in=data.get("sleep_in"), morning=data.get("morning"))

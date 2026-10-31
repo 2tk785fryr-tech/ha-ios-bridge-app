@@ -1,4 +1,5 @@
-"""Snoozing: on from a snooze tap until the alarm is due to ring again."""
+"""Snoozing: on from a snooze tap until the alarm is due to ring again. Bedtime pending (v0.4.8
+item 1): on from setting alarms until bedtime runs or 2 h before the first alarm."""
 
 from __future__ import annotations
 
@@ -17,7 +18,8 @@ from .entity import BedtimeBridgeEntity
 async def async_setup_entry(
     hass: HomeAssistant, entry: BedtimeBridgeConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    async_add_entities([SnoozingSensor(entry.runtime_data), PlanOutdatedSensor(entry.runtime_data)])
+    async_add_entities([SnoozingSensor(entry.runtime_data), PlanOutdatedSensor(entry.runtime_data),
+                        BedtimePendingSensor(entry.runtime_data)])
 
 
 class PlanOutdatedSensor(BedtimeBridgeEntity, BinarySensorEntity):
@@ -79,6 +81,55 @@ class SnoozingSensor(BedtimeBridgeEntity, BinarySensorEntity):
 
     @callback
     def _snooze_over(self, _now: datetime) -> None:
+        self._unsub_timer = None
+        self.async_write_ha_state()
+
+    @callback
+    def _cancel_timer(self) -> None:
+        if self._unsub_timer:
+            self._unsub_timer()
+            self._unsub_timer = None
+
+
+class BedtimePendingSensor(BedtimeBridgeEntity, BinarySensorEntity):
+    """On while getting into bed should start bedtime at any hour; the Bedtime Nudge blueprint
+    nudges while it's on, even outside its window."""
+
+    _attr_translation_key = "bedtime_pending"
+    _attr_icon = "mdi:bed-clock"
+
+    def __init__(self, bridge) -> None:
+        super().__init__(bridge, "bedtime_pending")
+        self._unsub_timer: CALLBACK_TYPE | None = None
+
+    @property
+    def is_on(self) -> bool:
+        return self.bridge.pending.is_on
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str | None]:
+        until = self.bridge.pending.until
+        return {"since": self.bridge.state.get("bedtime_pending_since"), "until": until.isoformat() if until else None}
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self._schedule_off()
+        self.async_on_remove(self._cancel_timer)
+
+    @callback
+    def _handle_update(self) -> None:
+        self._schedule_off()
+        super()._handle_update()
+
+    @callback
+    def _schedule_off(self) -> None:
+        """Turns itself off at the cut-off, with no message from the phone."""
+        self._cancel_timer()
+        if until := self.bridge.pending.until:
+            self._unsub_timer = async_track_point_in_utc_time(self.hass, self._cutoff, until)
+
+    @callback
+    def _cutoff(self, _now: datetime) -> None:
         self._unsub_timer = None
         self.async_write_ha_state()
 
