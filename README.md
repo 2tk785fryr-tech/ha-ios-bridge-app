@@ -102,6 +102,14 @@ set, *I'm up early* before the first alarm, *Snoozing · rings 4:34* with *End a
 with no alarms. Everything else is in **⋯**, the same list every time with what doesn't apply
 hidden.
 
+With **alarms set and bedtime still to come**, the bar is "✓ 3 alarms set · first 9:40" (with
+*Undo* while it applies), a violet **Good night** slide-and-hold that starts bedtime (Home
+Assistant sends RUN_BEDTIME, the push the bedtime nudge sends), and **Change plan** and
+**Temporary alarm** under it. *Change plan* holds every way to change tonight's alarms: Undo,
+change times, set alarms for a time, plan from the calendar again, sleep later, and *No alarms
+tomorrow* (*this morning* after midnight). Each change can be undone, one step back, until
+bedtime runs. In the 2 hours before the alarms, *I'm up early* and *Sleep later* are in the bar.
+
 With **nothing set and nothing coming** (on opening, or after a preview finds no shift or
 event), the bar gets a second row: *Set alarms for a time* in violet and *Nap* in orange, then
 *Temporary alarm*, *Preview plan* and ⋯.
@@ -194,10 +202,23 @@ that just ended.
   in the integration's options, Home Assistant starts, updates and ends them by push, without
   the app running (`docs/ha-handoffs-v0.4.4.md`).
 - **Controls** for the Lock Screen, Control Center and the Action button: Nap, Wind-down (start or
-  cancel), Tonight and I'm awake.
-- **Quick actions** on the app icon (long-press), chosen in Settings → Shortcuts & controls.
-- **Siri:** plan, cancel, nap, no alarms tomorrow, sleep later, start or cancel wind-down, add
-  leave, add a wake-up event, I'm awake.
+  cancel), Tonight, I'm awake and, for the testing phase, Report something.
+- **Quick actions** on the app icon (long-press), chosen in Settings → Shortcuts, controls and
+  Siri.
+- **Siri:** plan, cancel, nap, no alarms tomorrow, sleep later, start or cancel wind-down, good
+  night (it asks first), add a vacation, add a wake-up event, I'm awake. Settings → Shortcuts,
+  controls and Siri → **Siri phrases** lists each phrase, and how to make your own (a shortcut
+  named what you want to say, e.g. "Let's go sleepy bye", running the Good Night action).
+
+### Testing reports
+
+While testing, **Report something** heads ⋯ (and is a control): type or dictate what went wrong
+and it goes to Home Assistant with the app's state, what it did in the last 12 hours and a
+picture of the screen. The app and Home Assistant also file reports by themselves when they see
+something off (your own alarms cleared, a re-plan prompt before the alarms, in bed with no
+bedtime, a push that never ran, the bedtime check failing). Settings → About → **Testing
+checklist** lists what hasn't been seen working yet; some items tick themselves. Reports are in
+`bedtime_bridge_reports/` in Home Assistant's config folder (`docs/ha-handoffs-v0.4.8.md`).
 
 ### Settings pages
 
@@ -302,7 +323,7 @@ Settings → Alarms chooses one of two styles:
 | Snooze | Snooze button. **Length is adjustable** (default 9 min). The countdown shows on the Lock Screen and in the Dynamic Island. While snoozing, stopping takes a **slide**, like the Clock app, so a stray tap can't end it. The Stop screen says which alarm it is ("4:25 AM · alarm 2 of 3") and what's next. **Hold at the end of the slide for 5 seconds** (a ring fills, the phone ticks) to end every alarm left in this wake-up; letting go early stops just this one. From 2 hours before the first alarm (a setting), Tonight can end the rest of this morning's alarms the same way, even before they ring. **Plans changed?** on the snooze screen, or **Back to bed** on Tonight after you're up, moves this morning's alarms later or turns them off (a slide-and-hold, a reason, a confirm screen, a second hold and Face ID); the backstops move with it and the house goes back to bedtime. | Apple's fixed 9 minutes. |
 | Morning routines | **Snooze** turns on `input_boolean.wake_fade` (Wake Snooze Fade). **Stop** turns on `input_boolean.wake_mike` (Wake Sequence). The app tells HA directly and retries if HA doesn't answer. | Your existing "Alarm is snoozed / stopped" Shortcuts automations, unchanged. |
 | Sound | **iPhone alarm** (default), or one of six sounds that ship with the app: Sunrise (builds slowly), Chimes, Marimba, Harp, Classic beeps, Pulse. Settings → Alarms, with a play button to hear each. | Whatever you pick in the Clock app. |
-| After Stop | **Keeps the later alarms until you're up** (default; see below), rechecks traffic for the leave-by reminder. | Whatever your shortcut does. |
+| After Stop | **Keeps the later alarms until you're up** (default; see below), rechecks traffic for the leave-by reminder. **Stop on the banner or Lock Screen snoozes** (0.4.8) unless Home Assistant sees you're up, and opens the app's Stop screen; the slide-and-hold there ends the alarms. | Whatever your shortcut does. |
 
 **Stop keeps the rest until you're up.** Turning off the first alarm, switching the lights off
 and falling back asleep is how Wake Deadline Backstop came to exist. So by default, Stop only
