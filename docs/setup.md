@@ -189,6 +189,10 @@ Drive times from**, and:
 - [ ] **A nap that runs into the night:** the Bedtime Nudge blueprint change in
       `docs/ha-handoffs-v0.4.9.md`, section 2 (for the Home Assistant chat).
 
+### 15. *(0.4.10)* Update the integration
+- [ ] **HACS → Bedtime Bridge → Update** to 0.4.10, restart Home Assistant, open the app once.
+      Nothing to set up; what changed is in `docs/ha-handoffs-v0.4.10.md`.
+
 ---
 
 ## Part 5: Check it worked

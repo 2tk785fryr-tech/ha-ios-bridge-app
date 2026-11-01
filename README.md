@@ -327,18 +327,21 @@ Settings → Alarms chooses one of two styles:
 | Snooze | Snooze button. **Length is adjustable** (default 9 min). The countdown shows on the Lock Screen and in the Dynamic Island. While snoozing, stopping takes a **slide**, like the Clock app, so a stray tap can't end it. The Stop screen says which alarm it is ("4:25 AM · alarm 2 of 3") and what's next. **Hold at the end of the slide for 5 seconds** (a ring fills, the phone ticks) to end every alarm left in this wake-up; letting go early stops just this one. From 2 hours before the first alarm (a setting), Tonight can end the rest of this morning's alarms the same way, even before they ring. **Plans changed?** on the snooze screen, or **Back to bed** on Tonight after you're up, moves this morning's alarms later or turns them off (a slide-and-hold, a reason, a confirm screen, a second hold and Face ID); the backstops move with it and the house goes back to bedtime. | Apple's fixed 9 minutes. |
 | Morning routines | **Snooze** turns on `input_boolean.wake_fade` (Wake Snooze Fade). **Stop** turns on `input_boolean.wake_mike` (Wake Sequence). The app tells HA directly and retries if HA doesn't answer. | Your existing "Alarm is snoozed / stopped" Shortcuts automations, unchanged. |
 | Sound | **iPhone alarm** (default), or one of six sounds that ship with the app: Sunrise (builds slowly), Chimes, Marimba, Harp, Classic beeps, Pulse. Settings → Alarms, with a play button to hear each. | Whatever you pick in the Clock app. |
-| After Stop | **Keeps the later alarms until you're up** (default; see below), rechecks traffic for the leave-by reminder. **Stop on the banner or Lock Screen snoozes** (0.4.8) unless Home Assistant sees you're up, and opens the app's Stop screen; the slide-and-hold there ends the alarms. | Whatever your shortcut does. |
+| After Stop | **Stop never ends an alarm by itself** (0.4.10, see below): it snoozes and opens the Stop screen, where the slide ends that alarm and the hold ends them all. Rechecks traffic for the leave-by reminder. | Whatever your shortcut does. |
 
-**Stop keeps the rest until you're up.** Turning off the first alarm, switching the lights off
-and falling back asleep is how Wake Deadline Backstop came to exist. So by default, Stop only
-cancels the later alarms once Home Assistant confirms you're up: the bedroom door opened
-(`input_boolean.bedroom_exited_today`) or the bed empty for over a minute. The bed sensor drops
-out for up to 19 s while you're in it, so shorter gaps don't count. Stop the 4:20 alarm in bed
-and 4:25 and 4:30 still ring. Get up at 4:20 and stop the 4:25 alarm from the bathroom, and
-4:30 is cancelled. If HA can't be reached or the sensors are unavailable, the alarms stay.
-Settings → Alarms → *When I stop an alarm* also offers *Cancel the rest* (old behavior) and
-*Keep them all*. The sensors are chosen in the integration's options (or in the app, in token
-mode).
+**Only the Stop screen ends an alarm (0.4.10).** Turning off the first alarm, switching the
+lights off and falling back asleep is how Wake Deadline Backstop came to exist, so:
+- **Snooze** silences the alarm and snoozes.
+- **Stop** (the banner or the Lock Screen) silences it but doesn't end it. It's held as a
+  snooze, or folds into the next alarm if that rings sooner (so no extra alarm appears beside
+  it), and the app opens the Stop screen. Do nothing and it rings again.
+- **The Stop screen** names the alarm by the time it was set for ("The 8:00 alarm · alarm 1 of 3
+  · 2nd snooze") and lists what's still set ("8:10 → rings 8:19 · 8:20"). *Slide to end this
+  alarm* ends that one; the others stay. *Hold at the end* for 5 seconds ends every alarm left
+  in this wake-up.
+- Home Assistant saying you're up (bed empty, door opened) never ends alarms; the old *When I stop
+  an alarm* setting is gone. Home Assistant runs good morning on the first alarm stopped, and
+  sends it again on a later stop only if the shortcut never reported it ran.
 
 Why two styles: the Shortcuts "Alarm is snoozed / stopped" triggers only fire for **Clock app**
 alarms. They never see app alarms, so in app-alarm mode the app has to tell HA itself.
@@ -352,19 +355,21 @@ common cases without touching Home Assistant by hand.
 
 <p align="center"><img src="docs/images/skip.png" width="260" alt="Saturday's wake-up skipped"></p>
 
-**Skip a morning.** *Skip Monday's wake-up* asks what you want instead:
-- **Sleep in:** the alarms are cancelled, Sleep In turns on, and the shift override is set to
-  Off, so the house's wake failsafes stay quiet too. Skipping the night before is treated like
-  the event doesn't exist.
-- **Wake at a different time:** pick a time and whether it's the first or last alarm of your
+**No alarms Monday** (⋯; Skip was merged into it in 0.4.10):
+- **No alarms:** the alarms are cancelled and stay off (bedtime planning won't set them again),
+  with a Sleep In switch. A shift on the calendar has its override set to Off, so the house's
+  wake failsafes stay quiet too: treated like the event doesn't exist.
+- **Wake at a different time…:** pick a time and whether it's the first or last alarm of your
   usual series. Later plans (the bedtime shortcut, a re-plan) keep it instead of clearing it.
 
 You can undo a skip from the same card, and Home Assistant puts the shift override back.
 **Stopping an alarm in the morning is different:** that keeps the failsafes, because they're
 there for the times you turn the alarm off and fall back asleep.
 
-**Temporary alarms.** One extra alarm beside the regular ones, for getting up early and going
-back to bed. Choose what happens to the house alarm:
+**Temporary alarms.** Extra alarms beside the regular ones, for getting up early and going
+back to bed. Add one from the bar or ⋯; while any are set they have their own card under the top
+card, where each one's time and house alarm can be changed, or it can be cancelled, and they show
+on Your morning. Choose what happens to the house alarm:
 - **Disarm, then re-arm:** stopping it sends `RUN_DISARM`. Once the bed sensor has seen you
   back in bed for 5 minutes (adjustable), Home Assistant sends `RUN_ARM_STAY`. If you don't
   get back into bed before the regular alarms (or within 6 hours), it doesn't re-arm.
@@ -398,13 +403,19 @@ Home Assistant side is in `docs/ha-handoffs-v*.md`.
 **More you can change after bedtime:**
 - **Set alarms asks first:** a manual *Plan and set alarms* shows a preview with Set alarms and
   Cancel; **Undo** stays in the bar until bedtime runs.
-- **No alarms tomorrow**, any time before the morning, with a Sleep In switch. A shift still on
-  the calendar keeps its backstops.
+- **No alarms Monday**, any time before the morning (see above).
 - **Calendar changed:** "Tomorrow changed: Days shift deleted. Your 4:20 alarms are still set.
   Re-plan?" Nothing moves until you confirm.
 - **Change this morning** (reason first, then just the alarms or the whole wake-up for a snow
   delay; the confirm screen shows the backstops before and after), **Sleep later** with *Back to
-  planned*, and **Edit alarms** to move, add or remove any single one.
+  planned*, and **Edit alarms** to move, add or remove any single one (from bedtime on, *Edit
+  single alarms* is inside Change this morning, and ⋯ shows only that).
+- **The bar (0.4.10):** the status on top, then the moment's slider the whole width (*I'm up
+  early*, *Back to bed*, *Not ready for bed*; snoozing, the slide ends this alarm and the hold all
+  of them), then two buttons and ⋯.
+- **Your morning** shows for every alarm: each alarm, temporary ones too, the backstops, or why
+  there are none ("No backstops Sunday · armed for Monday 6:30"). Once set, the top card has the
+  **weather at wake-up** as a pill ("41° · Rain").
 - **Wake at a different time** (day off, skip) shows a preview where you can add alarms and edit
   the backstops.
 - **Add a wake-up event** (the round button at the top) and **Add <vacation>**, straight into your
