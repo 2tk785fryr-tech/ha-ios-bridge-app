@@ -262,8 +262,11 @@ class LiveActivities:
             return await self.end_morning()
         extra = self.s.get("morning_content") or {}
         drive_weather, day_weather = await self._weather(leave_by, now)
-        rungs = [(t, name) for name, v in ((state.get("ladder") or {}).get("times") or {}).items()
-                 if (t := dt_util.parse_datetime(v or "")) and t > now] if (state.get("ladder") or {}).get("status") == "armed" else []
+        ladder = state.get("ladder") or {}
+        # Only the ladder for this morning, not the next shift's (v0.4.9 item 6).
+        this_morning = str(ladder.get("morning") or "").endswith(dt_util.as_local(leave_by).date().isoformat())
+        rungs = [(t, name) for name, v in (ladder.get("times") or {}).items()
+                 if (t := dt_util.parse_datetime(v or "")) and t > now] if ladder.get("status") == "armed" and this_morning else []
         backstop = min(rungs) if rungs else None
         first = dt_util.parse_datetime(state.get("series_start") or "")
         drive = state.get("drive_minutes") if isinstance(state.get("drive_minutes"), int) else extra.get("drive_minutes")

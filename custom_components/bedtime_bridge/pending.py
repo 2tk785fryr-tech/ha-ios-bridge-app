@@ -16,7 +16,7 @@ from homeassistant.helpers.event import async_call_later, async_track_state_chan
 from homeassistant.util import dt as dt_util
 
 from . import reports
-from .const import CMD_BEDTIME, CONF_BED_SENSOR
+from .const import CMD_BEDTIME, CONF_BED_SENSOR, CONF_NAP_HELPER
 
 if TYPE_CHECKING:
     from .bridge import BedtimeBridge
@@ -27,6 +27,9 @@ CUTOFF = timedelta(hours=2)
 PLAN_GRACE = timedelta(minutes=30)
 # In bed while pending this long with no RUN_BEDTIME: an automatic report (item 11).
 STUCK = timedelta(minutes=10)
+# A nap counts for this long after its last alarm or after the napping helper went on, in case
+# "nap ended" is lost (the Bedtime Nudge blueprint's own fallback, v0.4.9 item 1).
+NAP_LIMIT = timedelta(hours=4)
 
 
 def _time(value: Any) -> datetime | None:
@@ -43,6 +46,17 @@ def until(state: dict[str, Any], now: datetime) -> datetime | None:
         return None
     cutoff = times[0] - CUTOFF
     return cutoff if now < cutoff else None
+
+
+def napping(bridge: BedtimeBridge, now: datetime) -> bool:
+    """A nap is on (v0.4.9 item 1): its alarms are set, or the napping helper has been on for
+    less than 4 hours."""
+    times = [t for t in (_time(v) for v in bridge.state.get("nap_alarm_times") or []) if t]
+    if times and now < max(times) + NAP_LIMIT:
+        return True
+    helper = bridge.options.get(CONF_NAP_HELPER)
+    state = bridge.hass.states.get(helper) if helper else None
+    return state is not None and state.state == "on" and now - state.last_changed < NAP_LIMIT
 
 
 class BedtimePending:
@@ -122,7 +136,8 @@ class BedtimePending:
     def _stuck(self, _now: datetime) -> None:
         self._stuck_unsub = None
         bed = self.bridge.hass.states.get(self.bridge.options.get(CONF_BED_SENSOR) or "")
-        if self.is_on and bed is not None and bed.state == "on":
+        # In bed for a nap isn't bedtime not starting (v0.4.9 item 1).
+        if self.is_on and bed is not None and bed.state == "on" and not napping(self.bridge, dt_util.utcnow()):
             self.bridge.hass.async_create_task(reports.automatic(
                 self.bridge, "bedtime_not_sent",
                 f"In bed {int(STUCK.total_seconds() // 60)} minutes with bedtime pending and no RUN_BEDTIME",
