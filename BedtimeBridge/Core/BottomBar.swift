@@ -36,6 +36,9 @@ enum BarAction: String, CaseIterable, Identifiable {
         }
     }
 
+    /// v0.4.10 item 15: drawn in nap orange wherever it shows (the bar, ⋯).
+    var napStyled: Bool { [.nap, .endNap, .changeNap].contains(self) }
+
     /// Opens a screen whose commit step has the slider, instead of the bar's own slider.
     var opensScreen: Bool { [.sleepLater, .changeNap, .editAlarms, .noAlarmsTomorrow, .changePlan].contains(self) }
 
@@ -136,6 +139,8 @@ struct BottomBar: Equatable {
     /// v0.4.10 item 9: what a plain slide does when the hold is something more (snoozing: the
     /// slide ends this alarm, the hold ends them all).
     var slide: BarAction? = nil
+    /// v0.4.10 item 16: Set alarms' own wording in the action row ("Set 3 alarms · up 4:30").
+    var setTitle: String? = nil
 
     struct Inputs {
         var now = Date.now
@@ -178,6 +183,8 @@ struct BottomBar: Equatable {
         var reporting = false
         /// The bedtime check found something (v0.4.8 item 14).
         var healthIssue: String?
+        /// Tomorrow's shift or appointment, "Days shift 6:30" (v0.4.10 item 16).
+        var tomorrowLabel: String?
     }
 
     /// Wind-down's states (9 before, 10 during, 11 after go to bed and not in bed).
@@ -266,11 +273,15 @@ struct BottomBar: Equatable {
             return BottomBar(top: .status("Nothing set for tonight", .muted), buttons: buttons, actionRow: [.setAlarmsForTime] + nap)
         }
         if i.evening {
+            // v0.4.10 item 16: the status on top, both ways to set alarms in the first row.
+            var title = "Plan and set alarms"
             if let plan = i.planReady, plan.count > 0 {
                 let up = plan.up.map { " · up \(format($0))" } ?? ""
-                return BottomBar(top: .main(.setAlarms, "Set \(plan.count) alarm\(plan.count == 1 ? "" : "s")" + up), buttons: [.previewPlan] + nap)
+                title = "Set \(plan.count) alarm\(plan.count == 1 ? "" : "s")" + up
             }
-            return BottomBar(top: .main(.setAlarms, "Plan and set alarms"), buttons: [.previewPlan] + nap)
+            let status = i.tomorrowLabel.map { "\($0) · no alarms set" } ?? "No alarms set"
+            return BottomBar(top: .status(status, .muted), buttons: [.previewPlan] + nap,
+                             actionRow: [.setAlarms, .setAlarmsForTime], setTitle: title)
         }
         let status = i.tomorrow.map { "Tomorrow \(format($0)) · not set yet" } ?? "Nothing set for tonight"
         return BottomBar(top: .status(status, .muted), buttons: nap + [.previewPlan])

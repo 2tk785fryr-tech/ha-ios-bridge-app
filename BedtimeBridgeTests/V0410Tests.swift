@@ -239,4 +239,57 @@ final class V0410Tests: XCTestCase {
         XCTAssertNil(AlarmReasonText.wakeWeather(rain, firstAlarm: at(8, 30)), "another morning's forecast")
         XCTAssertNil(AlarmReasonText.wakeWeather(nil, firstAlarm: at(8, 0)), "no forecast, nothing shows")
     }
+
+    // MARK: Item 14, Preview after a Change this morning
+
+    func testItem14TheChangedThisMorningMarkEndsAtThatMorningsNoon() {
+        // 1 Nov 08:25 Back to bed: still this morning at 11:59, gone at 12:00 and in the evening.
+        XCTAssertTrue(MorningChange.markApplies(setAt: at(8, 25), now: at(11, 59), calendar: newYork))
+        XCTAssertFalse(MorningChange.markApplies(setAt: at(8, 25), now: at(12, 0), calendar: newYork))
+        XCTAssertFalse(MorningChange.markApplies(setAt: at(8, 25), now: at(16, 0), calendar: newYork), "Preview works in the afternoon")
+        // A change at 23:00 is for the next morning.
+        XCTAssertTrue(MorningChange.markApplies(setAt: at(23, 0, day: 0), now: at(8, 0), calendar: newYork))
+        XCTAssertFalse(MorningChange.markApplies(setAt: nil, now: at(8, 0), calendar: newYork), "a mark from before 0.4.10")
+    }
+
+    // MARK: Item 15, Nap orange
+
+    func testItem15NapAndNappingsButtonsAreNapStyled() {
+        XCTAssertTrue(BarAction.nap.napStyled)
+        XCTAssertTrue(BarAction.endNap.napStyled)
+        XCTAssertTrue(BarAction.changeNap.napStyled)
+        XCTAssertFalse(BarAction.previewPlan.napStyled)
+        var i = BottomBar.Inputs(now: at(16, 0))
+        i.evening = true
+        i.napEnabled = true
+        i.tomorrowLabel = "Days shift 6:30"
+        XCTAssertTrue(BottomBar.make(i).buttons.contains(.nap), "the bar from 1 Nov's afternoon offers Nap")
+    }
+
+    // MARK: Item 16, nothing set yet
+
+    func testItem16NothingSetSaysSoWithBothSetButtonsOnTop() {
+        var i = BottomBar.Inputs(now: at(16, 0))
+        i.evening = true
+        i.napEnabled = true
+        i.tomorrowLabel = "Days shift \(WakePlanner.format(at(6, 30, day: 2)))"
+        i.planReady = (3, at(4, 30, day: 2))
+        let bar = BottomBar.make(i)
+        XCTAssertEqual(bar.top, .status("Days shift \(WakePlanner.format(at(6, 30, day: 2))) · no alarms set", .muted))
+        XCTAssertEqual(bar.actionRow, [.setAlarms, .setAlarmsForTime])
+        XCTAssertEqual(bar.setTitle, "Set 3 alarms · up \(WakePlanner.format(at(4, 30, day: 2)))")
+        XCTAssertEqual(bar.buttons, [.previewPlan, .nap])
+        i.tomorrowLabel = nil
+        i.planReady = nil
+        XCTAssertEqual(BottomBar.make(i).top, .status("No alarms set", .muted))
+        XCTAssertEqual(BottomBar.make(i).setTitle, "Plan and set alarms")
+    }
+
+    func testItem16TheLabelNamesTheShiftOrAppointment() {
+        var shift = WakePlan(source: .shift, wakeTime: at(4, 30, day: 2), alarmTimes: [at(4, 20, day: 2)], reason: "")
+        shift.shift = ShiftCandidate(title: "Days", start: at(6, 30, day: 2), wakeMinutesBefore: 120, cause: "Days")
+        XCTAssertEqual(AlarmReasonText.tomorrowLabel(shift), "Days shift \(WakePlanner.format(at(6, 30, day: 2)))")
+        XCTAssertNil(AlarmReasonText.tomorrowLabel(nil))
+        XCTAssertNil(AlarmReasonText.tomorrowLabel(WakePlan(source: .manual, wakeTime: nil, alarmTimes: [], reason: "")))
+    }
 }

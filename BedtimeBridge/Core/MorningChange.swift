@@ -143,3 +143,16 @@ struct MorningChange: Equatable {
         return first > curtainsOpenAt
     }
 }
+
+extension MorningChange {
+    /// v0.4.10 item 14: whether "changed this morning" still applies. It ends with that morning,
+    /// at noon of the morning it was for (a change in the evening is for the next morning). Not
+    /// sooner when the alarms are gone: turning this morning's alarms off is a change too, and
+    /// the old plan mustn't come back on screen. Marks from before 0.4.10 have no time: they end.
+    static func markApplies(setAt: Date?, now: Date = .now, calendar: Calendar = .current) -> Bool {
+        guard let setAt else { return false }
+        let day = calendar.component(.hour, from: setAt) < 12 ? setAt : calendar.nextDay(after: setAt)
+        guard let noon = calendar.date(bySettingHour: 12, minute: 0, second: 0, of: day) else { return true }
+        return now < noon
+    }
+}

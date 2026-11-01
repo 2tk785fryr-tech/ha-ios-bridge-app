@@ -1370,11 +1370,21 @@ final class BedtimeCoordinator {
 
     private static let morningChangeKey = "morningChangeReason.v1"
 
+    private static let morningChangeAtKey = "morningChangeAt.v1"
+
     /// Set when this morning's alarms were changed (item 3) or edited, so Tonight shows what's
-    /// set rather than offering to set the old plan again. Cleared by the next plan.
+    /// set rather than offering to set the old plan again. Cleared by the next plan, and from
+    /// v0.4.10 item 14 it ends with that morning (its alarms all done, or past its noon).
     private(set) var morningChangeReason: String? {
-        get { UserDefaults.standard.string(forKey: Self.morningChangeKey) }
-        set { UserDefaults.standard.set(newValue, forKey: Self.morningChangeKey) }
+        get {
+            guard let reason = UserDefaults.standard.string(forKey: Self.morningChangeKey) else { return nil }
+            let at = UserDefaults.standard.object(forKey: Self.morningChangeAtKey) as? Date
+            return MorningChange.markApplies(setAt: at) ? reason : nil
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: Self.morningChangeKey)
+            UserDefaults.standard.set(newValue.map { _ in Date.now }, forKey: Self.morningChangeAtKey)
+        }
     }
 
     func alarmStatus() -> AlarmStatus {

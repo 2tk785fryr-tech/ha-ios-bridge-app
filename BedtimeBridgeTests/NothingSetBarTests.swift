@@ -27,7 +27,8 @@ final class NothingSetBarTests: XCTestCase {
     func testAPreviewThatFoundNothingInTheEvening() {
         var i = BottomBar.Inputs(now: at(21))
         i.evening = true
-        XCTAssertEqual(BottomBar.make(i).top, .main(.setAlarms, "Plan and set alarms"), "before a preview, the evening still offers to plan")
+        XCTAssertEqual(BottomBar.make(i).actionRow, [.setAlarms, .setAlarmsForTime], "before a preview, the evening still offers to plan")
+        XCTAssertEqual(BottomBar.make(i).setTitle, "Plan and set alarms")
         i.nothingFound = true
         XCTAssertEqual(BottomBar.make(i).actionRow, [.setAlarmsForTime])
     }

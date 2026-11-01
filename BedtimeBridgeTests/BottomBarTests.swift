@@ -23,7 +23,10 @@ final class BottomBarTests: XCTestCase {
         i.napEnabled = true
         i.planReady = (3, first.addingTimeInterval(600))
         let bar = BottomBar.make(i)
-        XCTAssertEqual(bar.top, .main(.setAlarms, "Set 3 alarms · up \(f(first.addingTimeInterval(600)))"))
+        // v0.4.10 item 16: the status on top, Set alarms (its own wording) beside Set alarms for a time.
+        XCTAssertEqual(bar.top, .status("No alarms set", .muted))
+        XCTAssertEqual(bar.actionRow, [.setAlarms, .setAlarmsForTime])
+        XCTAssertEqual(bar.setTitle, "Set 3 alarms · up \(f(first.addingTimeInterval(600)))")
         XCTAssertEqual(bar.buttons, [.previewPlan, .nap])
     }
 

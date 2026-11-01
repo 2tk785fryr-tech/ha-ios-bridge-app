@@ -30,6 +30,8 @@ struct ContentView: View {
     /// A quiet look at tomorrow on opening found no shift or event (v0.4.7 item 8), so the bar
     /// can offer Set alarms for a time without a preview first.
     @State private var nothingAhead = false
+    /// The quiet look-ahead's plan, for the bar's "Days shift 6:30 · no alarms set" (v0.4.10 item 16).
+    @State private var peek: WakePlan?
     /// The minute the screen last redrew for (v0.4.6 item 3); the bar reads it, so a tick redraws.
     @State private var tick = Date.now
     /// A protected action waiting for its slide-and-hold in the bottom bar (v0.4.2 item 6).
@@ -478,6 +480,7 @@ struct ContentView: View {
         Task {
             let peek = try? await coordinator.buildPlan(settings: store.settings)
             nothingAhead = Self.nothingAhead(peek)
+            self.peek = peek
         }
     }
 
@@ -512,6 +515,7 @@ struct ContentView: View {
         i.leaveBy = snapshot.leaveBy
         if let plan, plan.hasAlarm, !isSet(plan) { i.planReady = (plan.alarmTimes.count, plan.wakeTime) }
         i.tomorrow = plan?.wakeTime ?? plan?.firstAlarm
+        i.tomorrowLabel = AlarmReasonText.tomorrowLabel(plan ?? peek)
         i.napEnabled = store.settings.napEnabled && store.settings.alarmStyle == .app
         i.undo = coordinator.availableUndo(now: now)?.status(
             alarmsSet: set.count, thisMorning: coordinator.clearedMorning.map { Calendar.current.isDate($0, inSameDayAs: now) } ?? false)
@@ -871,8 +875,9 @@ struct ContentView: View {
             Task { await TestingReports.automatic("replan_in_up_early", saw: "The re-plan prompt (\(title)) showed in the up-early window", settings: store.settings) }
         }
         // After a change this morning, the old plan's times are no longer what's set: show the
-        // alarms AlarmKit holds instead (v0.4.1 items 4 and 10).
-        if coordinator.morningChangeReason != nil { plan = nil }
+        // alarms AlarmKit holds instead (v0.4.1 items 4 and 10). Never a preview's plan (v0.4.10
+        // item 14).
+        if coordinator.morningChangeReason != nil, !previewRequested { plan = nil }
         Task {
             morningContext = await coordinator.morningContext(firstAlarm: nil, settings: store.settings)
             morningContextLoaded = true
@@ -2031,7 +2036,9 @@ private struct BottomBarView: View {
     }
 
     private func button(_ action: BarAction, outline: Color) -> some View {
-        let tint = action.isProtected ? Theme.amber : Theme.accentText
+        // v0.4.10 item 15: Nap (and napping's own buttons) in nap orange wherever it shows.
+        let napStyle = action.napStyled
+        let tint = napStyle ? Theme.nap.fill : action.isProtected ? Theme.amber : Theme.accentText
         // The nothing-set bar's second row is short on room (v0.4.7 item 8).
         let title = action == .addTemporary && (!bar.actionRow.isEmpty || bar.hold != nil) ? "Temporary alarm" : action.title(day: day)
         return Button { tap(action) } label: {
@@ -2041,15 +2048,16 @@ private struct BottomBarView: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
                 .frame(maxWidth: .infinity, minHeight: Self.rowHeight)
-                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(action.isProtected ? Theme.amber.opacity(0.6) : outline, lineWidth: 1))
+                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(napStyle ? Theme.nap.fill.opacity(0.6) : action.isProtected ? Theme.amber.opacity(0.6) : outline, lineWidth: 1))
         }
     }
 
     /// Set alarms for a time in violet, Nap in orange (v0.4.7 item 8).
     private func filled(_ action: BarAction) -> some View {
         let nap = action == .nap
+        let title = action == .setAlarms ? bar.setTitle ?? action.title(day: day) : action.title(day: day)
         return Button { tap(action) } label: {
-            Label(action.title(day: day), systemImage: nap ? "powersleep" : "alarm")
+            Label(title, systemImage: nap ? "powersleep" : action == .setAlarmsForTime ? "clock" : "alarm")
                 .font(.system(size: 16, weight: .bold))
                 .foregroundStyle(nap ? Theme.nap.text : .white)
                 .lineLimit(1)
@@ -2057,7 +2065,7 @@ private struct BottomBarView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(nap ? Theme.nap.fill : Theme.accent, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
-        .frame(maxWidth: nap ? 120 : .infinity)
+        .frame(maxWidth: nap ? 120 : action == .setAlarmsForTime && bar.actionRow.contains(.setAlarms) ? 150 : .infinity)
     }
 
     private func tap(_ action: BarAction) {
@@ -2117,9 +2125,12 @@ private struct BarMenu: View {
                 } else {
                 Button { choose(action) } label: {
                     HStack {
+                        if action == .nap {
+                            Image(systemName: "powersleep").foregroundStyle(Theme.nap.fill)
+                        }
                         Text(action.title(day: day))
                             .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(action.isProtected ? Theme.amber : Theme.text)
+                            .foregroundStyle(action == .nap ? Theme.nap.fill : action.isProtected ? Theme.amber : Theme.text)
                         Spacer()
                         if action.isProtected {
                             Image(systemName: "hand.draw").foregroundStyle(Theme.amber.opacity(0.7))

@@ -28,7 +28,8 @@ final class ScreenClockTests: XCTestCase {
         XCTAssertEqual(BottomBar.make(i).top, .status("Nothing set for tonight", .muted))
         i.now = at(17, 0)
         i.evening = ScreenClock.isEvening(i.now)
-        XCTAssertEqual(BottomBar.make(i).top, .main(.setAlarms, "Plan and set alarms"))
+        XCTAssertEqual(BottomBar.make(i).top, .status("No alarms set", .muted))
+        XCTAssertEqual(BottomBar.make(i).actionRow.first, .setAlarms)
     }
 
     /// Wind-down's times and alarm times passing between two ticks make the screen refresh.
