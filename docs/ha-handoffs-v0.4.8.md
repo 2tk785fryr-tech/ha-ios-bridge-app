@@ -11,7 +11,18 @@ Assistant its push token).
 
 ## 2. Bedtime pending, and the Bedtime Nudge blueprint (item 1)
 
-The integration adds **`binary_sensor.bedtime_bridge_bedtime_pending`**. It's on from setting
+> **Corrected in 0.4.9 (item 2).** The entity id below is the one a fresh install would pick.
+> Yours is **`binary_sensor.master_bedroom_bedtime_bridge_bedtime_pending`**: the Bedtime Bridge
+> device is in the Master Bedroom area, and Home Assistant puts the area in front of new entity
+> ids. Find it as **Bedtime Bridge → Bedtime pending** (Settings → Devices & services → Bedtime
+> Bridge → the device) and use the id it shows.
+>
+> **The blueprint edits (a–c) are superseded** by Bedtime Nudge **v1-05**
+> (`bedtime_nudge_v1-05.yaml`, used by `automation.bedtime_nudge`), which reads Bedtime pending
+> with the right id, sends only the tap-to-run push for it, and handles naps. Don't make them.
+
+The integration adds **Bedtime pending** (`binary_sensor.bedtime_bridge_bedtime_pending` on a
+fresh install; see the note above). It's on from setting
 alarms (a plan or your own time) until bedtime runs, or until 2 hours before the first alarm
 (attributes `since` and `until`). The bedtime shortcut's own plan doesn't turn it on.
 
@@ -61,7 +72,8 @@ end `in_shift_window` and `in_wide_window` with "or bedtime is pending":
 The windows themselves stay as they are. Save, then **Tools → YAML → Reload automations** (or
 re-save `automation.bedtime_nudge`). Its new input already has the right default.
 
-To check: set alarms in the app, and `binary_sensor.bedtime_bridge_bedtime_pending` turns on.
+To check: set alarms in the app, and **Bedtime Bridge → Bedtime pending**
+(`binary_sensor.master_bedroom_bedtime_bridge_bedtime_pending` here) turns on.
 Run *I'm Ready For Bed - App* (or tap Good night) and it turns off.
 
 ## 3. Good night (item 5)
