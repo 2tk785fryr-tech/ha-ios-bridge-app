@@ -179,6 +179,8 @@ def empty_state() -> dict[str, Any]:
         "snooze_count": 0,
         # The wake routine (stop helper, Good Morning) already ran for this series (item 9).
         "routine_ran": False,
+        # RUN_GOOD_MORNING already sent for this wake-up (v0.4.10 item 2).
+        "morning_ran": False,
         "last_event": None,
         "last_event_time": None,
         "skipped_away": False,
@@ -1322,8 +1324,13 @@ class BedtimeBridge:
             self.state["routine_ran"] = True
         else:
             self.state["skipped_away"] = self._away_blocks()
+        # Good morning only once the wake-up's last alarm is stopped or the hold ends them all,
+        # never on a stop with alarms still set (v0.4.10 item 2).
+        morning = not remaining and not self.state.get("morning_ran")
+        if morning:
+            self.state["morning_ran"] = True
         self._event(MSG_STOPPED, all=stop_all, early=early, routine=first)
-        if first and not self.state.get("skipped_away"):
+        if morning and not self.state.get("skipped_away"):
             # The phone's own morning shortcut (disarm, good morning, Focus off) used to run
             # from the Clock app; app alarms don't trigger that, so this push does instead.
             await self._command(CMD_MORNING)
@@ -1667,6 +1674,7 @@ class BedtimeBridge:
         if phase != "edit":
             # A new series is a new wake-up; an edited one is the same (v0.4.1 item 13).
             self.state["routine_ran"] = False
+            self.state["morning_ran"] = False
         self._check_alarms_set(data)
         if not times:
             self.state["alarm_cause"] = "noalarm"

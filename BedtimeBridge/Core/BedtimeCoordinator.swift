@@ -248,6 +248,44 @@ final class BedtimeCoordinator {
         Set(alarms.scheduledAlarms().filter { StopDescription.laterWakeUp($0.date, ringing: ringing) }.map(\.id))
     }
 
+    // MARK: Snoozes (v0.4.10 item 1)
+
+    struct SnoozeEntry: Codable, Equatable {
+        /// The time the alarm was set for, which a banner Stop's snooze alarm keeps.
+        var original: Date
+        var ringsAgain: Date
+        var count: Int
+    }
+
+    private static let snoozesKey = "snoozeLedger.v1"
+
+    /// Each snoozing alarm: what it was set for, when it rings again, and how many snoozes.
+    private(set) var snoozes: [UUID: SnoozeEntry] {
+        get {
+            let saved = UserDefaults.standard.data(forKey: Self.snoozesKey).flatMap { try? JSONDecoder().decode([String: SnoozeEntry].self, from: $0) } ?? [:]
+            // A wake-up is over long before this: old entries go.
+            return Dictionary(uniqueKeysWithValues: saved.compactMap { key, entry in
+                UUID(uuidString: key).flatMap { entry.ringsAgain > Date.now.addingTimeInterval(-StopDescription.wakeUpSpan) ? ($0, entry) : nil }
+            })
+        }
+        set {
+            let saved = Dictionary(uniqueKeysWithValues: newValue.map { ($0.key.uuidString, $0.value) })
+            UserDefaults.standard.set(try? JSONEncoder().encode(saved), forKey: Self.snoozesKey)
+        }
+    }
+
+    /// This wake-up's alarms still to ring, as each rings next (a snoozing one at its snooze end).
+    private func upcomingRings(excluding id: UUID, ringing: Date, now: Date = .now) -> [StopDescription.Upcoming] {
+        let later = laterWakeUpAlarms(ringing: ringing)
+        let ledger = snoozes
+        return alarms.scheduledAlarms().compactMap { alarm in
+            guard alarm.id != id, !keptAlarms.contains(alarm.id), !later.contains(alarm.id) else { return nil }
+            let entry = ledger[alarm.id]
+            let rings = entry.map(\.ringsAgain).flatMap { $0 > now ? $0 : nil } ?? (alarm.date > now ? alarm.date : nil)
+            return rings.map { StopDescription.Upcoming(id: alarm.id, set: entry?.original ?? alarm.date, rings: $0) }
+        }
+    }
+
     var isNapping: Bool { !napAlarms.isEmpty }
 
     /// v0.4.9 item 3: the widget and the nap Live Activity follow the nap.
@@ -1147,6 +1185,9 @@ final class BedtimeCoordinator {
             return
         }
         let ringsAgain = Date.now.addingTimeInterval(Double(settings.snoozeMinutes) * 60)
+        let before = snoozes[id]
+        let setFor = before?.original ?? alarms.scheduledAlarms().first { $0.id == id }?.date ?? .now
+        snoozes[id] = SnoozeEntry(original: setFor, ringsAgain: ringsAgain, count: (before?.count ?? 0) + 1)
         updateWidget { snapshot in
             snapshot.snoozedUntil = ringsAgain
             snapshot.alarmTimes = scheduledAlarmTimes()
@@ -1178,6 +1219,7 @@ final class BedtimeCoordinator {
             alarms.stop(alarm.id)
             alarms.cancel(alarm.id)
         }
+        snoozes = [:]
         updateWidget { snapshot in
             snapshot.snoozedUntil = nil
             snapshot.alarmTimes = []
@@ -1586,39 +1628,74 @@ final class BedtimeCoordinator {
         if kind == .nap {
             return StopDescription.make(kind: .nap, alarmTime: time, series: savedNapAlarms.map(\.time), remaining: napAlarms.filter { $0.id != id }.map(\.time))
         }
-        let later = laterWakeUpAlarms(ringing: min(time ?? .now, .now))
+        let entry = snoozes[id]
+        let setFor = entry?.original ?? time
+        let ringing = min(setFor ?? .now, .now)
+        let later = laterWakeUpAlarms(ringing: ringing)
         let remaining = alarms.scheduledAlarms().filter { $0.id != id && !keptAlarms.contains($0.id) && !later.contains($0.id) }.map(\.date)
-        return StopDescription.make(kind: kind, alarmTime: time, series: alarmSeries, remaining: remaining)
+        let left = kind == .series ? upcomingRings(excluding: id, ringing: ringing) : []
+        // Folded onto the next alarm (item 1): this one is gone, and its snooze is that alarm.
+        let folded = alarm == nil ? entry.flatMap { entry in left.first { abs($0.rings.timeIntervalSince(entry.ringsAgain)) < 1 } } : nil
+        return StopDescription.make(kind: kind, alarmTime: setFor, series: alarmSeries, remaining: remaining,
+                                    snoozes: entry?.count ?? 0, left: left, foldedInto: folded)
     }
 
-    /// v0.4.8 item 4: Stop on the banner or Lock Screen. A series alarm snoozes instead (a new
-    /// alarm at the snooze time, reported as a snooze) and returns that alarm for the Stop
-    /// screen. Already up (Home Assistant), or anything else (test, nap, temporary): a real stop.
+    /// Stop on the banner or Lock Screen. A series alarm isn't ended (v0.4.10 item 3): it's held
+    /// as a snooze and the Stop screen opens, whatever Home Assistant says about being up
+    /// (item 2). When another alarm of this wake-up rings before the snooze would, the Stop
+    /// folds into it and nothing new is set (item 1); otherwise a new alarm at the snooze time.
+    /// Returns the alarm for the Stop screen and when the next ring is. Anything else (test, nap,
+    /// temporary): a real stop.
     func bannerStopped(id: UUID, cause: String? = nil, settings phoneSettings: BridgeSettings) async -> (id: UUID, ringsAgain: Date)? {
         let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
         guard settings.alarmStyle == .app, alarmKind(id, cause: cause) == .series else {
             await alarmStopped(id: id, cause: cause, settings: phoneSettings)
             return nil
         }
-        if await HomeAssistantLinks.current(settings)?.isUp(settings: settings) == true {
-            await alarmStopped(id: id, cause: cause, settings: phoneSettings)
-            return nil
+        let now = Date.now
+        let before = snoozes[id]
+        let setFor = before?.original ?? alarms.scheduledAlarms().first { $0.id == id }?.date ?? now
+        let ringing = min(setFor, now)
+        let snoozeAt = now.addingTimeInterval(Double(settings.snoozeMinutes) * 60)
+        if let next = StopDescription.foldsInto(snoozeAt: snoozeAt, upcoming: upcomingRings(excluding: id, ringing: ringing, now: now)) {
+            alarms.stop(id)
+            alarms.cancel(id)
+            // Kept for the Stop screen: which alarm this was, and that it's waiting on the next.
+            snoozes[id] = SnoozeEntry(original: setFor, ringsAgain: next.rings, count: (before?.count ?? 0) + 1)
+            updateWidget { snapshot in
+                snapshot.snoozedUntil = next.rings
+                snapshot.alarmTimes = scheduledAlarmTimes()
+            }
+            await report(.snoozed, data: [
+                "rings_again": Self.iso(next.rings),
+                "alarm_time": Self.iso(next.rings),
+                "alarm_cause": lastCause,
+                "alarm_times": scheduledAlarmTimes().map(Self.iso),
+            ], settings: settings)
+            BannerStop.pending = id
+            ActivityLog.add("Banner Stop: snoozed onto the \(WakePlanner.format(next.set)) alarm (\(WakePlanner.format(next.rings)))")
+            TestingChecklist.tick(.bannerStopSnoozed)
+            return (id, next.rings)
         }
-        let ringsAgain = Date.now.addingTimeInterval(Double(settings.snoozeMinutes) * 60)
         let title = lastAppliedPlan.map(alarmTitle(for:)) ?? "Wake up"
-        guard let again = try? await alarms.scheduleSingle(at: ringsAgain, title: title, cause: lastCause,
+        guard let again = try? await alarms.scheduleSingle(at: snoozeAt, title: title, cause: lastCause,
                                                            snoozeMinutes: settings.snoozeMinutes, sound: settings.alarmSound) else {
             // Couldn't set the snooze: the stop stands, and it's worth a report (item 11).
             await alarmStopped(id: id, cause: cause, settings: phoneSettings)
             await TestingReports.automatic("banner_stop_ended", saw: "Stop on the banner ended the alarm: the snooze alarm couldn't be set", settings: phoneSettings)
             return nil
         }
-        morningAlarms = Array(Set(morningAlarms + [ringsAgain])).sorted()
+        morningAlarms = Array(Set(morningAlarms + [snoozeAt])).sorted()
         await alarmSnoozed(id: id, settings: phoneSettings)
+        // The snooze alarm is the same alarm on the Stop screen: the time it was set for.
+        var ledger = snoozes
+        ledger[again] = SnoozeEntry(original: setFor, ringsAgain: snoozeAt, count: (before?.count ?? 0) + 1)
+        ledger[id] = nil
+        snoozes = ledger
         BannerStop.pending = again
-        ActivityLog.add("Banner Stop: snoozed to \(WakePlanner.format(ringsAgain))")
+        ActivityLog.add("Banner Stop: snoozed to \(WakePlanner.format(snoozeAt))")
         TestingChecklist.tick(.bannerStopSnoozed)
-        return (again, ringsAgain)
+        return (again, snoozeAt)
     }
 
     /// - Parameter all: the slide-and-hold on the Stop screen (item 2): ends every alarm left in
@@ -1628,7 +1705,7 @@ final class BedtimeCoordinator {
         let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
         // The kind and the ring time before stopping: AlarmKit may already have removed it.
         let kind = alarmKind(id, cause: cause)
-        let ringing = min(alarms.scheduledAlarms().first { $0.id == id }?.date ?? .now, .now)
+        let ringing = min(snoozes[id]?.original ?? alarms.scheduledAlarms().first { $0.id == id }?.date ?? .now, .now)
         alarms.stop(id)
         if kind == .test {
             testAlarmID = nil
@@ -1665,21 +1742,14 @@ final class BedtimeCoordinator {
             ], settings: settings)
             return
         }
-        var upAnswer: Bool?
-        // "The rest" is this wake-up's series only, never tomorrow's (v0.4.9 item 4).
-        let keeping = keptAlarms.union(laterWakeUpAlarms(ringing: ringing))
-        switch all ? .cancelRest : settings.stopBehavior {
-        case .cancelRest:
-            alarms.cancelAll(except: id, keeping: keeping)
-        case .keepAll:
-            break
-        case .keepUntilUp:
-            // Only once HA confirms you're up. Still in bed, HA unreachable or no sensors:
-            // the later alarms stay as your phone's own backstop.
-            upAnswer = await HomeAssistantLinks.current(settings)?.isUp(settings: settings)
-            if upAnswer == true {
-                alarms.cancelAll(except: id, keeping: keeping)
-            }
+        // v0.4.10 items 2 and 3: the slide ends this alarm only, the hold every alarm left in
+        // this wake-up ("the rest" never includes tomorrow's, v0.4.9 item 4). Nothing else, not
+        // Home Assistant saying you're up, ends the others.
+        alarms.cancel(id)
+        snoozes[id] = nil
+        if all {
+            alarms.cancelAll(except: id, keeping: keptAlarms.union(laterWakeUpAlarms(ringing: ringing)))
+            snoozes = [:]
         }
         stoppedThisWakeUp = true
         lastStopAt = .now
@@ -1693,8 +1763,6 @@ final class BedtimeCoordinator {
         stopped["alarm_time"] = remaining.first.map(Self.iso)
         // How this stop was decided, so a morning can be traced afterwards (item 1).
         stopped["all"] = all
-        stopped["stop_behavior"] = settings.stopBehavior.rawValue
-        if let upAnswer { stopped["up"] = upAnswer }
         await report(.stopped, data: stopped, settings: settings)
 
         // The drive re-check also shows the morning Live Activity (v0.4.3 item 14).

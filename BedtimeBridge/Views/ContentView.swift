@@ -1527,12 +1527,8 @@ private struct StatusCard: View {
 
     private var snoozeText: String {
         switch settings.alarmStyle {
-        case .app:
-            switch settings.stopBehavior {
-            case .keepUntilUp: "\(settings.snoozeMinutes) min · rest stay until you're up"
-            case .cancelRest: "\(settings.snoozeMinutes) min · Stop ends the series"
-            case .keepAll: "\(settings.snoozeMinutes) min"
-            }
+        // v0.4.10 item 3: Stop opens the Stop screen; only its slide or hold ends alarms.
+        case .app: "\(settings.snoozeMinutes) min · Stop asks first"
         case .clock: "Clock app · 9 min"
         }
     }

@@ -592,11 +592,6 @@ private struct AlarmSettingsSection: View {
             if settings.alarmStyle == .app {
                 DefaultStepper(value: $settings.snoozeMinutes, in: 1...30, defaultValue: d.snoozeMinutes, note: { "\($0) min" }) { "Snooze: \($0) min" }
                 AlarmSoundPicker(sound: $settings.alarmSound)
-                Picker(selection: $settings.stopBehavior) {
-                    ForEach(StopBehavior.allCases) { Text($0.displayName).tag($0) }
-                } label: {
-                    WithDefault(text: "When I stop an alarm", defaultText: settings.stopBehavior == d.stopBehavior ? nil : d.stopBehavior.displayName.lowercased())
-                }
                 NavigationLink("When options show") {
                     OptionWindowsSettings(settings: $settings)
                 }

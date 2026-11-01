@@ -250,10 +250,6 @@ struct BridgeSettings: Codable, Equatable {
     var ownAlarmWakeIs: WakeTimeAlarm = .first
 
     var ownOffsetsValid: Bool { 0 <= ownEarlyMinutes && ownEarlyMinutes < ownDeadlineMinutes && ownDeadlineMinutes < ownLateMinutes }
-    /// App alarms only: what Stop does to the rest of the series. Default keeps them until
-    /// Home Assistant confirms you're up: stopping the first alarm and falling back asleep is
-    /// exactly how Wake Deadline Backstop came to exist.
-    var stopBehavior: StopBehavior = .keepUntilUp
 
     // MARK: Home Assistant
 
@@ -359,23 +355,6 @@ enum WakeTimeAlarm: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .last: "Last alarm"
         case .first: "First alarm"
-        }
-    }
-}
-
-enum StopBehavior: String, Codable, CaseIterable, Identifiable {
-    /// Cancel the later alarms only if HA says you're up (door opened, or bed empty > 1 min).
-    case keepUntilUp
-    case cancelRest
-    case keepAll
-
-    var id: String { rawValue }
-
-    var displayName: String {
-        switch self {
-        case .keepUntilUp: "Keep the rest until I'm up"
-        case .cancelRest: "Cancel the rest"
-        case .keepAll: "Keep them all"
         }
     }
 }

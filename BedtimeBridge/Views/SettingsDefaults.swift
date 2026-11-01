@@ -117,7 +117,7 @@ enum SettingsPages {
     static let main = ["shiftRules"]
     static let mornings = ["getReadyMinutes", "workArrivalBufferMinutes", "wakeEarlyToGetReady", "noAlarmMorningEnabled", "noAlarmEarliest", "noAlarmUpMinutes", "noAlarmWaitMinutes"]
     static let home = ["homeAddress"]
-    static let alarms = ["chargeWarningEnabled", "chargeWarningThreshold", "alarmStyle", "snoozeMinutes", "alarmSound", "stopBehavior", "lookAheadHours"]
+    static let alarms = ["chargeWarningEnabled", "chargeWarningThreshold", "alarmStyle", "snoozeMinutes", "alarmSound", "lookAheadHours"]
     /// v0.4.7 item 7.
     static let appointmentAlarms = ["alarmCount", "alarmSpacingMinutes", "wakeTimeIs"]
     static let ownAlarms = ["newAlarmHoursAhead", "ownAlarmRoundingMinutes", "ownAlarmPickerSnaps", "ownAlarmCount", "ownAlarmSpacingMinutes", "ownAlarmWakeIs", "ownBackstopsDayOff", "ownBackstopsLeave", "ownEarlyMinutes", "ownDeadlineMinutes", "ownLateMinutes", "ownBackstopsFull"]

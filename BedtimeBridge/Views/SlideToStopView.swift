@@ -33,12 +33,19 @@ struct SlideToStopView: View {
                 Text(description.detail)
                     .font(.system(size: 17, weight: .medium))
                     .foregroundStyle(Theme.text)
+                // What's left of this wake-up, as each rings (v0.4.10 item 1).
+                if !description.left.isEmpty {
+                    Text("Still set: " + description.left.joined(separator: " · "))
+                        .font(.subheadline)
+                        .foregroundStyle(Theme.textSoft)
+                        .padding(.top, 4)
+                }
             }
             .multilineTextAlignment(.center)
             .accessibilityElement(children: .combine)
             Text(canEndAll
-                 ? "Slide all the way to stop this alarm. Hold at the end for \(Self.holdSeconds) seconds to end all of this morning's alarms. Let go early and it keeps snoozing."
-                 : "Slide all the way to stop this alarm. Let go early and it keeps snoozing.")
+                 ? "Slide all the way to end this alarm; the others stay. Hold at the end for \(Self.holdSeconds) seconds to end all of this morning's alarms. Let go early and it keeps snoozing."
+                 : "Slide all the way to end this alarm. Let go early and it keeps snoozing.")
                 .font(.subheadline)
                 .foregroundStyle(Theme.textSoft)
                 .multilineTextAlignment(.center)
@@ -74,13 +81,13 @@ struct SlideToStopView: View {
 
     private var slider: some View {
         HoldSlider(
-            label: stopping ? "Stopping…" : "Slide to stop",
+            label: stopping ? "Ending…" : "Slide to end this alarm",
             holdLabel: { "Ending all alarms in \($0)…" },
             holdSeconds: Self.holdSeconds,
             holdEnabled: canEndAll,
             onSlide: { finish(all: false) },
             onHold: { finish(all: true) },
-            accessibilityHint: canEndAll ? "Stops this alarm. Hold at the end to end all of this morning's alarms." : "Stops the snoozed alarm"
+            accessibilityHint: canEndAll ? "Ends this alarm only. Hold at the end to end all of this morning's alarms." : "Ends the snoozed alarm"
         )
     }
 

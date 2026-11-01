@@ -2,9 +2,9 @@ import AlarmKit
 import AppIntents
 import Foundation
 
-/// Runs when you tap Stop on a Bedtime Bridge alarm's banner or Lock Screen. From v0.4.8
-/// item 4 it snoozes instead and opens the app's Stop screen, where the slide-and-hold ends the
-/// alarms (and Home Assistant gets the stop, Good Morning and the leave-by re-check).
+/// Runs when you tap Stop on a Bedtime Bridge alarm's banner or Lock Screen. It never ends the
+/// alarm (v0.4.10 item 3): it snoozes, onto the next alarm if that rings first, and opens the
+/// app's Stop screen, where the slide ends this alarm and the hold ends them all.
 struct StopWakeAlarmIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Stop Wake-Up Alarm"
     static var isDiscoverable = false
