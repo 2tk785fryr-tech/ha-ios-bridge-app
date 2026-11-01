@@ -12,6 +12,17 @@ struct NextAlarmEntry: TimelineEntry {
     var leaveByOnly: Date? { snapshot.leaveByAfterAlarms(at: date) }
     /// Winding down (v0.4.3 item 5): go to bed, counted down.
     var bed: Date? { snapshot.bedCountdown(at: date) }
+    /// Napping (v0.4.9 item 3): the nap's next alarm or its snooze, which leads the widget.
+    var nap: Date? { snapshot.napNext(at: date) }
+    /// "Then 5:00 tomorrow" under the nap.
+    var thenLine: String? {
+        guard nap != nil, let morning = snapshot.morningAfterNap(at: date) else { return nil }
+        return "Then \(morning.clockTime())" + (Calendar.current.isDate(morning, inSameDayAs: date) ? "" : " tomorrow")
+    }
+    /// "Nap · up at 3:20", or "Snoozing · rings 3:29".
+    var napTitle: String? {
+        nap.map { isSnoozing ? "Snoozing · rings \($0.clockTime())" : "Nap · up at \($0.clockTime())" }
+    }
 }
 
 struct NextAlarmProvider: TimelineProvider {
@@ -69,6 +80,8 @@ struct NextAlarmView: View {
         case .accessoryInline:
             if let bed = entry.bed {
                 Label("Bed in \(Text(bed, style: .relative))", systemImage: "moon.zzz")
+            } else if let nap = entry.nap {
+                Label(entry.isSnoozing ? "Snoozing · rings \(time(nap))" : "Nap up \(time(nap))", systemImage: entry.isSnoozing ? "zzz" : "powersleep")
             } else if let alarm = entry.nextAlarm {
                 Label("\(time(alarm)) · \(entry.label)", systemImage: entry.isSnoozing ? "zzz" : "alarm")
             } else if let leaveBy = entry.leaveByOnly {
@@ -79,7 +92,7 @@ struct NextAlarmView: View {
 
         case .accessoryCircular:
             VStack(spacing: 0) {
-                Image(systemName: entry.nextAlarm == nil && entry.leaveByOnly != nil ? "car" : entry.isSnoozing ? "zzz" : "alarm")
+                Image(systemName: entry.nextAlarm == nil && entry.leaveByOnly != nil ? "car" : entry.isSnoozing ? "zzz" : entry.nap != nil ? "powersleep" : "alarm")
                     .font(.caption)
                 if let alarm = entry.nextAlarm {
                     Text(alarm, format: .dateTime.hour(.defaultDigits(amPM: .omitted)).minute().locale(ClockStyle.locale))
@@ -122,6 +135,15 @@ struct NextAlarmView: View {
                         Text("First alarm \(time(first))").font(.caption).lineLimit(1)
                     }
                     Text("Winding down").font(.caption).foregroundStyle(.secondary)
+                } else if let title = entry.napTitle {
+                    Label(title, systemImage: entry.isSnoozing ? "zzz" : "powersleep")
+                        .font(.sora(fixed: 17, .semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .widgetAccentable()
+                    if let then = entry.thenLine {
+                        Text(then).font(.caption).lineLimit(1)
+                    }
                 } else if let alarm = entry.nextAlarm {
                     HStack(alignment: .firstTextBaseline, spacing: 4) {
                         Label(time(alarm), systemImage: entry.isSnoozing ? "zzz" : "alarm")
@@ -199,6 +221,18 @@ private struct NightfallSmallView: View {
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(Theme.textMuted)
                 }
+            } else if let nap = entry.nap {
+                Text(nap, format: .dateTime.hour(.defaultDigits(amPM: .omitted)).minute().locale(ClockStyle.locale))
+                    .font(.sora(fixed: 40, .light))
+                    .foregroundStyle(Theme.accentText)
+                    .minimumScaleFactor(0.7)
+                Text(entry.isSnoozing ? "Snoozing" : "Nap · up")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Theme.textSoft)
+                Spacer(minLength: 0)
+                if let then = entry.thenLine {
+                    Text(then).font(.caption2.weight(.semibold)).foregroundStyle(Theme.textMuted)
+                }
             } else if let alarm = entry.nextAlarm {
                 Text(alarm, format: .dateTime.hour(.defaultDigits(amPM: .omitted)).minute().locale(ClockStyle.locale))
                     .font(.sora(fixed: 40, .light))
@@ -255,6 +289,7 @@ private struct WidgetHeading: View {
     var body: some View {
         let (text, symbol): (String, String) = if entry.bed != nil { ("Winding down", "moon.zzz") }
             else if entry.isSnoozing { ("Snoozing", "zzz") }
+            else if entry.nap != nil { ("Napping", "powersleep") }
             else if entry.nextAlarm == nil && entry.leaveByOnly != nil { ("Alarms done", "car") }
             else { ("Next alarm", "alarm") }
         Label(text, systemImage: symbol)
@@ -319,6 +354,7 @@ private struct WidgetStepRow: View {
         case .temporary: "alarm.waves.left.and.right"
         case .snooze: "zzz"
         case .leaveBy: "car"
+        case .nap: "powersleep"
         }
     }
 

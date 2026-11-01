@@ -165,7 +165,7 @@ final class BedtimeCoordinator {
         let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
         let alarms = scheduledAlarmTimes().filter { $0 > .now }
         let temporary = temporaryAlarms.map(\.time).filter { $0 > .now }
-        let wakeDay = alarms.min() ?? (Calendar.current.component(.hour, from: .now) < 5 ? Date.now : Date.now.addingTimeInterval(86400))
+        let wakeDay = alarms.min() ?? (Calendar.current.component(.hour, from: .now) < 5 ? Date.now : Calendar.current.nextDay(after: .now))
         var weather: AwaySummary.Weather?
         if let here = try? await CurrentLocation.fetch(), let hours = try? await OpenMeteoForecast().hourly(at: here) {
             weather = AwaySummary.weather(from: hours, wakeDay: wakeDay)
@@ -181,14 +181,17 @@ final class BedtimeCoordinator {
     /// Temporary wake-ups still to ring (or ringing), earliest first.
     var temporaryAlarms: [TemporaryAlarm] {
         get {
-            guard let data = UserDefaults.standard.data(forKey: Self.temporaryKey),
-                  let saved = try? JSONDecoder().decode([TemporaryAlarm].self, from: data) else { return [] }
             let live = Set(alarms.scheduledAlarms().map(\.id))
-            return saved.filter { live.contains($0.id) }.sorted { $0.time < $1.time }
+            return savedTemporaryAlarms.filter { live.contains($0.id) }.sorted { $0.time < $1.time }
         }
         set {
             UserDefaults.standard.set(try? JSONEncoder().encode(newValue), forKey: Self.temporaryKey)
         }
+    }
+
+    /// Temporary alarms as they were set, including one AlarmKit has just removed (v0.4.9 item 4).
+    private var savedTemporaryAlarms: [TemporaryAlarm] {
+        UserDefaults.standard.data(forKey: Self.temporaryKey).flatMap { try? JSONDecoder().decode([TemporaryAlarm].self, from: $0) } ?? []
     }
 
     /// Alarms that replacing or cancelling the regular series must leave alone.
@@ -223,15 +226,36 @@ final class BedtimeCoordinator {
     /// This nap's alarms still set (or snoozing), earliest first.
     private(set) var napAlarms: [NapAlarm] {
         get {
-            guard let data = UserDefaults.standard.data(forKey: Self.napKey),
-                  let saved = try? JSONDecoder().decode([NapAlarm].self, from: data) else { return [] }
             let live = Set(alarms.scheduledAlarms().map(\.id))
-            return saved.filter { live.contains($0.id) }.sorted { $0.time < $1.time }
+            return savedNapAlarms.filter { live.contains($0.id) }.sorted { $0.time < $1.time }
         }
         set { UserDefaults.standard.set(try? JSONEncoder().encode(newValue), forKey: Self.napKey) }
     }
 
+    /// The nap's alarms as they were set, including one AlarmKit has just removed (v0.4.9 item 4).
+    private var savedNapAlarms: [NapAlarm] {
+        UserDefaults.standard.data(forKey: Self.napKey).flatMap { try? JSONDecoder().decode([NapAlarm].self, from: $0) } ?? []
+    }
+
+    /// v0.4.9 item 4: what kind of alarm this is, whether or not AlarmKit still has it.
+    func alarmKind(_ id: UUID, cause: String? = nil) -> StopDescription.Kind {
+        .of(id, cause: cause, test: testAlarmID, temporary: Set(savedTemporaryAlarms.map(\.id)), nap: Set(savedNapAlarms.map(\.id)))
+    }
+
+    /// v0.4.9 item 4: alarms of a later wake-up than the one ringing at `ringing`, which a stop
+    /// leaves alone.
+    private func laterWakeUpAlarms(ringing: Date) -> Set<UUID> {
+        Set(alarms.scheduledAlarms().filter { StopDescription.laterWakeUp($0.date, ringing: ringing) }.map(\.id))
+    }
+
     var isNapping: Bool { !napAlarms.isEmpty }
+
+    /// v0.4.9 item 3: the widget and the nap Live Activity follow the nap.
+    func syncNap() async {
+        let nap = napAlarms.map(\.time)
+        updateWidget { $0.napAlarms = nap.isEmpty ? nil : nap }
+        await BedtimeActivities.syncNap(alarms: nap, snoozedUntil: NextAlarmSnapshot.load().snoozedUntil)
+    }
 
     /// What Home Assistant did when the nap started: "Nap Focus on · napping helper on".
     private(set) var napStatus: String? {
@@ -290,6 +314,8 @@ final class BedtimeCoordinator {
         }
         napAlarms = set
         napStatus = nil
+        updateWidget { $0.snoozedUntil = nil }
+        await syncNap()
         let data: [String: Any] = ["alarm_times": set.map { Self.iso($0.time) }, "minutes": minutes]
         if let link = HomeAssistantLinks.current(settings) as? IntegrationLink,
            let reply = try? await link.reply(.napStarted, data: data) {
@@ -310,6 +336,8 @@ final class BedtimeCoordinator {
         }
         napAlarms = []
         napStatus = nil
+        updateWidget { $0.snoozedUntil = nil }
+        await syncNap()
         await report(.napEnded, data: [:], settings: settings)
     }
 
@@ -736,6 +764,7 @@ final class BedtimeCoordinator {
         temporaryAlarms = []
         napAlarms = []
         napStatus = nil
+        await syncNap()
         testAlarmID = nil
         undoRecord = nil
         undoPlan = nil
@@ -1096,19 +1125,21 @@ final class BedtimeCoordinator {
 
     // MARK: Alarm buttons (app alarms only)
 
-    func alarmSnoozed(id: UUID, settings phoneSettings: BridgeSettings) async {
+    func alarmSnoozed(id: UUID, cause: String? = nil, settings phoneSettings: BridgeSettings) async {
         let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
         alarms.snooze(id)
-        if id == testAlarmID {
+        let kind = alarmKind(id, cause: cause)
+        if kind == .test {
             await report(.snoozed, data: ["test": true], settings: settings)
             return
         }
-        if napAlarms.contains(where: { $0.id == id }) {
+        if kind == .nap {
             // Like a temporary alarm: nothing in the house changes (v0.4.2 item 3).
             updateWidget { $0.snoozedUntil = Date.now.addingTimeInterval(Double(settings.snoozeMinutes) * 60) }
+            await syncNap()
             return
         }
-        if temporaryAlarms.contains(where: { $0.id == id }) {
+        if kind == .temporary {
             // Quiet: no wake ramp, nothing in the house changes for a temporary alarm.
             let ringsAgain = Date.now.addingTimeInterval(Double(settings.snoozeMinutes) * 60)
             updateWidget { $0.snoozedUntil = ringsAgain }
@@ -1192,6 +1223,18 @@ final class BedtimeCoordinator {
     func alarmBubbles(wake: Date?, now: Date = .now) -> [AlarmBubble] {
         AlarmBubble.make(morning: morningAlarms, held: setAlarmTimes(), wake: wake,
                          snoozedUntil: NextAlarmSnapshot.load().snoozedUntil, stopped: stoppedThisWakeUp, now: now)
+    }
+
+    /// v0.4.9 item 8: alarms all cancelled before any of them rang leave nothing on Tonight: the
+    /// morning and the plan that set them go. Returns whether it cleared them.
+    @discardableResult
+    func clearMorningCancelledBeforeRinging(now: Date = .now) -> Bool {
+        let bubbles = alarmBubbles(wake: nil, now: now)
+        guard !bubbles.isEmpty, !AlarmBubble.stillShowing(bubbles, stoppedAt: stoppedThisWakeUp ? lastStopAt : nil, now: now) else { return false }
+        morningAlarms = []
+        lastAppliedPlan = nil
+        ActivityLog.add("Morning cleared: its alarms were cancelled before any rang")
+        return true
     }
 
     private static let stoppedKey = "stoppedThisWakeUp.v1"
@@ -1536,30 +1579,29 @@ final class BedtimeCoordinator {
     }
 
     /// What the Stop screen says about this alarm (item 1).
-    func stopDescription(for id: UUID) -> StopDescription {
+    func stopDescription(for id: UUID, cause: String? = nil) -> StopDescription {
         let alarm = alarms.scheduledAlarms().first { $0.id == id }
-        let kind: StopDescription.Kind = id == testAlarmID ? .test
-            : temporaryAlarms.contains { $0.id == id } ? .temporary
-            : napAlarms.contains { $0.id == id } ? .nap : .series
-        let time = alarm?.date ?? temporaryAlarms.first { $0.id == id }?.time
+        let kind = alarmKind(id, cause: cause)
+        let time = alarm?.date ?? savedTemporaryAlarms.first { $0.id == id }?.time ?? savedNapAlarms.first { $0.id == id }?.time
         if kind == .nap {
-            return StopDescription.make(kind: .nap, alarmTime: time, series: napAlarms.map(\.time), remaining: napAlarms.filter { $0.id != id }.map(\.time))
+            return StopDescription.make(kind: .nap, alarmTime: time, series: savedNapAlarms.map(\.time), remaining: napAlarms.filter { $0.id != id }.map(\.time))
         }
-        let remaining = alarms.scheduledAlarms().filter { $0.id != id && !keptAlarms.contains($0.id) }.map(\.date)
+        let later = laterWakeUpAlarms(ringing: min(time ?? .now, .now))
+        let remaining = alarms.scheduledAlarms().filter { $0.id != id && !keptAlarms.contains($0.id) && !later.contains($0.id) }.map(\.date)
         return StopDescription.make(kind: kind, alarmTime: time, series: alarmSeries, remaining: remaining)
     }
 
     /// v0.4.8 item 4: Stop on the banner or Lock Screen. A series alarm snoozes instead (a new
     /// alarm at the snooze time, reported as a snooze) and returns that alarm for the Stop
     /// screen. Already up (Home Assistant), or anything else (test, nap, temporary): a real stop.
-    func bannerStopped(id: UUID, settings phoneSettings: BridgeSettings) async -> (id: UUID, ringsAgain: Date)? {
+    func bannerStopped(id: UUID, cause: String? = nil, settings phoneSettings: BridgeSettings) async -> (id: UUID, ringsAgain: Date)? {
         let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
-        guard settings.alarmStyle == .app, stopDescription(for: id).kind == .series else {
-            await alarmStopped(id: id, settings: phoneSettings)
+        guard settings.alarmStyle == .app, alarmKind(id, cause: cause) == .series else {
+            await alarmStopped(id: id, cause: cause, settings: phoneSettings)
             return nil
         }
         if await HomeAssistantLinks.current(settings)?.isUp(settings: settings) == true {
-            await alarmStopped(id: id, settings: phoneSettings)
+            await alarmStopped(id: id, cause: cause, settings: phoneSettings)
             return nil
         }
         let ringsAgain = Date.now.addingTimeInterval(Double(settings.snoozeMinutes) * 60)
@@ -1567,7 +1609,7 @@ final class BedtimeCoordinator {
         guard let again = try? await alarms.scheduleSingle(at: ringsAgain, title: title, cause: lastCause,
                                                            snoozeMinutes: settings.snoozeMinutes, sound: settings.alarmSound) else {
             // Couldn't set the snooze: the stop stands, and it's worth a report (item 11).
-            await alarmStopped(id: id, settings: phoneSettings)
+            await alarmStopped(id: id, cause: cause, settings: phoneSettings)
             await TestingReports.automatic("banner_stop_ended", saw: "Stop on the banner ended the alarm: the snooze alarm couldn't be set", settings: phoneSettings)
             return nil
         }
@@ -1582,15 +1624,18 @@ final class BedtimeCoordinator {
     /// - Parameter all: the slide-and-hold on the Stop screen (item 2): ends every alarm left in
     ///   this wake-up's series, without asking Home Assistant whether you're up. Temporary
     ///   alarms and other mornings stay.
-    func alarmStopped(id: UUID, all: Bool = false, settings phoneSettings: BridgeSettings) async {
+    func alarmStopped(id: UUID, all: Bool = false, cause: String? = nil, settings phoneSettings: BridgeSettings) async {
         let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
+        // The kind and the ring time before stopping: AlarmKit may already have removed it.
+        let kind = alarmKind(id, cause: cause)
+        let ringing = min(alarms.scheduledAlarms().first { $0.id == id }?.date ?? .now, .now)
         alarms.stop(id)
-        if id == testAlarmID {
+        if kind == .test {
             testAlarmID = nil
             await report(.stopped, data: ["test": true], settings: settings)
             return
         }
-        if napAlarms.contains(where: { $0.id == id }) {
+        if kind == .nap {
             // Stopping one leaves the nap's later alarm as a backup; the nap ends once none is
             // left (v0.4.2 item 3). No wake routines, Good Morning or backstops.
             alarms.cancel(id)
@@ -1598,11 +1643,15 @@ final class BedtimeCoordinator {
             if napAlarms.filter({ $0.id != id }).isEmpty {
                 napAlarms = []
                 napStatus = nil
+                await syncNap()
                 await report(.napEnded, data: [:], settings: settings)
+            } else {
+                await syncNap()
             }
             return
         }
-        if let temporary = temporaryAlarms.first(where: { $0.id == id }) {
+        if kind == .temporary {
+            let temporary = savedTemporaryAlarms.first { $0.id == id }
             // Back to bed afterwards: Awake For Day, Sleep In and the regular alarms stay.
             // Home Assistant disarms (and re-arms once you're back in bed) if you chose that.
             temporaryAlarms = temporaryAlarms.filter { $0.id != id }
@@ -1611,15 +1660,17 @@ final class BedtimeCoordinator {
                 snapshot.temporaryAlarms = temporaryAlarms.map(\.time)
             }
             await report(.temporaryStopped, data: [
-                "house_alarm": temporary.houseAlarm,
+                "house_alarm": temporary?.houseAlarm ?? "keep_armed",
                 "alarm_times": scheduledAlarmTimes().filter { $0 > .now }.map(Self.iso),
             ], settings: settings)
             return
         }
         var upAnswer: Bool?
+        // "The rest" is this wake-up's series only, never tomorrow's (v0.4.9 item 4).
+        let keeping = keptAlarms.union(laterWakeUpAlarms(ringing: ringing))
         switch all ? .cancelRest : settings.stopBehavior {
         case .cancelRest:
-            alarms.cancelAll(except: id, keeping: keptAlarms)
+            alarms.cancelAll(except: id, keeping: keeping)
         case .keepAll:
             break
         case .keepUntilUp:
@@ -1627,7 +1678,7 @@ final class BedtimeCoordinator {
             // the later alarms stay as your phone's own backstop.
             upAnswer = await HomeAssistantLinks.current(settings)?.isUp(settings: settings)
             if upAnswer == true {
-                alarms.cancelAll(except: id, keeping: keptAlarms)
+                alarms.cancelAll(except: id, keeping: keeping)
             }
         }
         stoppedThisWakeUp = true

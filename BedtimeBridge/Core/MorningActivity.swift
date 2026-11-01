@@ -106,7 +106,8 @@ extension BedtimeCoordinator {
             state.driveWeather = lines.drive
             state.dayWeather = lines.day
         }
-        if let next = MorningActivity.nextBackstop(context?.backstops ?? [:], now: now) {
+        // Only the ladder for this morning, not the next shift's (v0.4.9 item 6).
+        if context?.ladderIsFor(morning: leaveBy) ?? false, let next = MorningActivity.nextBackstop(context?.backstops ?? [:], now: now) {
             state.nextBackstopName = next.name
             state.nextBackstop = next.at
         }

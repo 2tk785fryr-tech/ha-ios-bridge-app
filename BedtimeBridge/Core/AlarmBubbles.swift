@@ -56,20 +56,48 @@ struct AlarmBubble: Equatable, Identifiable {
         times.map { time in AlarmBubble(time: time, ring: .none, isWake: wake.map { abs($0.timeIntervalSince(time)) < 60 } ?? false) }
     }
 
+    /// v0.4.9 item 8: the morning stays on screen while one of its alarms is still set, snoozing
+    /// or should be set, or once one has really rung; alarms all cancelled before any rang don't
+    /// keep it up.
+    static func stillShowing(_ bubbles: [AlarmBubble], stoppedAt: Date?, now: Date = .now) -> Bool {
+        let rangBy = stoppedAt ?? now
+        return bubbles.contains { $0.ring != .off || $0.time <= rangBy }
+    }
+
     /// The rings stay until the morning is over: the late backstop + 60 min, or the last alarm
     /// + 60 min without backstops.
     static func morningOver(lateBackstop: Date?, lastAlarm: Date?) -> Date? {
         (lateBackstop ?? lastAlarm).map { $0.addingTimeInterval(3600) }
     }
 
-    /// "✓ 3 alarms set" (no times; they're in the bubbles), counting the alarms that were set
-    /// this morning, so it stays through the morning.
-    static func header(_ bubbles: [AlarmBubble], shortfall: (set: Int, planned: Int)?) -> AlarmStatus {
+    /// "✓ 3 alarms set" (no times; they're in the bubbles), counting the alarms still set plus
+    /// the ones that really rang, so it stays through the morning. Alarms cancelled before their
+    /// time don't count (v0.4.9 item 5): "1 of 3 alarms left", "Ended early" or "Alarms off".
+    /// - Parameter stoppedAt: when an alarm of this wake-up was stopped or the morning ended, if
+    ///   it was; an alarm off after that time was cancelled, not rung.
+    static func header(_ bubbles: [AlarmBubble], shortfall: (set: Int, planned: Int)?, stoppedAt: Date? = nil, now: Date = .now) -> AlarmStatus {
         if let shortfall, shortfall.set < shortfall.planned {
             return AlarmStatus(kind: .error, text: "Couldn't set \(shortfall.planned - shortfall.set) of \(shortfall.planned) alarms")
         }
-        let set = bubbles.filter { $0.ring != .notSet && $0.ring != .none }.count
-        guard set > 0 else { return AlarmStatus(kind: .notSet, text: "Preview · not set") }
-        return AlarmStatus(kind: .set, text: set == 1 ? "1 alarm set" : "\(set) alarms set")
+        let counted = bubbles.filter { $0.ring != .notSet && $0.ring != .none }
+        guard !counted.isEmpty else { return AlarmStatus(kind: .notSet, text: "Preview · not set") }
+        let rangBy = stoppedAt ?? now
+        let active = counted.filter { $0.ring != .off }.count
+        let rang = counted.filter { $0.ring == .off && $0.time <= rangBy }.count
+        let cancelled = counted.count - active - rang
+        if cancelled == 0 {
+            return AlarmStatus(kind: .set, text: counted.count == 1 ? "1 alarm set" : "\(counted.count) alarms set")
+        }
+        if active > 0 {
+            return AlarmStatus(kind: .set, text: "\(active) of \(counted.count) alarms left")
+        }
+        // Ended within this wake-up (a stop with the rest cancelled, or I'm up early) rather than
+        // turned off some other time.
+        let first = counted.map(\.time).min() ?? now
+        let endedThisWakeUp = stoppedAt.map { $0 >= first.addingTimeInterval(-StopDescription.wakeUpSpan) } ?? false
+        if rang > 0 || endedThisWakeUp {
+            return AlarmStatus(kind: rang > 0 ? .set : .notSet, text: "Ended early")
+        }
+        return AlarmStatus(kind: .notSet, text: "Alarms off")
     }
 }

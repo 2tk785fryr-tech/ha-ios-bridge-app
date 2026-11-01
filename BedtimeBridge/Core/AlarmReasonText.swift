@@ -21,3 +21,17 @@ enum AlarmReasonText {
         return "Reason for alarm: \(what)" + (changeReason.map { " (morning changed: \($0))" } ?? "")
     }
 }
+
+extension AlarmReasonText {
+    /// "Nothing on Sunday": a preview that found nothing for the next morning (v0.4.9 item 9).
+    /// Before 4 AM the next morning is today's.
+    static func nothingOn(now: Date, calendar: Calendar = .current) -> String {
+        let morning = calendar.component(.hour, from: now) < 4 ? now : calendar.nextDay(after: now)
+        let day = DateFormatter()
+        day.calendar = calendar
+        day.timeZone = calendar.timeZone
+        day.locale = ClockStyle.locale
+        day.setLocalizedDateFormatFromTemplate("EEEE")
+        return "Nothing on \(day.string(from: morning))"
+    }
+}

@@ -20,11 +20,11 @@ final class AlarmBubbleTests: XCTestCase {
         XCTAssertEqual(snoozing.map(\.ring), [.snoozing(until: until), .set, .set])
         XCTAssertEqual(snoozing[0].label, "snoozing · rings \(WakePlanner.format(until))")
 
-        // Stopped, the rest cancelled: all off, and the header still says 3 set.
+        // Stopped at the first, the rest cancelled: all off, and the header says so (v0.4.9 item 5).
         let off = AlarmBubble.make(morning: series, held: [], wake: nil, snoozedUntil: nil, stopped: true, now: now)
         XCTAssertEqual(off.map(\.ring), [.off, .off, .off])
         XCTAssertEqual(off[0].label, "off")
-        XCTAssertEqual(AlarmBubble.header(off, shortfall: nil).text, "3 alarms set")
+        XCTAssertEqual(AlarmBubble.header(off, shortfall: nil, stoppedAt: now, now: now).text, "Ended early")
     }
 
     func testMissingAlarmIsNotSet() {

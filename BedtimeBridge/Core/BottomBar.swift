@@ -160,6 +160,8 @@ struct BottomBar: Equatable {
         var awakeOffered = false
         /// A preview found no shift or event (v0.4.7 item 8).
         var nothingFound = false
+        /// The plan on screen is a preview that found nothing for tomorrow (v0.4.9 item 9).
+        var previewedNothing = false
         var alarmStyleApp = true
         /// Alarms set and bedtime not run since (v0.4.8 item 5).
         var goodNight = false
@@ -243,9 +245,11 @@ struct BottomBar: Equatable {
         // v0.4.7 item 8: nothing set and nothing coming (on opening, or a preview found nothing):
         // the two ways to set something yourself, in the bar.
         if i.nothingFound || (!i.evening && i.tomorrow == nil) {
-            return BottomBar(top: .status("Nothing set for tonight", .muted),
-                             buttons: (i.alarmStyleApp ? [.addTemporary] : []) + [.previewPlan],
-                             actionRow: [.setAlarmsForTime] + nap)
+            // v0.4.9 item 9: after a preview that found nothing, No alarms tomorrow beside it
+            // (Temporary alarm stays in ⋯).
+            let buttons: [BarAction] = i.previewedNothing ? [.noAlarmsTomorrow, .previewPlan]
+                : (i.alarmStyleApp ? [.addTemporary] : []) + [.previewPlan]
+            return BottomBar(top: .status("Nothing set for tonight", .muted), buttons: buttons, actionRow: [.setAlarmsForTime] + nap)
         }
         if i.evening {
             if let plan = i.planReady, plan.count > 0 {

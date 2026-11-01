@@ -177,11 +177,17 @@ Drive times from**, and:
 - [ ] **Action button:** Settings → Action Button → **Controls → Bedtime Bridge**.
 
 ### 13. *(0.4.8)* Bedtime pending and testing reports
-- [ ] **Bedtime Nudge blueprint:** the three edits in `docs/ha-handoffs-v0.4.8.md`, section 2,
-      so getting into bed after midnight still starts bedtime when alarms are set.
+- [ ] **Bedtime Nudge blueprint:** v1-05 or later, with its *Bedtime pending* input set to
+      **Bedtime Bridge → Bedtime pending** as Home Assistant shows it (with the device in an area,
+      the area comes first: `binary_sensor.master_bedroom_bedtime_bridge_bedtime_pending`).
 - [ ] **Reports for Claude:** after the first *Report something* (⋯ in the app), add
       `bedtime_bridge_reports` as a custom directory in the ha-mcp settings
       (`docs/ha-handoffs-v0.4.8.md`, section 4).
+
+### 14. *(0.4.9)* Update the integration
+- [ ] **HACS → Bedtime Bridge → Update** to 0.4.9, restart Home Assistant, open the app once.
+- [ ] **A nap that runs into the night:** the Bedtime Nudge blueprint change in
+      `docs/ha-handoffs-v0.4.9.md`, section 2 (for the Home Assistant chat).
 
 ---
 

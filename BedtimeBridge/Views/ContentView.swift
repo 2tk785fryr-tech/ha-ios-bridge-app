@@ -7,6 +7,8 @@ struct ContentView: View {
     @Environment(SettingsStore.self) private var store
     @Environment(\.scenePhase) private var scenePhase
     @State private var plan: WakePlan?
+    /// Preview plan was tapped: its result shows even over a morning still on screen (v0.4.9 item 9).
+    @State private var previewRequested = false
     @State private var scheduled: [Date] = []
     @State private var errorMessage: String?
     @State private var isWorking = false
@@ -108,14 +110,14 @@ struct ContentView: View {
                         .buttonStyle(.plain)
                     }
 
-                    if let plan, !(morningRingsShowing && !sameMorning(plan)) {
+                    if let plan, previewRequested || !(morningRingsShowing && !sameMorning(plan)) {
                         PlanCard(plan: plan, bubbles: isSet(plan) || sameMorning(plan) ? morningBubbles : AlarmBubble.preview(plan.alarmTimes, wake: plan.wakeTime),
                                  header: isSet(plan) || sameMorning(plan) ? morningHeader : AlarmStatus(kind: .notSet, text: "Preview · not set"))
                         if let weather = plan.weather {
                             WarningBanner(text: "+\(weather.minutes) min for \(weather.reason)", systemImage: "cloud.rain")
                         }
                         if plan.source == .appointment, let appointment = plan.appointment, let wake = plan.wakeTime {
-                            MorningTimeline(appointment: appointment, weather: plan.weather, wake: wake, bufferMinutes: settings.arrivalBufferMinutes).with(backstopInfo(leaveBy: plan.leaveBy(settings: settings), firstDayBack: plan.firstDayBack ?? false, replacedShift: plan.replacedShift)).with(bedtime: bedtimeTimes(plan))
+                            MorningTimeline(appointment: appointment, weather: plan.weather, wake: wake, bufferMinutes: settings.arrivalBufferMinutes).with(backstopInfo(leaveBy: plan.leaveBy(settings: settings), firstDayBack: plan.firstDayBack ?? false, replacedShift: plan.replacedShift, morning: plan.alarmTimes.min())).with(bedtime: bedtimeTimes(plan))
                         }
                         if let short = plan.getReadyShortfall(settings: settings), short.earlierWake > .now {
                             GetReadyCard(minutes: short.minutes, wanted: settings.getReadyMinutes, leaveBy: short.leaveBy, earlierWake: short.earlierWake) {
@@ -123,7 +125,7 @@ struct ContentView: View {
                             }
                         }
                         if plan.source == .shift, let shift = plan.shift, let commute = plan.commute, let wake = plan.wakeTime {
-                            MorningTimeline(shift: shift, commute: commute, weather: plan.weather, wake: wake, bufferMinutes: settings.workArrivalBufferMinutes, getReadyGoal: settings.getReadyMinutes).with(backstopInfo(leaveBy: plan.leaveBy(settings: settings), firstDayBack: plan.firstDayBack ?? false, replacedShift: plan.replacedShift)).with(bedtime: bedtimeTimes(plan))
+                            MorningTimeline(shift: shift, commute: commute, weather: plan.weather, wake: wake, bufferMinutes: settings.workArrivalBufferMinutes, getReadyGoal: settings.getReadyMinutes).with(backstopInfo(leaveBy: plan.leaveBy(settings: settings), firstDayBack: plan.firstDayBack ?? false, replacedShift: plan.replacedShift, morning: plan.alarmTimes.min())).with(bedtime: bedtimeTimes(plan))
                         }
                         ForEach(plan.missingLocations, id: \.eventID) { appointment in
                             MissingLocationCard(appointment: appointment) { location in
@@ -137,7 +139,7 @@ struct ContentView: View {
                         // Set earlier (the bedtime shortcut, or before the app was closed), or
                         // this morning's, until the morning is over (v0.4.2 item 5).
                         SetAlarmsCard(bubbles: morningBubbles, snapshot: NextAlarmSnapshot.load(), status: morningHeader)
-                        if let info = backstopInfo(leaveBy: NextAlarmSnapshot.load().leaveBy, firstDayBack: false) {
+                        if let info = backstopInfo(leaveBy: NextAlarmSnapshot.load().leaveBy, firstDayBack: false, morning: morningBubbles.first?.time) {
                             BackstopsCard(info: info)
                         }
                     } else {
@@ -262,6 +264,7 @@ struct ContentView: View {
             // app was in the background: show what's set now, not the plan from before.
             .onChange(of: scenePhase) { _, phase in
                 guard phase == .active else { return }
+                previewRequested = false
                 lookAhead()
                 let before = scheduled
                 refreshScheduled()
@@ -270,6 +273,7 @@ struct ContentView: View {
                 Task {
                     await coordinator.recheckDriveOnOpen(settings: store.settings)
                     await coordinator.updateMorningActivity(settings: store.settings)
+                    await coordinator.syncNap()
                 }
             }
             // bedtimebridge://replan, from Home Assistant's "plan out of date" and
@@ -285,6 +289,8 @@ struct ContentView: View {
                 if url.host == "now" { openWhatMattersNow() }
                 // bedtimebridge://report, from the Report something control (v0.4.8 item 9).
                 if url.host == "report" { openReport() }
+                // bedtimebridge://endnap, from the nap Live Activity: the bar's slide-and-hold (v0.4.9 item 3).
+                if url.host == "endnap", !napAlarms.isEmpty { sheet = nil; barSlider = .endNap }
                 // bedtimebridge://pair?…, tapped on the integration's pairing screen.
                 if url.host == "pair" {
                     pairingMessage = HomeAssistantLinks.pair(with: url)
@@ -312,7 +318,7 @@ struct ContentView: View {
                     EditAlarmsSheet(settings: store.settings, done: refreshScheduled)
                 case .preview(let preview):
                     PlanPreviewSheet(preview: preview, alarmsSet: !coordinator.setAlarmTimes().isEmpty,
-                                     backstops: { backstopInfo(leaveBy: $0.leaveBy(settings: preview.settings), firstDayBack: $0.firstDayBack ?? false, replacedShift: $0.replacedShift) },
+                                     backstops: { backstopInfo(leaveBy: $0.leaveBy(settings: preview.settings), firstDayBack: $0.firstDayBack ?? false, replacedShift: $0.replacedShift, morning: $0.alarmTimes.min()) },
                                      bedtime: bedtimeTimes(preview.plan)) {
                         setPreviewed(preview)
                     }
@@ -363,7 +369,7 @@ struct ContentView: View {
                         title: "Day off alarm",
                         note: "Next shows your morning, where you can change single alarms and the backstops before setting them.",
                         settings: settings,
-                        backstopsDefault: morningContext?.ladderStatus == "idle_leave" || coordinator.calendar.isLeave(on: .now.addingTimeInterval(86400), settings: settings)
+                        backstopsDefault: morningContext?.ladderStatus == "idle_leave" || coordinator.calendar.isLeave(on: Calendar.current.nextDay(after: .now), settings: settings)
                             ? settings.ownBackstopsLeave : settings.ownBackstopsDayOff
                     ) { replacement in setDayOff(replacement) }
                 case .skipToTime:
@@ -520,6 +526,7 @@ struct ContentView: View {
         i.evening = ScreenClock.isEvening(now)
         i.awakeOffered = NoAlarmMorning.offered
         i.nothingFound = plan.map { !$0.hasAlarm } ?? (nothingAhead && set.isEmpty)
+        i.previewedNothing = plan.map { !$0.hasAlarm } ?? false
         i.alarmStyleApp = store.settings.alarmStyle == .app
         i.goodNight = coordinator.goodNightOffered
         i.reporting = TestingReports.enabled
@@ -666,13 +673,15 @@ struct ContentView: View {
         return coordinator.alarmBubbles(wake: NextAlarmSnapshot.load().wakeTime)
     }
 
-    private var morningHeader: AlarmStatus { AlarmBubble.header(morningBubbles, shortfall: coordinator.alarmShortfall) }
+    private var morningHeader: AlarmStatus { AlarmBubble.header(morningBubbles, shortfall: coordinator.alarmShortfall,
+                                                                          stoppedAt: coordinator.stoppedThisWakeUp ? coordinator.lastStopAt : nil) }
 
     /// The rings stay after the last alarm is off until the morning is over.
     private var morningRingsShowing: Bool {
         let bubbles = morningBubbles
-        guard store.settings.alarmStyle == .app, !bubbles.isEmpty else { return false }
-        let late = backstopInfo(leaveBy: NextAlarmSnapshot.load().leaveBy, firstDayBack: false)?.rungs.map(\.time).max()
+        guard store.settings.alarmStyle == .app, !bubbles.isEmpty,
+              AlarmBubble.stillShowing(bubbles, stoppedAt: coordinator.stoppedThisWakeUp ? coordinator.lastStopAt : nil) else { return false }
+        let late = backstopInfo(leaveBy: NextAlarmSnapshot.load().leaveBy, firstDayBack: false, morning: morningBubbles.first?.time)?.rungs.map(\.time).max()
         guard let over = AlarmBubble.morningOver(lateBackstop: late, lastAlarm: bubbles.map(\.time).max()) else { return false }
         return Date.now < over
     }
@@ -691,7 +700,7 @@ struct ContentView: View {
 
     /// "Your morning"'s backstops: Home Assistant's, or an estimate from leave-by when it can't
     /// be reached (v0.4.1 item 8).
-    private func backstopInfo(leaveBy: Date?, firstDayBack: Bool, replacedShift: String? = nil) -> BackstopInfo? {
+    private func backstopInfo(leaveBy: Date?, firstDayBack: Bool, replacedShift: String? = nil, morning: Date? = nil) -> BackstopInfo? {
         guard morningContextLoaded else { return nil }
         let cached = HomeAssistantLinks.cachedSettings
         func minutes(_ key: String, _ fallback: Int) -> Int { cached[key] as? Int ?? fallback }
@@ -699,7 +708,7 @@ struct ContentView: View {
             context: morningContext, leaveBy: leaveBy,
             offsets: (minutes("rung_early_minutes", 50), minutes("rung_deadline_minutes", 35),
                       minutes("rung_late_minutes", 20), minutes("first_day_back_minutes", 15)),
-            firstDayBack: firstDayBack, replacedShift: replacedShift
+            firstDayBack: firstDayBack, replacedShift: replacedShift, morning: morning
         )
     }
 
@@ -795,6 +804,7 @@ struct ContentView: View {
     private func run(schedule: Bool) {
         isWorking = true
         errorMessage = nil
+        previewRequested = !schedule
         Task {
             defer { isWorking = false }
             do {
@@ -837,6 +847,9 @@ struct ContentView: View {
 
     private func refreshScheduled() {
         tick = .now
+        // v0.4.9 item 8: a morning cancelled before it rang, and the plan that set it, go.
+        let applied = coordinator.lastAppliedPlan
+        if coordinator.clearMorningCancelledBeforeRinging(), plan != nil, plan == applied { plan = nil }
         scheduled = coordinator.scheduledAlarmTimes()
         defer { QuickActions.update(barInputs, settings: store.settings) }
         skippedMorning = coordinator.skippedMorning
@@ -1083,7 +1096,7 @@ private struct PlanCard: View {
             if let wake = plan.wakeTime ?? plan.firstAlarm {
                 BigTime(date: wake)
             } else {
-                Text("No alarm needed")
+                Text(AlarmReasonText.nothingOn(now: .now))
                     .font(.sora(34, .light, relativeTo: .largeTitle))
                     .foregroundStyle(Theme.accentText)
             }

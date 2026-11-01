@@ -726,7 +726,10 @@ class BedtimeBridge:
         rising = _time(sun.attributes.get("next_rising")) if sun else None
         if rising is None:
             return None
-        rising += timedelta(days=(dt_util.as_local(on).date() - dt_util.as_local(rising).date()).days)
+        # Moved by days in local time, so a clock change between doesn't put it an hour out
+        # (v0.4.9 item 7).
+        local = dt_util.as_local(rising)
+        rising = dt_util.as_utc(datetime.combine(dt_util.as_local(on).date(), local.time(), local.tzinfo))
         offset = timedelta(minutes=int(self.options.get(CONF_CURTAIN_OFFSET) or DEFAULT_CURTAIN_OFFSET))
         return (rising + offset).isoformat()
 
