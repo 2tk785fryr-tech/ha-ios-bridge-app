@@ -146,7 +146,10 @@ straight away (2 alarms, 10 min apart). Anything later today (a shift, an appoin
 drive, your next alarm) greys out the lengths that would run into it, with the longest nap that
 fits. At home, Home Assistant turns a napping helper on and runs your nap Focus shortcuts. Nap
 alarms behave like temporary alarms: no wake routines, no Good Morning, no backstops. *End nap*
-(or stopping its last alarm) clears it from the screen at once.
+(or stopping its last alarm) clears it from the screen at once. Stop on a nap alarm's banner is
+a nap stop too: the other nap alarm stays as a backup, and tomorrow's alarms are never touched.
+While it's on, the widget leads with **Nap · up at 3:20** (then the morning's first alarm) and a
+**Napping · up at 3:20** Live Activity counts down, with *End nap* (it opens the slide-and-hold).
 
 ### Mornings with no alarms
 
@@ -197,8 +200,9 @@ that just ended.
   (next alarm, or "Bed in…" during wind-down), medium (the next alarm and the next four things:
   wind-down, go to bed, alarms, leave-by), and large and extra large (the night and morning as a
   timeline).
-- **Live Activities:** "Bed in 42 min · first alarm 4:20" during wind-down, and "Leave in 25 min
-  · 5:45" after the first stop (drive, worst case, weather, next backstop). With an Apple push key
+- **Live Activities:** "Bed in 42 min · first alarm 4:20" during wind-down, "Napping · up at
+  3:20" during a nap, and "Leave in 25 min · 5:45" after the first stop (drive, worst case,
+  weather, next backstop). With an Apple push key
   in the integration's options, Home Assistant starts, updates and ends them by push, without
   the app running (`docs/ha-handoffs-v0.4.4.md`).
 - **Controls** for the Lock Screen, Control Center and the Action button: Nap, Wind-down (start or
