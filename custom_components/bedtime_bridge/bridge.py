@@ -1803,6 +1803,11 @@ class BedtimeBridge:
         turns the shift override Off (which disarms the wake failsafe) until the shift has
         passed. Stopping alarms in the morning never does this."""
         self.state.update(empty_state())
+        # v0.4.10 item 10: No alarms now skips, so it clears what cancelled did: bedtime pending,
+        # and your own alarms' backstops (v0.4.8 item 7).
+        self.pending.cleared()
+        if (self.state.get("ladder_plan") or {}).get("type") == "own":
+            self.state["ladder_plan"] = {}
         # Counts as tonight's plan, so the missing-plan check doesn't nag about the shift.
         self.state["last_plan"] = dt_util.utcnow().isoformat()
         self.state["plan_error"] = None

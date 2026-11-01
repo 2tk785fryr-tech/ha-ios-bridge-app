@@ -120,3 +120,28 @@ async def test_item13_reports_from_before_0410_match_by_time(hass, hass_client_n
     await send(hass_client_no_auth, {"type": "report", "data": {"note": "Old", "time": "2026-11-01T07:07:39-05:00"}})
     await send(hass_client_no_auth, {"type": "report", "data": {"edits": "X", "time": "2026-11-01T07:07:39-05:00", "note": "Old, edited"}})
     assert [r["note"] for r in _lines(tmp_path)] == ["Old, edited"]
+
+
+# MARK: Item 10, No alarms now skips: it clears what cancelled did
+
+from .test_ladder import calendar_days, ladder, own_plan, rungs, shift_sensor, status  # noqa: E402,F401
+from .test_v048 import PENDING, _own_alarms  # noqa: E402
+
+
+async def test_item10_no_alarms_skips_and_turns_your_own_backstops_off(hass, ladder, hass_client_no_auth):
+    shift_sensor(hass, start=None)
+    await ladder()
+    await send(hass_client_no_auth, own_plan("08:00", on=True))
+    await hass.async_block_till_done()
+    assert rungs(hass) == ["08:15", "08:30", "08:45"]
+    await send(hass_client_no_auth, {"type": "skipped", "data": {"morning": "2026-11-01T13:00:00+00:00", "sleep_in": True}})
+    await hass.async_block_till_done()
+    assert rungs(hass) is None and status(hass) != "armed"
+
+
+async def test_item10_no_alarms_ends_bedtime_pending(hass, hass_client_no_auth, freezer):
+    await _start(hass, freezer, _local(30, "23:00"))
+    await send(hass_client_no_auth, _own_alarms(_local(31, "09:00")))
+    await send(hass_client_no_auth, {"type": "skipped", "data": {"sleep_in": True}})
+    await hass.async_block_till_done()
+    assert hass.states.get(PENDING).state == "off"

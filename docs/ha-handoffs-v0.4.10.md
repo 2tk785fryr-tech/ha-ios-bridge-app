@@ -22,8 +22,9 @@ No settings change, and nothing in the blueprints or automations. What's differe
   before the Stop, so the app took him for up. From 0.4.10 a reading like that can't end alarms.
   The bed sensor still needs adjusting and calibrating (Michael).
 - **No alarms Sunday (item 10)** now sends `skipped` (with the shift, if one is on the calendar,
-  so the shift override goes to Off until it's passed) instead of `cancelled`. Undo is the
-  skipped-morning card, which sends `unskipped`.
+  so the shift override goes to Off until it's passed) instead of `cancelled`. Like `cancelled`,
+  it ends bedtime pending and turns your own alarms' backstops off. Undo is the skipped-morning
+  card, which sends `unskipped`.
 - **Reports (item 13)** you sent from the phone can be edited or deleted. The line in
   `bedtime_bridge_reports/reports.jsonl` is replaced (with `edited`) or removed with its
   screenshot. Automatic reports stay.
