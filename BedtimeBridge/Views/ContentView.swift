@@ -516,6 +516,9 @@ struct ContentView: View {
         if let plan, plan.hasAlarm, !isSet(plan) { i.planReady = (plan.alarmTimes.count, plan.wakeTime) }
         i.tomorrow = plan?.wakeTime ?? plan?.firstAlarm
         i.tomorrowLabel = AlarmReasonText.tomorrowLabel(plan ?? peek)
+        i.eveningCheckPassed = now >= BottomBar.eveningCheck(
+            windDown: store.settings.windDownEnabled ? coordinator.windDown.windDown : nil,
+            beforeMinutes: store.settings.planCheckBeforeMinutes, fallback: store.settings.planCheckFallback, now: now)
         i.napEnabled = store.settings.napEnabled && store.settings.alarmStyle == .app
         i.undo = coordinator.availableUndo(now: now)?.status(
             alarmsSet: set.count, thisMorning: coordinator.clearedMorning.map { Calendar.current.isDate($0, inSameDayAs: now) } ?? false)
@@ -2053,11 +2056,29 @@ private struct BottomBarView: View {
     }
 
     /// Set alarms for a time in violet, Nap in orange (v0.4.7 item 8).
-    private func filled(_ action: BarAction) -> some View {
+    @ViewBuilder private func filled(_ action: BarAction) -> some View {
+        if action == .setAlarmsForTime && bar.actionRow.contains(.setAlarms) {
+            // v0.4.10 item 17: beside Set alarms, short and outlined, so Set alarms is the one
+            // filled button.
+            Button { tap(action) } label: {
+                Label("Pick a time", systemImage: "clock")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(Theme.accentText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Theme.accentText.opacity(0.6), lineWidth: 1))
+            }
+        } else {
+            filledButton(action)
+        }
+    }
+
+    private func filledButton(_ action: BarAction) -> some View {
         let nap = action == .nap
         let title = action == .setAlarms ? bar.setTitle ?? action.title(day: day) : action.title(day: day)
         return Button { tap(action) } label: {
-            Label(title, systemImage: nap ? "powersleep" : action == .setAlarmsForTime ? "clock" : "alarm")
+            Label(title, systemImage: nap ? "powersleep" : "alarm")
                 .font(.system(size: 16, weight: .bold))
                 .foregroundStyle(nap ? Theme.nap.text : .white)
                 .lineLimit(1)
@@ -2065,7 +2086,7 @@ private struct BottomBarView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(nap ? Theme.nap.fill : Theme.accent, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
-        .frame(maxWidth: nap ? 120 : action == .setAlarmsForTime && bar.actionRow.contains(.setAlarms) ? 150 : .infinity)
+        .frame(maxWidth: nap ? 120 : .infinity)
     }
 
     private func tap(_ action: BarAction) {

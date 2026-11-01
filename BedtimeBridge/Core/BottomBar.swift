@@ -185,6 +185,16 @@ struct BottomBar: Equatable {
         var healthIssue: String?
         /// Tomorrow's shift or appointment, "Days shift 6:30" (v0.4.10 item 16).
         var tomorrowLabel: String?
+        /// Past the evening plan check (v0.4.10 item 18): No alarms takes Nap's place.
+        var eveningCheckPassed = false
+    }
+
+    /// v0.4.10 item 18: when the evening starts for the bar, the wind-down settings' evening plan
+    /// check: `beforeMinutes` before tonight's wind-down, or without one, `fallback` ("18:00").
+    static func eveningCheck(windDown: Date?, beforeMinutes: Int, fallback: String, now: Date, calendar: Calendar = .current) -> Date {
+        if let windDown { return windDown.addingTimeInterval(-Double(beforeMinutes) * 60) }
+        let parts = fallback.split(separator: ":").compactMap { Int($0) }
+        return calendar.date(bySettingHour: parts.first ?? 18, minute: parts.count > 1 ? parts[1] : 0, second: 0, of: now) ?? now
     }
 
     /// Wind-down's states (9 before, 10 during, 11 after go to bed and not in bed).
@@ -273,14 +283,17 @@ struct BottomBar: Equatable {
             return BottomBar(top: .status("Nothing set for tonight", .muted), buttons: buttons, actionRow: [.setAlarmsForTime] + nap)
         }
         if i.evening {
-            // v0.4.10 item 16: the status on top, both ways to set alarms in the first row.
-            var title = "Plan and set alarms"
+            // v0.4.10 items 16 and 17: the status on top, both ways to set alarms in the first row,
+            // short enough to share it.
+            var title = "Set alarms"
             if let plan = i.planReady, plan.count > 0 {
-                let up = plan.up.map { " · up \(format($0))" } ?? ""
-                title = "Set \(plan.count) alarm\(plan.count == 1 ? "" : "s")" + up
+                title = "Set \(plan.count)" + (plan.up.map { " · up \(format($0))" } ?? "")
             }
             let status = i.tomorrowLabel.map { "\($0) · no alarms set" } ?? "No alarms set"
-            return BottomBar(top: .status(status, .muted), buttons: [.previewPlan] + nap,
+            // v0.4.10 item 18: from the evening plan check, No alarms instead of Nap (Nap in ⋯).
+            let somethingTomorrow = i.tomorrowLabel != nil || i.planReady != nil
+            let second: [BarAction] = i.eveningCheckPassed && somethingTomorrow ? [.noAlarmsTomorrow] : nap
+            return BottomBar(top: .status(status, .muted), buttons: [.previewPlan] + second,
                              actionRow: [.setAlarms, .setAlarmsForTime], setTitle: title)
         }
         let status = i.tomorrow.map { "Tomorrow \(format($0)) · not set yet" } ?? "Nothing set for tonight"
