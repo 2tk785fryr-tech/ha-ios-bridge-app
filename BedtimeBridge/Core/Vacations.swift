@@ -112,7 +112,8 @@ extension CalendarService {
 
     /// A travelling vacation covers `day`.
     func isTravelling(on day: Date, settings: BridgeSettings) -> Bool {
-        vacations(from: Calendar.current.startOfDay(for: day), to: Calendar.current.startOfDay(for: day).addingTimeInterval(86400), settings: settings)
+        let range = Calendar.current.dayRange(of: day)
+        return vacations(from: range.start, to: range.end, settings: settings)
             .contains { $0.travelling && $0.covers(day) }
     }
 

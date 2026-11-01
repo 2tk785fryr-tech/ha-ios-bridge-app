@@ -36,6 +36,18 @@ enum BedtimeActivities {
         await show(.init(kind: .windDown, goToBed: bed, firstAlarm: state.firstAlarm), title: "Wind-down", until: bed)
     }
 
+    /// Nap (v0.4.9 item 3): "Napping · up at 3:20" from setting it until it ends, an hour after
+    /// its last alarm at the latest.
+    static func syncNap(alarms: [Date], snoozedUntil: Date?, now: Date = .now) async {
+        guard let last = alarms.max(), now < last.addingTimeInterval(NextAlarmSnapshot.napTail) else {
+            await end(.nap)
+            return
+        }
+        var state = BedtimeActivityAttributes.ContentState(kind: .nap, firstAlarm: NextAlarmSnapshot.napUpAt(alarms, now: now))
+        state.snoozedUntil = snoozedUntil.flatMap { $0 > now ? $0 : nil }
+        await show(state, title: "Nap", until: last.addingTimeInterval(NextAlarmSnapshot.napTail))
+    }
+
     // MARK: Push tokens for Home Assistant
 
     private static var watching = false
@@ -58,6 +70,8 @@ enum BedtimeActivities {
     }
 
     private static func watch(_ activity: Activity<BedtimeActivityAttributes>) {
+        // The nap's is the app's alone: Home Assistant never pushes to it.
+        guard activity.content.state.kind != .nap else { return }
         let kind = activity.content.state.kind.rawValue
         Task {
             for await data in activity.pushTokenUpdates {

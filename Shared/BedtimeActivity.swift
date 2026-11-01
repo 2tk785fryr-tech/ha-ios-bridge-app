@@ -2,9 +2,10 @@ import ActivityKit
 import Foundation
 
 /// The app's own Live Activities: wind-down ("Bed in 42 min · first alarm 4:20", v0.4.3 item
-/// 5) and the morning's leave-by countdown (item 14). Separate from AlarmKit's snooze one.
+/// 5), the morning's leave-by countdown (item 14) and a nap (v0.4.9 item 3). Separate from
+/// AlarmKit's snooze one.
 struct BedtimeActivityAttributes: ActivityAttributes {
-    enum Kind: String, Codable, Hashable { case windDown, morning }
+    enum Kind: String, Codable, Hashable { case windDown, morning, nap }
 
     struct ContentState: Codable, Hashable {
         var kind: Kind
@@ -20,6 +21,8 @@ struct BedtimeActivityAttributes: ActivityAttributes {
         var dayWeather: String?
         var nextBackstopName: String?
         var nextBackstop: Date?
+        // Nap (v0.4.9 item 3): `firstAlarm` is when it's up.
+        var snoozedUntil: Date?
     }
 
     var title: String

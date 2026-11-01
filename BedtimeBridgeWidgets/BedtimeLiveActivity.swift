@@ -2,8 +2,9 @@ import ActivityKit
 import SwiftUI
 import WidgetKit
 
-/// Wind-down and morning Live Activities (v0.4.3 items 5 and 14), on the Lock Screen and in the
-/// Dynamic Island. Countdowns tick on their own; the app updates the rest when it runs.
+/// Wind-down, morning and nap Live Activities (v0.4.3 items 5 and 14, v0.4.9 item 3), on the Lock
+/// Screen and in the Dynamic Island. Countdowns tick on their own; the app updates the rest when
+/// it runs.
 struct BedtimeLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: BedtimeActivityAttributes.self) { context in
@@ -15,11 +16,11 @@ struct BedtimeLiveActivity: Widget {
             let state = context.state
             return DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    Label(state.kind == .windDown ? "Bed" : "Leave", systemImage: state.kind == .windDown ? "moon.zzz" : "car")
+                    Label(state.shortName, systemImage: state.symbol)
                         .foregroundStyle(Theme.accentIcon)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    Countdown(to: state.kind == .windDown ? state.goToBed : state.leaveBy)
+                    Countdown(to: state.countdownTarget)
                         .font(.sora(fixed: 22, .semibold).monospacedDigit())
                         .foregroundStyle(Theme.accentText)
                 }
@@ -27,19 +28,59 @@ struct BedtimeLiveActivity: Widget {
                     Details(state: state).font(.caption)
                 }
             } compactLeading: {
-                Image(systemName: state.kind == .windDown ? "moon.zzz" : "car").foregroundStyle(Theme.accentIcon)
+                Image(systemName: state.symbol).foregroundStyle(Theme.accentIcon)
             } compactTrailing: {
                 // Compact: the countdown and, in the morning, the drive minutes.
                 HStack(spacing: 4) {
-                    Countdown(to: state.kind == .windDown ? state.goToBed : state.leaveBy)
+                    Countdown(to: state.countdownTarget)
                         .monospacedDigit()
                         .frame(maxWidth: 48)
                     if state.kind == .morning, let drive = state.driveMinutes { Text("\(drive)m").foregroundStyle(Theme.textMuted) }
                 }
                 .font(.caption2)
             } minimal: {
-                Image(systemName: state.kind == .windDown ? "moon.zzz" : "car").foregroundStyle(Theme.accentIcon)
+                Image(systemName: state.symbol).foregroundStyle(Theme.accentIcon)
             }
+        }
+    }
+}
+
+private extension BedtimeActivityAttributes.ContentState {
+    var symbol: String {
+        switch kind {
+        case .windDown: "moon.zzz"
+        case .morning: "car"
+        case .nap: snoozedUntil.map { $0 > .now } == true ? "zzz" : "powersleep"
+        }
+    }
+
+    var shortName: String {
+        switch kind {
+        case .windDown: "Bed"
+        case .morning: "Leave"
+        case .nap: "Nap"
+        }
+    }
+
+    /// Nap: the snooze if one is running, otherwise when it's up.
+    var countdownTarget: Date? {
+        switch kind {
+        case .windDown: goToBed
+        case .morning: leaveBy
+        case .nap: snoozedUntil.flatMap { $0 > .now ? $0 : nil } ?? firstAlarm
+        }
+    }
+}
+
+/// End nap: opens the app on the bar's slide-and-hold (v0.4.9 item 3).
+private struct EndNapLink: View {
+    var body: some View {
+        Link(destination: URL(string: "bedtimebridge://endnap")!) {
+            Label("End nap", systemImage: "stop.circle")
+                .font(.caption.weight(.semibold))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Theme.accent.opacity(0.25), in: Capsule())
         }
     }
 }
@@ -66,10 +107,17 @@ private struct LockScreenView: View {
             HStack(alignment: .firstTextBaseline) {
                 if state.kind == .windDown, let bed = state.goToBed {
                     Text("Bed in \(Text(bed, style: .relative))").font(.headline)
+                } else if state.kind == .nap, let snoozed = state.snoozedUntil, snoozed > .now {
+                    Text("Snoozing · rings \(clock(snoozed))").font(.headline)
+                } else if state.kind == .nap, let up = state.firstAlarm {
+                    Text("Napping · up at \(clock(up))").font(.headline)
                 } else if let leave = state.leaveBy {
                     Text("Leave in \(Text(leave, style: .relative)) · \(clock(leave))").font(.headline)
                 }
                 Spacer()
+                if state.kind == .nap {
+                    Countdown(to: state.countdownTarget).font(.headline.monospacedDigit()).frame(maxWidth: 80)
+                }
             }
             .foregroundStyle(Theme.text)
             Details(state: state)
@@ -96,6 +144,8 @@ private struct Details: View {
                 if let name = state.nextBackstopName, let at = state.nextBackstop, at > .now {
                     Text("\(name) backstop \(clock(at))")
                 }
+            case .nap:
+                EndNapLink()
             }
         }
     }

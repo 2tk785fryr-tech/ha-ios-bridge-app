@@ -40,6 +40,34 @@ struct NextAlarmSnapshot: Codable, Equatable {
     var napControlNapsNow: Bool? = nil
     var widgetTapAlwaysTonight: Bool? = nil
     var startWindDownHours: Int? = nil
+    /// The nap's alarms while one is on (v0.4.9 item 3), cleared when it ends.
+    var napAlarms: [Date]? = nil
+
+    /// A nap shows this long after its last alarm if the end was never heard.
+    static let napTail: TimeInterval = 3600
+
+    /// Napping at `date`: a nap alarm still ahead, snoozing or just rung.
+    func isNapping(at date: Date) -> Bool {
+        guard let last = napAlarms?.max() else { return false }
+        return date < last.addingTimeInterval(Self.napTail)
+    }
+
+    /// When the nap is up: the next nap alarm, or its last once they've all rung.
+    static func napUpAt(_ alarms: [Date], now: Date) -> Date? {
+        alarms.sorted().first { $0 > now } ?? alarms.max()
+    }
+
+    /// The nap's next alarm (or its snooze) at `date`, while the nap leads the widget.
+    func napNext(at date: Date) -> Date? {
+        guard isNapping(at: date) else { return nil }
+        if let snoozedUntil, snoozedUntil > date { return snoozedUntil }
+        return Self.napUpAt(napAlarms ?? [], now: date).flatMap { $0 > date ? $0 : nil }
+    }
+
+    /// The morning's first alarm still ahead, for "Then 5:00 tomorrow" under a nap.
+    func morningAfterNap(at date: Date) -> Date? {
+        alarmTimes.sorted().first { $0 > date }
+    }
 
     /// Start wind-down now is open at `date`: scheduled, within the window before go to bed, and
     /// before wind-down time (worked out when asked, so the control never goes stale).
@@ -69,11 +97,13 @@ struct NextAlarmSnapshot: Codable, Equatable {
     /// The next alarm at `date`: a running snooze first, then the series or a temporary one.
     func nextAlarm(after date: Date) -> Date? {
         if let snoozedUntil, snoozedUntil > date { return snoozedUntil }
+        if let nap = napNext(at: date) { return nap }
         return (alarmTimes + (temporaryAlarms ?? [])).sorted().first { $0 > date }
     }
 
     /// "Temporary wake-up" when the next alarm is one, otherwise the plan's label.
     func label(after date: Date) -> String {
+        if napNext(at: date) != nil { return "Nap" }
         guard let next = nextAlarm(after: date), next != snoozedUntil, (temporaryAlarms ?? []).contains(next) else { return label }
         return "Temporary wake-up"
     }
@@ -92,7 +122,8 @@ struct NextAlarmSnapshot: Codable, Equatable {
     /// Times at which the widget's text changes (each alarm passing, leave-by going away),
     /// for its timeline.
     func changeDates(after date: Date) -> [Date] {
-        ([snoozedUntil, leaveBy.map(leaveByHiddenAt), windDownAt, goToBedAt].compactMap { $0 } + alarmTimes + (temporaryAlarms ?? [])).filter { $0 > date }.sorted()
+        let nap = (napAlarms ?? []) + [napAlarms?.max().map { $0.addingTimeInterval(Self.napTail) }].compactMap { $0 }
+        return ([snoozedUntil, leaveBy.map(leaveByHiddenAt), windDownAt, goToBedAt].compactMap { $0 } + alarmTimes + (temporaryAlarms ?? []) + nap).filter { $0 > date }.sorted()
     }
 
     /// The label chip at `date`: "Bed in" during wind-down, the alarm's label while an alarm or
@@ -107,7 +138,7 @@ struct NextAlarmSnapshot: Codable, Equatable {
 
     /// One line of the bigger widgets' timeline: wind-down, go to bed, each alarm, leave-by.
     struct Step: Equatable {
-        enum Kind: Equatable { case windDown, goToBed, alarm, wakeUp, temporary, snooze, leaveBy }
+        enum Kind: Equatable { case windDown, goToBed, alarm, wakeUp, temporary, snooze, leaveBy, nap }
         var kind: Kind
         var time: Date
         var title: String
@@ -122,6 +153,9 @@ struct NextAlarmSnapshot: Codable, Equatable {
             steps.append(Step(kind: .goToBed, time: goToBedAt, title: "Go to bed"))
         }
         if let snoozedUntil, snoozedUntil > date { steps.append(Step(kind: .snooze, time: snoozedUntil, title: "Snooze ends")) }
+        if isNapping(at: date) {
+            for time in (napAlarms ?? []) where time > date { steps.append(Step(kind: .nap, time: time, title: "Nap alarm")) }
+        }
         let series = alarmTimes.filter { $0 > date }.sorted()
         for (index, time) in series.enumerated() {
             let isWake = wakeTime.map { abs($0.timeIntervalSince(time)) < 60 } ?? (index == series.count - 1)

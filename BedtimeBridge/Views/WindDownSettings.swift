@@ -87,7 +87,7 @@ struct WindDownSettings: View {
 
     /// "First alarm 4:20 → wind-down 8:50 PM, go to bed 9:50 PM."
     private var example: String {
-        let first = Calendar.current.date(bySettingHour: 4, minute: 20, second: 0, of: .now.addingTimeInterval(86400))!
+        let first = Calendar.current.date(bySettingHour: 4, minute: 20, second: 0, of: Calendar.current.nextDay(after: .now))!
         let times = WindDownTimes.compute(firstAlarm: first, settings: settings)
         return "First alarm 4:20 AM → wind-down \(WakePlanner.format(times.windDown)), go to bed \(WakePlanner.format(times.goToBed)). Home late, wind-down waits for the free time and bedtime moves later rather than cutting wind-down below the minimum."
     }

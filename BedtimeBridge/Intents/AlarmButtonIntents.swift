@@ -14,16 +14,22 @@ struct StopWakeAlarmIntent: LiveActivityIntent {
     @Parameter(title: "Alarm ID")
     var alarmID: String
 
+    /// What the alarm was set for (`nap`, `temporary`, `test`, or the plan's cause), so the app
+    /// knows even when AlarmKit has already removed it (v0.4.9 item 4).
+    @Parameter(title: "Cause")
+    var cause: String?
+
     init() {}
 
-    init(alarmID: UUID) {
+    init(alarmID: UUID, cause: String? = nil) {
         self.alarmID = alarmID.uuidString
+        self.cause = cause
     }
 
     @MainActor
     func perform() async throws -> some IntentResult {
         guard let id = UUID(uuidString: alarmID),
-              let snoozed = await BedtimeCoordinator.shared.bannerStopped(id: id, settings: SettingsStore.shared.settings) else {
+              let snoozed = await BedtimeCoordinator.shared.bannerStopped(id: id, cause: cause, settings: SettingsStore.shared.settings) else {
             return .result()
         }
         do {
@@ -44,16 +50,22 @@ struct SnoozeWakeAlarmIntent: LiveActivityIntent {
     @Parameter(title: "Alarm ID")
     var alarmID: String
 
+    /// What the alarm was set for (`nap`, `temporary`, `test`, or the plan's cause), so the app
+    /// knows even when AlarmKit has already removed it (v0.4.9 item 4).
+    @Parameter(title: "Cause")
+    var cause: String?
+
     init() {}
 
-    init(alarmID: UUID) {
+    init(alarmID: UUID, cause: String? = nil) {
         self.alarmID = alarmID.uuidString
+        self.cause = cause
     }
 
     @MainActor
     func perform() async throws -> some IntentResult {
         if let id = UUID(uuidString: alarmID) {
-            await BedtimeCoordinator.shared.alarmSnoozed(id: id, settings: SettingsStore.shared.settings)
+            await BedtimeCoordinator.shared.alarmSnoozed(id: id, cause: cause, settings: SettingsStore.shared.settings)
         }
         return .result()
     }

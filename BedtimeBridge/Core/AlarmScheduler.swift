@@ -75,8 +75,8 @@ final class AlarmScheduler {
                 countdownDuration: Alarm.CountdownDuration(preAlert: nil, postAlert: TimeInterval(max(snoozeMinutes, 1) * 60)),
                 schedule: .fixed(time),
                 attributes: attributes,
-                stopIntent: StopWakeAlarmIntent(alarmID: id),
-                secondaryIntent: SnoozeWakeAlarmIntent(alarmID: id),
+                stopIntent: StopWakeAlarmIntent(alarmID: id, cause: cause),
+                secondaryIntent: SnoozeWakeAlarmIntent(alarmID: id, cause: cause),
                 sound: alertSound(sound)
             )
             do {
@@ -114,8 +114,8 @@ final class AlarmScheduler {
             countdownDuration: Alarm.CountdownDuration(preAlert: nil, postAlert: TimeInterval(max(snoozeMinutes, 1) * 60)),
             schedule: .fixed(time),
             attributes: attributes,
-            stopIntent: StopWakeAlarmIntent(alarmID: id),
-            secondaryIntent: SnoozeWakeAlarmIntent(alarmID: id),
+            stopIntent: StopWakeAlarmIntent(alarmID: id, cause: cause),
+            secondaryIntent: SnoozeWakeAlarmIntent(alarmID: id, cause: cause),
             sound: alertSound(sound)
         )
         _ = try await manager.schedule(id: id, configuration: configuration)

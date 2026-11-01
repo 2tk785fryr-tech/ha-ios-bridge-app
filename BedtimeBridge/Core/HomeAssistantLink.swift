@@ -63,6 +63,15 @@ struct MorningContext {
     var planOutdated = false
 
     var houseUsesOldTimes: Bool { houseSource == "old" }
+
+    /// The morning the ladder is for (v0.4.9 item 6): its shift or appointment, or its leave-by.
+    var ladderMorning: Date? { shiftStart ?? leaveBy ?? backstops.values.min() }
+
+    /// Whether the ladder is for the morning of `alarm` (no ladder morning: nothing to compare).
+    func ladderIsFor(morning alarm: Date?, calendar: Calendar = .current) -> Bool {
+        guard let alarm, let ladder = ladderMorning else { return true }
+        return calendar.isDate(alarm, inSameDayAs: ladder)
+    }
 }
 
 /// The two ways the app can talk to Home Assistant: the Bedtime Bridge integration

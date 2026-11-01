@@ -8,6 +8,24 @@ struct StopDescription: Equatable {
         case temporary
         case nap
         case test
+
+        /// v0.4.9 item 4: what kind of alarm this is, from the alarms as they were set (not only
+        /// the ones AlarmKit still has: Stop on the banner removes the alarm before the app hears
+        /// of it) and, as a second check, the cause the alarm was set with.
+        static func of(_ id: UUID, cause: String?, test: UUID?, temporary: Set<UUID>, nap: Set<UUID>) -> Kind {
+            if id == test || cause == "test" { return .test }
+            if temporary.contains(id) || cause == AlarmCause.temporary { return .temporary }
+            if nap.contains(id) || cause == AlarmCause.nap { return .nap }
+            return .series
+        }
+    }
+
+    /// v0.4.9 item 4: alarms this long after the one ringing belong to a later wake-up (another
+    /// day, or a nap's evening), which stopping this one never ends.
+    static let wakeUpSpan: TimeInterval = 4 * 3600
+
+    static func laterWakeUp(_ alarm: Date, ringing: Date) -> Bool {
+        alarm > ringing.addingTimeInterval(wakeUpSpan)
     }
 
     var title: String

@@ -24,8 +24,10 @@ struct BackstopInfo: Equatable {
     ///   - context: from Home Assistant, or nil when it couldn't be reached.
     ///   - leaveBy: this morning's leave-by, for an estimate without Home Assistant.
     ///   - offsets: minutes before leave-by (early, deadline, late) and the first-day-back extra.
+    ///   - morning: the first alarm of the morning shown. Home Assistant's ladder for another
+    ///     morning isn't shown for it (v0.4.9 item 6).
     static func make(context: MorningContext?, leaveBy: Date?, offsets: (early: Int, deadline: Int, late: Int, firstDayBack: Int),
-                     firstDayBack: Bool, replacedShift: String? = nil) -> BackstopInfo? {
+                     firstDayBack: Bool, replacedShift: String? = nil, morning: Date? = nil, calendar: Calendar = .current) -> BackstopInfo? {
         guard let context else {
             guard let leaveBy else { return nil }
             let extra = firstDayBack ? offsets.firstDayBack : 0
@@ -33,6 +35,9 @@ struct BackstopInfo: Equatable {
                 .map { Rung(name: $0.0, time: leaveBy.addingTimeInterval(-Double($0.1 + extra) * 60)) }
             return BackstopInfo(rungs: rungs, status: "Estimate: Home Assistant couldn't be reached", estimate: true,
                                 firstDayBackMinutes: firstDayBack && extra > 0 ? extra : nil)
+        }
+        if let morning, !context.ladderIsFor(morning: morning, calendar: calendar), let ladder = context.ladderMorning {
+            return BackstopInfo(rungs: [], status: otherMorning(shown: morning, ladder: ladder, armed: context.ladderArmed, calendar: calendar))
         }
         let useHouse = context.houseUsesOldTimes && !context.houseTimes.isEmpty
         let times = useHouse ? context.houseTimes : (context.ladderArmed ? context.backstops : [:])
@@ -54,5 +59,16 @@ struct BackstopInfo: Equatable {
         return BackstopInfo(rungs: rungs, status: status, isFault: fault, houseOldTimes: useHouse,
                             firstDayBackMinutes: context.firstDayBack ? offsets.firstDayBack : nil,
                             houseUsesShift: useHouse ? replacedShift : nil)
+    }
+
+    /// "No backstops Sunday · armed for Monday 6:30" (v0.4.9 item 6).
+    static func otherMorning(shown: Date, ladder: Date, armed: Bool, calendar: Calendar = .current) -> String {
+        let day = DateFormatter()
+        day.calendar = calendar
+        day.timeZone = calendar.timeZone
+        day.locale = ClockStyle.locale
+        day.setLocalizedDateFormatFromTemplate("EEEE")
+        let none = "No backstops \(day.string(from: shown))"
+        return armed ? "\(none) · armed for \(day.string(from: ladder)) \(WakePlanner.format(ladder))" : none
     }
 }
