@@ -28,7 +28,7 @@ struct ChangeMorningFlow: View {
         guard let reason else { return nil }
         return reason.scope == .ask ? askedScope : reason.scope
     }
-    private var backstops: [String: Date] { context?.ladderArmed == true ? context?.backstops ?? [:] : [:] }
+    private var backstops: [String: Date] { context?.backstops(forMorning: currentWake) ?? [:] }
 
     private func make(_ choice: MorningChangeChoice) -> MorningChange {
         var change = MorningChange.make(choice, currentWake: currentWake, pattern: pattern)
@@ -187,6 +187,9 @@ private struct ConfirmMorningChange: View {
     @State private var working = false
     private let coordinator = BedtimeCoordinator.shared
 
+    /// The morning being changed: its alarms, or (turned off) today.
+    private var morning: Date { change.alarmTimes.min() ?? coordinator.alarmSeries.min() ?? .now }
+
     var body: some View {
         SettingsPage(title: "Confirm") {
             Section("Alarms") {
@@ -247,6 +250,9 @@ private struct ConfirmMorningChange: View {
     @ViewBuilder private var backstops: some View {
         if !loaded {
             Text("Checking…").foregroundStyle(Theme.textMuted)
+        } else if let context, context.ladderArmed, let ladder = context.ladderMorning, !context.ladderIsFor(morning: morning) {
+            // v0.4.10 item 5: another morning's ladder, as on Your morning.
+            Text(BackstopInfo.otherMorning(shown: morning, ladder: ladder, armed: true)).foregroundStyle(Theme.textMuted)
         } else if let context, context.ladderArmed {
             let moved = change.backstops(context.backstops, earlyGap: settings.earlyBackstopGapMinutes)
             Text(["early", "deadline", "late"].compactMap { rung in

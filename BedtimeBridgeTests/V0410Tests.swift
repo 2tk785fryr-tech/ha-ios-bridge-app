@@ -76,4 +76,48 @@ final class V0410Tests: XCTestCase {
         XCTAssertNoThrow(try JSONDecoder().decode(BridgeSettings.self, from: data))
         XCTAssertFalse(SettingsPages.alarms.contains("stopBehavior"))
     }
+
+    // MARK: Item 4, no re-plan prompt in the morning
+
+    func testItem4NoReplanPromptFromTheUpEarlyWindow() {
+        let morning = PrimaryAction.make(alarmsSet: true, defaultTitle: "Plan", changedThisMorning: nil, missingAlarms: false,
+                                         calendarChanged: true, planChanged: true, thisMorning: true)
+        XCTAssertNil(morning.buttonTitle)
+        let evening = PrimaryAction.make(alarmsSet: true, defaultTitle: "Plan", changedThisMorning: nil, missingAlarms: false,
+                                         calendarChanged: false, planChanged: true)
+        XCTAssertEqual(evening.buttonTitle, "Plan changed: update alarms")
+    }
+
+    // MARK: Item 5, Back to bed and another morning's backstops
+
+    func testItem5BackToBedOnSundayLeavesOutMondaysBackstops() {
+        var context = MorningContext(ladderArmed: true, backstops: ["early": at(5, 40, day: 2), "late": at(6, 10, day: 2)])
+        context.shiftStart = at(6, 30, day: 2)
+        XCTAssertEqual(context.backstops(forMorning: at(8, 30), calendar: newYork), [:], "Monday's ladder isn't Sunday's")
+        XCTAssertEqual(context.backstops(forMorning: at(4, 20, day: 2), calendar: newYork).count, 2)
+        context.ladderArmed = false
+        XCTAssertEqual(context.backstops(forMorning: at(4, 20, day: 2), calendar: newYork), [:])
+    }
+
+    // MARK: Item 6, a forecast for your own alarms
+
+    func testItem6OwnAlarmsTakeTheForecastAtTheFirstAlarm() {
+        // No leave-by: the moment is the first alarm, 8:00 on 1 Nov.
+        let (moment, when) = MorningForecast.moment(leaveBy: nil, wakeUp: at(8, 0), goodMorningFrom: "08:00", now: at(22, 27, day: 0))
+        XCTAssertEqual(moment, .wakeUp)
+        XCTAssertEqual(when, at(8, 0))
+        let hours = [ForecastHour(start: at(7, 0), condition: "rainy", temperature: 40), ForecastHour(start: at(8, 0), condition: "rainy", temperature: 41)]
+        XCTAssertEqual(MorningForecast.pick(hours: hours, at: when, moment: moment, unit: "°F")?.temperature, 41)
+    }
+
+    // MARK: Item 7, Preview with your own alarms set
+
+    func testItem7PreviewSaysWhatsAlreadySet() {
+        let line = AlarmReasonText.alreadySet([at(8, 20), at(8, 0), at(8, 10)])
+        XCTAssertEqual(line?.lead, "You already have alarms set at ")
+        XCTAssertEqual(line?.times, [at(8, 0), at(8, 10), at(8, 20)].map(WakePlanner.format).joined(separator: ", "))
+        XCTAssertEqual(line?.tail, ". You can still change or cancel them.")
+        XCTAssertEqual(AlarmReasonText.alreadySet([at(8, 0)])?.tail, ". You can still change or cancel it.")
+        XCTAssertNil(AlarmReasonText.alreadySet([]))
+    }
 }

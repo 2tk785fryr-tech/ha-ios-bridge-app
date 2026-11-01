@@ -599,9 +599,20 @@ final class BedtimeCoordinator {
             plan.reason = "Day off alarm"
         }
         clearedMorning = nil
+        plan.forecast = await ownAlarmForecast(firstAlarm: plan.firstAlarm, settings: settings)
         try await apply(plan, settings: settings)
         saveUndo(undoBefore, left: setAlarmTimes())
         return plan
+    }
+
+    /// v0.4.10 item 6: own and day-off alarms get Morning weather's forecast too, for the first
+    /// alarm, from whichever source is chosen. No leave-by, so no extra time is added.
+    func ownAlarmForecast(firstAlarm: Date?, settings: BridgeSettings, now: Date = .now) async -> MorningForecast? {
+        guard settings.checksWeather, let firstAlarm,
+              let source = weatherForecast(settings: settings, link: HomeAssistantLinks.current(settings)),
+              let (hours, unit) = try? await source() else { return nil }
+        let (moment, at) = MorningForecast.moment(leaveBy: nil, wakeUp: firstAlarm, goodMorningFrom: settings.noAlarmEarliest, now: now)
+        return MorningForecast.pick(hours: hours, at: at, moment: moment, unit: unit)
     }
 
     func cancelAlarms(settings: BridgeSettings) async throws {

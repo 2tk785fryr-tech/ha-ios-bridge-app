@@ -72,6 +72,12 @@ struct MorningContext {
         guard let alarm, let ladder = ladderMorning else { return true }
         return calendar.isDate(alarm, inSameDayAs: ladder)
     }
+
+    /// The armed ladder's backstops, only when they're for the morning of `alarm` (v0.4.10
+    /// item 5): Monday's ladder isn't Sunday's.
+    func backstops(forMorning alarm: Date?, calendar: Calendar = .current) -> [String: Date] {
+        ladderArmed && ladderIsFor(morning: alarm, calendar: calendar) ? backstops : [:]
+    }
 }
 
 /// The two ways the app can talk to Home Assistant: the Bedtime Bridge integration

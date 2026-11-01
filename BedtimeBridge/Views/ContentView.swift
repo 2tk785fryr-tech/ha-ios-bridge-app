@@ -112,7 +112,8 @@ struct ContentView: View {
 
                     if let plan, previewRequested || !(morningRingsShowing && !sameMorning(plan)) {
                         PlanCard(plan: plan, bubbles: isSet(plan) || sameMorning(plan) ? morningBubbles : AlarmBubble.preview(plan.alarmTimes, wake: plan.wakeTime),
-                                 header: isSet(plan) || sameMorning(plan) ? morningHeader : AlarmStatus(kind: .notSet, text: "Preview · not set"))
+                                 header: isSet(plan) || sameMorning(plan) ? morningHeader : AlarmStatus(kind: .notSet, text: "Preview · not set"),
+                                 alreadySet: plan.hasAlarm || store.settings.alarmStyle != .app ? [] : scheduled.filter { $0 > .now })
                         if let weather = plan.weather {
                             WarningBanner(text: "+\(weather.minutes) min for \(weather.reason)", systemImage: "cloud.rain")
                         }
@@ -469,7 +470,8 @@ struct ContentView: View {
             missingAlarms: coordinator.alarmShortfall != nil,
             calendarChanged: coordinator.calendarChangedSinceSet,
             planChanged: morningContext?.planOutdated == true || coordinator.settingsChangedSinceSet(store.settings),
-            ownAlarms: coordinator.ownAlarmsSet
+            ownAlarms: coordinator.ownAlarmsSet,
+            thisMorning: morningEnd != nil || backToBed
         )
     }
 
@@ -1078,6 +1080,8 @@ private struct PlanCard: View {
     /// Plain bubbles for a preview; ringed ones once set (v0.4.2 item 5).
     let bubbles: [AlarmBubble]
     let header: AlarmStatus
+    /// A preview with nothing on: the alarms already set (v0.4.10 item 7).
+    var alreadySet: [Date] = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -1104,6 +1108,12 @@ private struct PlanCard: View {
             Text(plan.reason)
                 .font(.subheadline)
                 .foregroundStyle(Theme.textSoft)
+
+            if let already = AlarmReasonText.alreadySet(alreadySet) {
+                (Text(already.lead) + Text(already.times).bold().foregroundColor(Theme.text) + Text(already.tail))
+                    .font(.subheadline)
+                    .foregroundStyle(Theme.textSoft)
+            }
 
             if bubbles.count > 1 || bubbles.contains(where: { $0.ring != .none && $0.ring != .set }) {
                 AlarmBubbleRow(bubbles: bubbles)

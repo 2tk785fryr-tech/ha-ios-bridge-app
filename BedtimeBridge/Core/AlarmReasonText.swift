@@ -34,4 +34,15 @@ extension AlarmReasonText {
         day.setLocalizedDateFormatFromTemplate("EEEE")
         return "Nothing on \(day.string(from: morning))"
     }
+
+    /// v0.4.10 item 7: under a preview that found nothing, the alarms you already set, as
+    /// ("You already have alarms set at ", "8:00, 8:10, 8:20", ". You can still change or cancel
+    /// them."), so the times can be bold. nil with none set.
+    static func alreadySet(_ times: [Date]) -> (lead: String, times: String, tail: String)? {
+        guard !times.isEmpty else { return nil }
+        let one = times.count == 1
+        return ("You already have \(one ? "an alarm" : "alarms") set at ",
+                times.sorted().map(WakePlanner.format).joined(separator: ", "),
+                ". You can still change or cancel \(one ? "it" : "them").")
+    }
 }
