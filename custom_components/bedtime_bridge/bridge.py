@@ -465,7 +465,9 @@ class BedtimeBridge:
 
     async def _report(self, data: dict[str, Any]) -> dict[str, Any]:
         """A testing report from the app (v0.4.8 items 9 and 11), with what Home Assistant
-        knows added."""
+        knows added. Or an edit or delete of one you sent (v0.4.10 item 13)."""
+        if "edits" in data or "deletes" in data:
+            return await reports.change(self, data)
         return await reports.save(self, {**data, "source": data.get("source") or "app", "home_assistant": reports.snapshot(self)})
 
     async def _health(self, data: dict[str, Any]) -> dict[str, Any]:

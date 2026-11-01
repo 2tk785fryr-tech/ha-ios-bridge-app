@@ -42,6 +42,66 @@ def _append(folder: Path, line: str, screenshot: bytes | None, name: str) -> Non
             old.unlink(missing_ok=True)
 
 
+def _matches(report: dict[str, Any], report_id: str | None, time: str | None) -> bool:
+    """The phone's own report: by its id, or (sent before 0.4.10) by the time it was made."""
+    if report.get("automatic"):
+        return False
+    if report_id and report.get("report_id") == report_id:
+        return True
+    return bool(time) and not report.get("report_id") and report.get("time") == time
+
+
+def _rewrite(folder: Path, report_id: str | None, time: str | None, note: str | None, edited: str) -> bool:
+    """In the executor: replaces the matching report's note (note given) or removes it and its
+    screenshot (note None). Whether one matched."""
+    path = folder / FILE
+    if not path.exists():
+        return False
+    kept: list[str] = []
+    found = False
+    for line in path.read_text(encoding="utf-8").splitlines():
+        try:
+            report = json.loads(line)
+        except ValueError:
+            kept.append(line)
+            continue
+        if found or not isinstance(report, dict) or not _matches(report, report_id, time):
+            kept.append(line)
+            continue
+        found = True
+        if note is None:
+            if shot := report.get("screenshot_file"):
+                (folder / Path(shot).name).unlink(missing_ok=True)
+            continue
+        report["note"] = note
+        report["edited"] = edited
+        kept.append(json.dumps(report, default=str, ensure_ascii=False))
+    if found:
+        path.write_text("\n".join(kept) + ("\n" if kept else ""), encoding="utf-8")
+    return found
+
+
+async def change(bridge: BedtimeBridge, data: dict[str, Any]) -> dict[str, Any]:
+    """v0.4.10 item 13: `edits` (a new note) or `deletes` a report you sent, by the phone's
+    `report_id` (or its `time`, for reports from before 0.4.10). Automatic reports can't be
+    deleted or edited. An edit of a report that isn't there is saved as a new one."""
+    deleting = "deletes" in data
+    report_id = data.get("deletes") if deleting else data.get("edits")
+    note = None if deleting else str(data.get("note") or "")
+    folder = Path(bridge.hass.config.path(FOLDER))
+    edited = dt_util.utcnow().isoformat()
+    try:
+        found = await bridge.hass.async_add_executor_job(_rewrite, folder, report_id, data.get("time"), note, edited)
+    except OSError as err:
+        _LOGGER.warning("Bedtime Bridge couldn't change a report: %s", err)
+        return {"saved": False}
+    if found or deleting:
+        return {"saved": found, "deleted" if deleting else "edited": found}
+    report = {k: v for k, v in data.items() if k != "edits"}
+    report["report_id"] = report_id
+    return await save(bridge, report)
+
+
 async def save(bridge: BedtimeBridge, report: dict[str, Any]) -> dict[str, Any]:
     """One report. `screenshot` (base64 PNG) is saved next to the file, not in it."""
     report = dict(report)

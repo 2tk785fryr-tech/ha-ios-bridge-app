@@ -76,7 +76,7 @@ enum TestingReports {
     }
 
     /// The report's body: your words, the app's snapshot, the last 12 hours and the checklist.
-    static func body(note: String, automatic: Bool, kind: String?, app: [String: Any], screenshot: Data?, now: Date = .now) -> [String: Any] {
+    static func body(note: String, automatic: Bool, kind: String?, app: [String: Any], screenshot: Data?, id: UUID? = nil, now: Date = .now) -> [String: Any] {
         let iso = ISO8601DateFormatter()
         iso.timeZone = .current
         var body: [String: Any] = [
@@ -88,6 +88,8 @@ enum TestingReports {
             "checklist": TestingChecklist.report(),
         ]
         if let kind { body["kind"] = kind }
+        // So it can be edited or deleted later (v0.4.10 item 13).
+        if let id { body["report_id"] = id.uuidString }
         if let screenshot { body["screenshot"] = screenshot.base64EncodedString() }
         return body
     }
@@ -97,9 +99,10 @@ enum TestingReports {
     @MainActor @discardableResult
     static func send(note: String, automatic: Bool = false, kind: String? = nil, app: [String: Any],
                      screenshot: Data? = nil, settings: BridgeSettings) async -> Bool {
-        let body = body(note: note, automatic: automatic, kind: kind, app: app, screenshot: screenshot)
+        let id = UUID()
+        let body = body(note: note, automatic: automatic, kind: kind, app: app, screenshot: screenshot, id: id)
         guard let data = try? JSONSerialization.data(withJSONObject: body) else { return false }
-        let report = Saved(time: .now, note: note, automatic: automatic, kind: kind, body: data, sent: false)
+        let report = Saved(id: id, time: .now, note: note, automatic: automatic, kind: kind, body: data, sent: false)
         saved.append(report)
         ActivityLog.add(automatic ? "Automatic report: \(kind ?? "")" : "Report: \(note.prefix(40))")
         await sendUnsent(settings: settings)
@@ -120,6 +123,57 @@ enum TestingReports {
             }
         }
         saved = all
+    }
+
+    /// v0.4.10 item 13: what Testing → Reports sent lists: your last 20, newest first.
+    static func listed(_ all: [Saved]) -> [Saved] {
+        Array(all.filter { !$0.automatic }.reversed().prefix(20))
+    }
+
+    /// The request that edits (`note` given) or deletes a report you sent: by its id, and the
+    /// time it was made for reports Home Assistant saved before 0.4.10.
+    static func changeRequest(for report: Saved, note: String?) -> [String: Any] {
+        let time = (try? JSONSerialization.jsonObject(with: report.body) as? [String: Any])?["time"]
+        var request: [String: Any] = note == nil ? ["deletes": report.id.uuidString] : ["edits": report.id.uuidString, "note": note!]
+        if let time { request["time"] = time }
+        return request
+    }
+
+    /// The report with a new note, in its saved body too.
+    static func withNote(_ report: Saved, _ note: String) -> Saved {
+        var changed = report
+        changed.note = note
+        if var body = try? JSONSerialization.jsonObject(with: report.body) as? [String: Any] {
+            body["note"] = note
+            changed.body = (try? JSONSerialization.data(withJSONObject: body)) ?? report.body
+        }
+        return changed
+    }
+
+    /// Edits a report you sent (v0.4.10 item 13). Not sent yet: only the copy here changes.
+    /// Returns whether it's done.
+    @MainActor
+    static func edit(_ id: UUID, note: String, settings: BridgeSettings) async -> Bool {
+        guard let report = saved.first(where: { $0.id == id }), !report.automatic else { return false }
+        if report.sent {
+            guard let link = HomeAssistantLinks.current(settings.applying(HomeAssistantLinks.cachedSettings)) as? IntegrationLink,
+                  let reply = try? await link.reply(.report, data: changeRequest(for: report, note: note)),
+                  reply["saved"] as? Bool == true else { return false }
+        }
+        saved = saved.map { $0.id == id ? withNote($0, note) : $0 }
+        return true
+    }
+
+    /// Deletes a report you sent, here and in Home Assistant (v0.4.10 item 13).
+    @MainActor
+    static func delete(_ id: UUID, settings: BridgeSettings) async -> Bool {
+        guard let report = saved.first(where: { $0.id == id }), !report.automatic else { return false }
+        if report.sent {
+            guard let link = HomeAssistantLinks.current(settings.applying(HomeAssistantLinks.cachedSettings)) as? IntegrationLink,
+                  (try? await link.reply(.report, data: changeRequest(for: report, note: nil))) != nil else { return false }
+        }
+        saved = saved.filter { $0.id != id }
+        return true
     }
 
     /// An automatic report (item 11), with what the app can see.

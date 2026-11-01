@@ -120,4 +120,43 @@ final class V0410Tests: XCTestCase {
         XCTAssertEqual(AlarmReasonText.alreadySet([at(8, 0)])?.tail, ". You can still change or cancel it.")
         XCTAssertNil(AlarmReasonText.alreadySet([]))
     }
+
+    // MARK: Item 13, editing and deleting a report
+
+    private func report(_ note: String, automatic: Bool = false, time: String = "2026-11-01T07:07:39-05:00") -> TestingReports.Saved {
+        let body = try! JSONSerialization.data(withJSONObject: ["note": note, "time": time])
+        return TestingReports.Saved(time: .now, note: note, automatic: automatic, kind: nil, body: body, sent: true)
+    }
+
+    func testItem13TheListIsYourLast20NewestFirst() {
+        let all = (0..<25).map { report("r\($0)") } + [report("auto", automatic: true)]
+        let listed = TestingReports.listed(all)
+        XCTAssertEqual(listed.count, 20)
+        XCTAssertEqual(listed.first?.note, "r24")
+        XCTAssertFalse(listed.contains { $0.automatic }, "automatic reports aren't yours to edit or delete")
+    }
+
+    func testItem13TheRequestsNameTheReport() {
+        let r = report("Typo")
+        let edit = TestingReports.changeRequest(for: r, note: "Fixed")
+        XCTAssertEqual(edit["edits"] as? String, r.id.uuidString)
+        XCTAssertEqual(edit["note"] as? String, "Fixed")
+        XCTAssertEqual(edit["time"] as? String, "2026-11-01T07:07:39-05:00", "reports from before 0.4.10 match by time")
+        let delete = TestingReports.changeRequest(for: r, note: nil)
+        XCTAssertEqual(delete["deletes"] as? String, r.id.uuidString)
+        XCTAssertNil(delete["note"])
+    }
+
+    func testItem13AnEditChangesTheSavedBodyToo() throws {
+        let changed = TestingReports.withNote(report("Typo"), "Fixed")
+        XCTAssertEqual(changed.note, "Fixed")
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: changed.body) as? [String: Any])
+        XCTAssertEqual(body["note"] as? String, "Fixed")
+    }
+
+    func testItem13ANewReportCarriesItsID() {
+        let id = UUID()
+        let body = TestingReports.body(note: "x", automatic: false, kind: nil, app: [:], screenshot: nil, id: id)
+        XCTAssertEqual(body["report_id"] as? String, id.uuidString)
+    }
 }
