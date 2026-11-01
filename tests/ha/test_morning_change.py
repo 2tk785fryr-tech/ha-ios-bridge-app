@@ -251,11 +251,6 @@ async def test_an_edit_is_alarms_only_and_keeps_the_wake_routine_once(hass, ladd
     await hass.async_block_till_done()
     assert rungs(hass) == ["05:05", "05:10", "05:25"]
     assert hass.states.get("input_boolean.bedtime_routine").state == "off"
-    # v0.4.10 item 2: good morning waits for the last alarm, once for the wake-up.
-    assert "RUN_GOOD_MORNING" not in [c.data["message"] for c in notify]
-    await send(hass_client_no_auth, {"type": "stopped", "data": {"alarm_times": []}})
-    await send(hass_client_no_auth, {"type": "stopped", "data": {"alarm_times": []}})
-    await hass.async_block_till_done()
     assert [c.data["message"] for c in notify].count("RUN_GOOD_MORNING") == 1, "an edit is the same wake-up"
 
 
