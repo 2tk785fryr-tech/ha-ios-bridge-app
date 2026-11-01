@@ -1325,7 +1325,10 @@ class BedtimeBridge:
         else:
             self.state["skipped_away"] = self._away_blocks()
         self._event(MSG_STOPPED, all=stop_all, early=early, routine=first)
-        if first and not self.state.get("skipped_away"):
+        # Good morning on the first stop; a later stop sends it again only while the shortcut
+        # hasn't reported it ran (v0.4.10 item 2).
+        resend = not first and CMD_MORNING in self._pending_commands
+        if (first or resend) and not self.state.get("skipped_away"):
             # The phone's own morning shortcut (disarm, good morning, Focus off) used to run
             # from the Clock app; app alarms don't trigger that, so this push does instead.
             await self._command(CMD_MORNING)

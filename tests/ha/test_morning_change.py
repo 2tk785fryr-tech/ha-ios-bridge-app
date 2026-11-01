@@ -246,6 +246,7 @@ async def test_an_edit_is_alarms_only_and_keeps_the_wake_routine_once(hass, ladd
     notify = async_mock_service(hass, "notify", "mobile_app_test")
     await ladder(bedtime_helper="input_boolean.bedtime_routine", **COMMANDS)
     await send(hass_client_no_auth, {"type": "stopped", "data": {"alarm_times": [local("04:30").isoformat()]}})
+    await send(hass_client_no_auth, {"type": "command_ran", "data": {"command": "RUN_GOOD_MORNING", "outcome": "completed"}})
     await send(hass_client_no_auth, change(local("04:30"), local("05:00"), delay=30, scope="alarms", phase="edit", changed_by="edit"))
     await send(hass_client_no_auth, {"type": "stopped", "data": {"alarm_times": [local("05:00").isoformat()]}})
     await hass.async_block_till_done()

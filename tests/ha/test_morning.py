@@ -61,13 +61,14 @@ async def test_wake_routine_runs_once_per_wake_up(hass, hass_client_no_auth):
     events = async_capture_events(hass, "bedtime_bridge")
     await send(hass_client_no_auth, PLAN)
     await send(hass_client_no_auth, {"type": "stopped", "data": {"alarm_times": ["2026-10-26T09:26:00+00:00"]}})
+    await send(hass_client_no_auth, {"type": "command_ran", "data": {"command": "RUN_GOOD_MORNING", "outcome": "completed"}})
     await send(hass_client_no_auth, SNOOZE)
     await send(hass_client_no_auth, {"type": "stopped", "data": {"alarm_times": []}})
     await hass.async_block_till_done()
 
     assert turned_on.count("input_boolean.wake_mike") == 1
     assert "input_boolean.wake_fade" not in turned_on, "already up: no fade on a later snooze"
-    assert [c.data["message"] for c in notify] == ["RUN_GOOD_MORNING"]
+    assert [c.data["message"] for c in notify] == ["RUN_GOOD_MORNING", "clear_notification"]
     stops = [e.data for e in events if e.data["type"] == "stopped"]
     assert [s["routine"] for s in stops] == [True, False]
 

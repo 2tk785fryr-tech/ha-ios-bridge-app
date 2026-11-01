@@ -25,9 +25,26 @@ async def test_item2_good_morning_on_the_first_stop_once_per_wake_up(hass, hass_
     await send(hass_client_no_auth, PLAN)
     # The slide ends one alarm with others still set: good morning runs, once.
     await send(hass_client_no_auth, {"type": "stopped", "data": {"alarm_times": ["2026-11-01T13:20:00+00:00"]}})
+    await send(hass_client_no_auth, {"type": "command_ran", "data": {"command": "RUN_GOOD_MORNING", "outcome": "completed"}})
     await send(hass_client_no_auth, {"type": "stopped", "data": {"alarm_times": []}})
     await hass.async_block_till_done()
-    assert _messages(notify) == ["RUN_GOOD_MORNING"]
+    assert _messages(notify).count("RUN_GOOD_MORNING") == 1
+
+
+async def test_item2_a_later_stop_resends_good_morning_only_if_it_never_ran(hass, hass_client_no_auth):
+    notify = async_mock_service(hass, "notify", "mobile_app_test")
+    await setup(hass, notify_service="notify.mobile_app_test", phone_commands=True)
+    await send(hass_client_no_auth, PLAN)
+    await send(hass_client_no_auth, {"type": "stopped", "data": {"alarm_times": ["2026-11-01T13:20:00+00:00"]}})
+    # No word from the shortcut: the next stop sends it again.
+    await send(hass_client_no_auth, {"type": "stopped", "data": {"alarm_times": ["2026-11-01T13:20:00+00:00"]}})
+    await hass.async_block_till_done()
+    assert _messages(notify) == ["RUN_GOOD_MORNING", "RUN_GOOD_MORNING"]
+    # Now it reports it ran: a later stop sends nothing more.
+    await send(hass_client_no_auth, {"type": "command_ran", "data": {"command": "RUN_GOOD_MORNING", "outcome": "completed"}})
+    await send(hass_client_no_auth, {"type": "stopped", "data": {"alarm_times": []}})
+    await hass.async_block_till_done()
+    assert _messages(notify).count("RUN_GOOD_MORNING") == 2
 
 
 async def test_item2_a_snooze_is_not_a_stop(hass, hass_client_no_auth):
