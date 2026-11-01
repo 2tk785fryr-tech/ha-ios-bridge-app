@@ -171,4 +171,46 @@ final class V049Tests: XCTestCase {
         XCTAssertEqual(at(2026, 11, 1, 5).timeIntervalSince(at(2026, 10, 31, 21)), 9 * 3600, "an hour longer night")
         XCTAssertEqual(at(2027, 3, 14, 5).timeIntervalSince(at(2027, 3, 13, 21)), 7 * 3600, "an hour shorter")
     }
+
+    // MARK: Item 8, a morning cancelled before it rang
+
+    func testItem8CancelledTheEveningBeforeClearsTheMorning() {
+        let now = at(2026, 10, 31, 21, 11)
+        let off = AlarmBubble.make(morning: sunday, held: [], wake: nil, snoozedUntil: nil, stopped: true, now: now)
+        XCTAssertFalse(AlarmBubble.stillShowing(off, stoppedAt: at(2026, 10, 31, 16, 31), now: now))
+    }
+
+    func testItem8RangAndStoppedStaysUntilTheMorningIsOver() {
+        let now = at(2026, 11, 1, 5, 30)
+        let off = AlarmBubble.make(morning: sunday, held: [], wake: nil, snoozedUntil: nil, stopped: true, now: now)
+        XCTAssertTrue(AlarmBubble.stillShowing(off, stoppedAt: at(2026, 11, 1, 5, 21), now: now))
+        // Stopped at the first with the rest cancelled: that one rang, so it stays too.
+        XCTAssertTrue(AlarmBubble.stillShowing(off, stoppedAt: at(2026, 11, 1, 5, 2), now: now))
+    }
+
+    func testItem8OneOfThreeCancelledStillShowsTheOthers() {
+        let now = at(2026, 10, 31, 21, 0)
+        let bubbles = AlarmBubble.make(morning: sunday, held: [sunday[1], sunday[2]], wake: nil, snoozedUntil: nil, stopped: false, now: now)
+        XCTAssertTrue(AlarmBubble.stillShowing(bubbles, stoppedAt: nil, now: now))
+    }
+
+    // MARK: Item 9, Preview with nothing tomorrow
+
+    func testItem9APreviewThatFoundNothingOffersNoAlarmsTomorrow() {
+        var i = BottomBar.Inputs()
+        i.now = at(2026, 10, 31, 21, 11)
+        i.evening = true
+        i.alarmStyleApp = true
+        i.nothingFound = true
+        i.previewedNothing = true
+        let bar = BottomBar.make(i)
+        XCTAssertEqual(bar.top, .status("Nothing set for tonight", .muted))
+        XCTAssertEqual(bar.buttons, [.noAlarmsTomorrow, .previewPlan])
+        XCTAssertEqual(bar.actionRow.first, .setAlarmsForTime)
+    }
+
+    func testItem9TheCardNamesTheDay() {
+        XCTAssertEqual(AlarmReasonText.nothingOn(now: at(2026, 10, 31, 21, 11), calendar: newYork), "Nothing on Sunday")
+        XCTAssertEqual(AlarmReasonText.nothingOn(now: at(2026, 11, 1, 2, 0), calendar: newYork), "Nothing on Sunday", "before 4 AM it's this morning")
+    }
 }

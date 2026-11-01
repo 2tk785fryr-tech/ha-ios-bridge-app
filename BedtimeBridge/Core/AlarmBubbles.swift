@@ -56,6 +56,14 @@ struct AlarmBubble: Equatable, Identifiable {
         times.map { time in AlarmBubble(time: time, ring: .none, isWake: wake.map { abs($0.timeIntervalSince(time)) < 60 } ?? false) }
     }
 
+    /// v0.4.9 item 8: the morning stays on screen while one of its alarms is still set, snoozing
+    /// or should be set, or once one has really rung; alarms all cancelled before any rang don't
+    /// keep it up.
+    static func stillShowing(_ bubbles: [AlarmBubble], stoppedAt: Date?, now: Date = .now) -> Bool {
+        let rangBy = stoppedAt ?? now
+        return bubbles.contains { $0.ring != .off || $0.time <= rangBy }
+    }
+
     /// The rings stay until the morning is over: the late backstop + 60 min, or the last alarm
     /// + 60 min without backstops.
     static func morningOver(lateBackstop: Date?, lastAlarm: Date?) -> Date? {

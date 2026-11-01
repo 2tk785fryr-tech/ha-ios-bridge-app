@@ -1225,6 +1225,18 @@ final class BedtimeCoordinator {
                          snoozedUntil: NextAlarmSnapshot.load().snoozedUntil, stopped: stoppedThisWakeUp, now: now)
     }
 
+    /// v0.4.9 item 8: alarms all cancelled before any of them rang leave nothing on Tonight: the
+    /// morning and the plan that set them go. Returns whether it cleared them.
+    @discardableResult
+    func clearMorningCancelledBeforeRinging(now: Date = .now) -> Bool {
+        let bubbles = alarmBubbles(wake: nil, now: now)
+        guard !bubbles.isEmpty, !AlarmBubble.stillShowing(bubbles, stoppedAt: stoppedThisWakeUp ? lastStopAt : nil, now: now) else { return false }
+        morningAlarms = []
+        lastAppliedPlan = nil
+        ActivityLog.add("Morning cleared: its alarms were cancelled before any rang")
+        return true
+    }
+
     private static let stoppedKey = "stoppedThisWakeUp.v1"
     private static let lastStopKey = "lastStop.v1"
     private static let bedtimeRanKey = "bedtimeRanAt.v1"

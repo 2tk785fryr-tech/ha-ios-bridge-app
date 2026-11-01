@@ -7,6 +7,8 @@ struct ContentView: View {
     @Environment(SettingsStore.self) private var store
     @Environment(\.scenePhase) private var scenePhase
     @State private var plan: WakePlan?
+    /// Preview plan was tapped: its result shows even over a morning still on screen (v0.4.9 item 9).
+    @State private var previewRequested = false
     @State private var scheduled: [Date] = []
     @State private var errorMessage: String?
     @State private var isWorking = false
@@ -108,7 +110,7 @@ struct ContentView: View {
                         .buttonStyle(.plain)
                     }
 
-                    if let plan, !(morningRingsShowing && !sameMorning(plan)) {
+                    if let plan, previewRequested || !(morningRingsShowing && !sameMorning(plan)) {
                         PlanCard(plan: plan, bubbles: isSet(plan) || sameMorning(plan) ? morningBubbles : AlarmBubble.preview(plan.alarmTimes, wake: plan.wakeTime),
                                  header: isSet(plan) || sameMorning(plan) ? morningHeader : AlarmStatus(kind: .notSet, text: "Preview · not set"))
                         if let weather = plan.weather {
@@ -262,6 +264,7 @@ struct ContentView: View {
             // app was in the background: show what's set now, not the plan from before.
             .onChange(of: scenePhase) { _, phase in
                 guard phase == .active else { return }
+                previewRequested = false
                 lookAhead()
                 let before = scheduled
                 refreshScheduled()
@@ -523,6 +526,7 @@ struct ContentView: View {
         i.evening = ScreenClock.isEvening(now)
         i.awakeOffered = NoAlarmMorning.offered
         i.nothingFound = plan.map { !$0.hasAlarm } ?? (nothingAhead && set.isEmpty)
+        i.previewedNothing = plan.map { !$0.hasAlarm } ?? false
         i.alarmStyleApp = store.settings.alarmStyle == .app
         i.goodNight = coordinator.goodNightOffered
         i.reporting = TestingReports.enabled
@@ -675,7 +679,8 @@ struct ContentView: View {
     /// The rings stay after the last alarm is off until the morning is over.
     private var morningRingsShowing: Bool {
         let bubbles = morningBubbles
-        guard store.settings.alarmStyle == .app, !bubbles.isEmpty else { return false }
+        guard store.settings.alarmStyle == .app, !bubbles.isEmpty,
+              AlarmBubble.stillShowing(bubbles, stoppedAt: coordinator.stoppedThisWakeUp ? coordinator.lastStopAt : nil) else { return false }
         let late = backstopInfo(leaveBy: NextAlarmSnapshot.load().leaveBy, firstDayBack: false, morning: morningBubbles.first?.time)?.rungs.map(\.time).max()
         guard let over = AlarmBubble.morningOver(lateBackstop: late, lastAlarm: bubbles.map(\.time).max()) else { return false }
         return Date.now < over
@@ -799,6 +804,7 @@ struct ContentView: View {
     private func run(schedule: Bool) {
         isWorking = true
         errorMessage = nil
+        previewRequested = !schedule
         Task {
             defer { isWorking = false }
             do {
@@ -841,6 +847,9 @@ struct ContentView: View {
 
     private func refreshScheduled() {
         tick = .now
+        // v0.4.9 item 8: a morning cancelled before it rang, and the plan that set it, go.
+        let applied = coordinator.lastAppliedPlan
+        if coordinator.clearMorningCancelledBeforeRinging(), plan != nil, plan == applied { plan = nil }
         scheduled = coordinator.scheduledAlarmTimes()
         defer { QuickActions.update(barInputs, settings: store.settings) }
         skippedMorning = coordinator.skippedMorning
@@ -1087,7 +1096,7 @@ private struct PlanCard: View {
             if let wake = plan.wakeTime ?? plan.firstAlarm {
                 BigTime(date: wake)
             } else {
-                Text("No alarm needed")
+                Text(AlarmReasonText.nothingOn(now: .now))
                     .font(.sora(34, .light, relativeTo: .largeTitle))
                     .foregroundStyle(Theme.accentText)
             }
