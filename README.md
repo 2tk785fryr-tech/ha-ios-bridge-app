@@ -412,7 +412,9 @@ Home Assistant side is in `docs/ha-handoffs-v*.md`.
   single alarms* is inside Change this morning, and ⋯ shows only that).
 - **The bar (0.4.10):** the status on top, then the moment's slider the whole width (*I'm up
   early*, *Back to bed*, *Not ready for bed*; snoozing, the slide ends this alarm and the hold all
-  of them), then two buttons and ⋯.
+  of them), then two buttons and ⋯. With nothing set in the evening the status says what's
+  tomorrow ("Days shift 6:30 · no alarms set") above *Plan and set alarms* and *Set alarms for a
+  time*; Nap is orange wherever it shows.
 - **Your morning** shows for every alarm: each alarm, temporary ones too, the backstops, or why
   there are none ("No backstops Sunday · armed for Monday 6:30"). Once set, the top card has the
   **weather at wake-up** as a pill ("41° · Rain").
