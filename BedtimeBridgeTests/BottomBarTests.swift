@@ -34,7 +34,7 @@ final class BottomBarTests: XCTestCase {
         i.sleepLaterWindow = true
         i.napEnabled = true
         i.notReadyWindow = true
-        XCTAssertEqual(BottomBar.make(i), BottomBar(top: .status("✓ 3 alarms set", .good), buttons: [.notReadyForBed, .sleepLater]))
+        XCTAssertEqual(BottomBar.make(i), BottomBar(top: .status("✓ 3 alarms set", .good), buttons: [.sleepLater, .addTemporary], hold: .notReadyForBed), "v0.4.10 item 9: the window's slider in its own row")
         i.notReadyWindow = false
         XCTAssertEqual(BottomBar.make(i).buttons, [.sleepLater, .noAlarmsTomorrow], "Nap hidden once the bedtime alarms are set; v0.4.3 item 3 takes Edit alarms' place")
     }
@@ -51,17 +51,17 @@ final class BottomBarTests: XCTestCase {
         i.alarmsSet = 3
         i.firstAlarm = first
         i.upEarlyWindow = true
-        XCTAssertEqual(BottomBar.make(i), BottomBar(top: .status("3 alarms set · first at \(f(first))", .good), buttons: [.upEarly, .sleepLater]))
+        XCTAssertEqual(BottomBar.make(i), BottomBar(top: .status("3 alarms set · first at \(f(first))", .good), buttons: [.sleepLater, .addTemporary], hold: .upEarly))
 
         var snooze = BottomBar.Inputs(now: first.addingTimeInterval(60))
         snooze.snoozing = true
         snooze.snoozingUntil = first.addingTimeInterval(540)
-        XCTAssertEqual(BottomBar.make(snooze), BottomBar(top: .status("Snoozing · rings \(f(first.addingTimeInterval(540)))", .snoozing), buttons: [.endAlarms, .wakeLater]))
+        XCTAssertEqual(BottomBar.make(snooze), BottomBar(top: .status("Snoozing · rings \(f(first.addingTimeInterval(540)))", .snoozing), buttons: [.wakeLater, .addTemporary], hold: .endAlarms, slide: .endThisAlarm))
 
         var up = BottomBar.Inputs(now: first.addingTimeInterval(1800))
         up.backToBedWindow = true
         up.leaveBy = first.addingTimeInterval(4800)
-        XCTAssertEqual(BottomBar.make(up), BottomBar(top: .status("Alarms off · leave by \(f(first.addingTimeInterval(4800)))", .muted), buttons: [.backToBed, .previewPlan]))
+        XCTAssertEqual(BottomBar.make(up), BottomBar(top: .status("Alarms off · leave by \(f(first.addingTimeInterval(4800)))", .muted), buttons: [.previewPlan, .addTemporary], hold: .backToBed))
 
         var nap = BottomBar.Inputs(now: first)
         nap.napUpAt = first.addingTimeInterval(1200)
@@ -76,8 +76,9 @@ final class BottomBarTests: XCTestCase {
         i.sleepLaterWindow = true
         i.notReadyWindow = true
         i.napEnabled = true
+        // v0.4.10 item 10: after bedtime, Change this morning instead of Edit alarms; no Skip.
         XCTAssertEqual(BottomBar.menu(i, alarmStyleApp: true, morningKnown: true),
-                       [.previewPlan, .editAlarms, .sleepLater, .nap, .noAlarmsTomorrow, .skip, .notGoingToSleep, .addTemporary, .addWakeUpEvent, .addLeave, .settings])
+                       [.previewPlan, .sleepLater, .nap, .changeMorning, .noAlarmsTomorrow, .notGoingToSleep, .addTemporary, .addWakeUpEvent, .addLeave, .settings])
         XCTAssertTrue(BarAction.endAlarms.isProtected)
         XCTAssertFalse(BarAction.previewPlan.isProtected)
         XCTAssertEqual(BarAction.endNap.knob, .stop)

@@ -34,6 +34,8 @@ struct ContentView: View {
     @State private var tick = Date.now
     /// A protected action waiting for its slide-and-hold in the bottom bar (v0.4.2 item 6).
     @State private var barSlider: BarAction?
+    /// No alarms → Wake at a different time, for a morning nothing is set for yet (v0.4.10 item 10).
+    @State private var differentTimeMorning: Date?
     @State private var menuOpen = false
     @State private var showSettings = false
     @State private var sleepLater = false
@@ -147,6 +149,23 @@ struct ContentView: View {
                         EmptyPlanCard()
                     }
 
+                    // v0.4.10 item 8: temporary alarms get their own card under the top card while
+                    // one is set; adding one is in the bar and ⋯.
+                    if store.settings.alarmStyle == .app, !temporaryAlarms.isEmpty {
+                        TemporaryAlarmsCard(alarms: temporaryAlarms, ring: { coordinator.ring(forAlarm: $0.id, at: $0.time) }) { id in
+                            coordinator.cancelTemporaryAlarm(id)
+                            refreshScheduled()
+                        } houseAlarm: { id, disarm in
+                            coordinator.setTemporaryHouseAlarm(id, disarm: disarm)
+                            refreshScheduled()
+                        } move: { id, time in
+                            Task {
+                                try? await coordinator.moveTemporaryAlarm(id, to: time, settings: store.settings)
+                                refreshScheduled()
+                            }
+                        }
+                    }
+
                     if let errorMessage {
                         WarningBanner(text: errorMessage, systemImage: "exclamationmark.triangle", tint: Theme.danger)
                     }
@@ -164,16 +183,7 @@ struct ContentView: View {
                         .padding(.horizontal, 4)
                     }
 
-                    if backToBed {
-                        ChangeMorningEntry(
-                            title: "Back to bed?",
-                            detail: "Plans changed? Move this morning's alarms later or turn them off. The house goes back to bedtime.",
-                            phase: .up,
-                            settings: store.settings,
-                            done: refreshScheduled
-                        )
-                        .nightfallCard()
-                    }
+                    // v0.4.10 items 8 and 9: Back to bed is the bar's slider, not a card.
 
                     if coordinator.ownAlarmSet {
                         OwnBackstopsToggle(on: coordinator.ownBackstopsOn, cutoverPending: morningContext?.houseUsesOldTimes ?? true) { on in
@@ -184,40 +194,13 @@ struct ContentView: View {
                         }
                     }
 
-                    if sleepLater {
-                        SleepLaterCard(settings: store.settings, canGoBack: coordinator.backToPlannedAvailable(), changed: refreshScheduled)
-                    }
-
                     // v0.4.8 item 3: the up-early window's End alarms lives in the bar only
                     // (I'm up early / Sleep later, End alarms once one has rung).
 
-                    if skippedMorning == nil, let morning = scheduled.first ?? plan?.firstAlarm {
-                        ScheduledAlarmsCard(times: store.settings.alarmStyle == .app ? scheduled : [], morning: morning, isShift: plan?.source == .shift, notReadyForBed: notReadyForBed) {
-                            skip(morning, then: .sleepIn)
-                        } differentTime: {
-                            sheet = .skipToTime
-                        } undoBedtime: {
-                            undoBedtime()
-                        }
-                        .editing(settings: store.settings, edited: refreshScheduled)
-                    } else if skippedMorning == nil, scheduled.isEmpty, plan?.hasAlarm != true, !nothingSetBar {
+                    // v0.4.10 item 8: no "Set on this iPhone" card: the alarms are in the top card's
+                    // bubbles, and Edit alarms, No alarms and Not going to sleep yet are in ⋯.
+                    if skippedMorning == nil, scheduled.isEmpty, plan?.hasAlarm != true, !nothingSetBar {
                         DayOffCard { sheet = .dayOff }
-                    }
-
-                    // With nothing set, Add a temporary alarm is in the bar (v0.4.7 item 8); the card
-                    // stays while temporary alarms are set, to show them.
-                    if store.settings.alarmStyle == .app, !(nothingSetBar && temporaryAlarms.isEmpty) {
-                        TemporaryAlarmsCard(alarms: temporaryAlarms, ring: { coordinator.ring(forAlarm: $0.id, at: $0.time) }) {
-                            sheet = .temporary
-                        } remove: { id in
-                            coordinator.cancelTemporaryAlarm(id)
-                            refreshScheduled()
-                        } move: { id, time in
-                            Task {
-                                try? await coordinator.moveTemporaryAlarm(id, to: time, settings: store.settings)
-                                refreshScheduled()
-                            }
-                        }
                     }
 
                     Text(reasonLine)
@@ -344,10 +327,15 @@ struct ContentView: View {
                         }
                     }
                 case .noAlarms(let morning):
-                    NoAlarmsSheet(morning: morning, shift: coordinator.shiftOnCalendar(morning: morning, settings: store.settings)) { sleepIn in
+                    NoAlarmsSheet(morning: morning, shift: coordinator.shiftOnCalendar(morning: morning, settings: store.settings),
+                                  differentTime: { Task { @MainActor in
+                                      try? await Task.sleep(for: .milliseconds(500))
+                                      differentTimeMorning = morning
+                                      sheet = .skipToTime
+                                  } }) { sleepIn in
                         do {
                             try await coordinator.noAlarmsTomorrow(morning: morning, sleepIn: sleepIn, settings: store.settings)
-                            plan = try? await coordinator.buildPlan(settings: store.settings)
+                            plan = plan.map { PlanAdjustments.skipping($0, morning: morning) }
                         } catch {
                             errorMessage = error.localizedDescription
                         }
@@ -380,7 +368,7 @@ struct ContentView: View {
                         settings: settings,
                         backstopsDefault: settings.ownBackstopsDayOff
                     ) { replacement in
-                        if let morning = scheduled.first ?? plan?.firstAlarm { skip(morning, then: .exactly(replacement)) }
+                        if let morning = scheduled.first ?? plan?.firstAlarm ?? differentTimeMorning { skip(morning, then: .exactly(replacement)) }
                     }
                 }
             }
@@ -607,6 +595,14 @@ struct ContentView: View {
         case .upEarly, .endAlarms:
             Task {
                 await coordinator.endMorning(settings: store.settings)
+                refreshScheduled()
+            }
+        case .endThisAlarm:
+            // v0.4.10 item 9: the snoozing alarm only; the rest of the wake-up stays.
+            Task {
+                if let id = coordinator.snoozingAlarmID() {
+                    await coordinator.alarmStopped(id: id, settings: store.settings)
+                }
                 refreshScheduled()
             }
         case .endNap:
@@ -1628,16 +1624,6 @@ private struct GetReadyCard: View {
     }
 }
 
-/// The alarm whose snooze the slide-to-stop screen ends.
-extension ScheduledAlarmsCard {
-    func editing(settings: BridgeSettings, edited: @escaping () -> Void) -> ScheduledAlarmsCard {
-        var copy = self
-        copy.settings = settings
-        copy.edited = edited
-        return copy
-    }
-}
-
 /// Your own alarm's backstops for this morning (v0.4.1 item 14).
 private struct OwnBackstopsToggle: View {
     let on: Bool
@@ -1659,79 +1645,9 @@ private struct OwnBackstopsToggle: View {
     }
 }
 
+/// The alarm whose snooze the slide-to-stop screen ends.
 private struct SnoozedAlarm: Identifiable {
     let id: UUID
-}
-
-/// The alarms set on this iPhone, and skipping that morning when plans change.
-private struct ScheduledAlarmsCard: View {
-    let times: [Date]
-    let morning: Date
-    let isShift: Bool
-    /// Inside Not ready for bed's window (v0.4.2 item 7).
-    let notReadyForBed: Bool
-    let sleepIn: () -> Void
-    let differentTime: () -> Void
-    let undoBedtime: () -> Void
-    @State private var confirming = false
-    @State private var confirmingUndo = false
-    @State private var editing = false
-    /// Settings for editing single alarms (v0.4.1 item 13).
-    var settings = BridgeSettings()
-    var edited: () -> Void = {}
-
-    private var day: String { morning.formatted(.dateTime.weekday(.wide)) }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            if !times.isEmpty {
-                Text("Set on this iPhone")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(Theme.textMuted)
-                Text(times.map { $0.formatted(.dateTime.weekday(.abbreviated).hour().minute()) }.joined(separator: " · "))
-                    .font(.system(size: 15))
-                    .foregroundStyle(Theme.text)
-                if !times.isEmpty {
-                    // Alarms still ahead, and a snoozing one (v0.4.1 item 13).
-                    Button { editing = true } label: {
-                        Label("Edit alarms", systemImage: "slider.horizontal.3")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(Theme.accentText)
-                            .frame(minHeight: 44)
-                    }
-                }
-            }
-            if !times.isEmpty && notReadyForBed {
-                Button { confirmingUndo = true } label: {
-                    Label("Not going to sleep yet", systemImage: "figure.walk")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(Theme.accentText)
-                        .frame(minHeight: 44)
-                }
-                .confirmationDialog("Not going to sleep yet?", isPresented: $confirmingUndo, titleVisibility: .visible) {
-                    Button("Undo bedtime", action: undoBedtime)
-                } message: {
-                    Text("Turns these alarms off. Home Assistant disarms the house and turns Awake For Day back on and Sleep In off. When you're back in bed for a while, bedtime runs again.")
-                }
-            }
-            Button(role: .destructive) { confirming = true } label: {
-                Label("Skip \(day)'s wake-up", systemImage: "bell.slash")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(Theme.danger)
-                    .frame(minHeight: 44)
-            }
-            .confirmationDialog("Skip \(day)'s wake-up?", isPresented: $confirming, titleVisibility: .visible) {
-                Button("Sleep in", role: .destructive, action: sleepIn)
-                Button("Wake at a different time…", action: differentTime)
-            } message: {
-                Text(isShift
-                     ? "As if the shift weren't there: these alarms go and the wake failsafe is off for \(day) morning. Temporary alarms stay. You can undo it here."
-                     : "These alarms go and bedtime planning won't set them again for \(day) morning. Temporary alarms stay. You can undo it here.")
-            }
-        }
-        .nightfallCard()
-        .sheet(isPresented: $editing) { EditAlarmsSheet(settings: settings, done: edited) }
-    }
 }
 
 /// No alarm planned: set one for a day off.
@@ -1957,13 +1873,16 @@ private struct BottomBarView: View {
                         }
                     }
                     .frame(height: Self.statusHeight)
+                    // v0.4.10 item 9: the window's slider; snoozing, the slide ends this alarm and
+                    // the hold all of them.
                     HoldSlider(
-                        label: "Slide and hold · \(hold.title(day: day))",
-                        holdLabel: { "Hold \($0)…" },
+                        label: bar.slide == nil ? "Slide and hold · \(hold.title(day: day))" : "Slide to end this alarm · hold for all",
+                        holdLabel: { bar.slide == nil ? "Hold \($0)…" : "Ending all in \($0)…" },
                         knobSymbol: knobSymbol(hold),
-                        tint: Theme.accent,
+                        tint: hold == .goodNight ? Theme.accent : knobTint(hold),
+                        onSlide: bar.slide.map { slide in { perform(slide) } },
                         onHold: { perform(hold) },
-                        accessibilityHint: hold.caption(day: day)
+                        accessibilityHint: bar.slide?.caption(day: day) ?? hold.caption(day: day)
                     )
                     .frame(height: Self.rowHeight)
                     .id(hold)

@@ -44,7 +44,7 @@ final class V048Tests: XCTestCase {
         i.firstAlarm = first
         i.upEarlyWindow = true
         i.plansChanged = "Plan changed · re-plan"
-        XCTAssertEqual(BottomBar.make(i), BottomBar(top: .status("1 alarm set · first at \(f(first))", .good), buttons: [.upEarly, .sleepLater]))
+        XCTAssertEqual(BottomBar.make(i), BottomBar(top: .status("1 alarm set · first at \(f(first))", .good), buttons: [.sleepLater, .addTemporary], hold: .upEarly))
     }
 
     // MARK: Item 5, Good night bar and Change plan
@@ -73,11 +73,11 @@ final class V048Tests: XCTestCase {
         i.firstAlarm = first
         i.goodNight = false
         i.notReadyWindow = true
-        XCTAssertNil(BottomBar.make(i).hold)
+        XCTAssertNotEqual(BottomBar.make(i).hold, .goodNight)
         i.goodNight = true
         i.notReadyWindow = false
         i.upEarlyWindow = true
-        XCTAssertNil(BottomBar.make(i).hold)
+        XCTAssertNotEqual(BottomBar.make(i).hold, .goodNight)
     }
 
     func testItem5GoodNightUntilBedtimeRuns() {
@@ -124,8 +124,9 @@ final class V048Tests: XCTestCase {
     func testItem7ThisMorningAfterMidnight() {
         let today = Date.now.formatted(.dateTime.weekday(.wide))
         let tomorrow = Date.now.addingTimeInterval(86400).formatted(.dateTime.weekday(.wide))
-        XCTAssertEqual(BarAction.noAlarmsTomorrow.title(day: today), "No alarms this morning")
-        XCTAssertEqual(BarAction.noAlarmsTomorrow.title(day: tomorrow), "No alarms tomorrow")
+        // v0.4.10 item 10: named by its day.
+        XCTAssertEqual(BarAction.noAlarmsTomorrow.title(day: today), "No alarms \(today)")
+        XCTAssertEqual(BarAction.noAlarmsTomorrow.title(day: tomorrow), "No alarms \(tomorrow)")
         let record = UndoRecord(kind: .noAlarms, previousTimes: [at(0)], previousWake: nil, previousSource: .manual, previousReason: "",
                                 previousCause: AlarmCause.manual, previousCleared: nil, leftTimes: [], savedAt: at(-60))
         XCTAssertEqual(record.status(alarmsSet: 0, thisMorning: true), "No alarms this morning · Undo")

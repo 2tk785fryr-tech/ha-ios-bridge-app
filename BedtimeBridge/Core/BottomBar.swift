@@ -19,13 +19,16 @@ enum BarAction: String, CaseIterable, Identifiable {
     case goodNight, changePlan
     /// v0.4.8 item 9: a testing report.
     case report
+    /// v0.4.10 item 9: the snoozing bar's plain slide, which ends only the snoozing alarm (the
+    /// hold is End alarms).
+    case endThisAlarm
 
     var id: String { rawValue }
 
     /// Protected actions are amber and need the slide-and-hold.
     var isProtected: Bool {
         switch self {
-        case .notReadyForBed, .notGoingToSleep, .upEarly, .endAlarms, .sleepLater, .endNap, .changeNap,
+        case .notReadyForBed, .notGoingToSleep, .upEarly, .endAlarms, .endThisAlarm, .sleepLater, .endNap, .changeNap,
              .wakeLater, .changeMorning, .backToBed, .skip, .undo, .noAlarmsTomorrow, .imAwake, .goodNight:
             true
         default:
@@ -41,7 +44,7 @@ enum BarAction: String, CaseIterable, Identifiable {
     /// Red stop (ending), amber moon (back to sleep, up early), purple clock (changing times).
     var knob: Knob {
         switch self {
-        case .endAlarms, .endNap, .noAlarmsTomorrow: .stop
+        case .endAlarms, .endThisAlarm, .endNap, .noAlarmsTomorrow: .stop
         case .notReadyForBed, .notGoingToSleep, .upEarly, .backToBed, .imAwake, .goodNight: .moon
         default: .clock
         }
@@ -73,7 +76,8 @@ enum BarAction: String, CaseIterable, Identifiable {
         case .addTemporary: "Add a temporary alarm"
         case .settings: "Settings"
         case .undo: "Undo"
-        case .noAlarmsTomorrow: Self.isToday(day) ? "No alarms this morning" : "No alarms tomorrow"
+        // v0.4.10 item 10: one "No alarms Sunday" (Skip merged into it).
+        case .noAlarmsTomorrow: "No alarms \(day)"
         case .startWindDown: "Start wind-down now"
         case .cancelWindDown: "Cancel wind-down"
         case .stopReminders: "Stop bedtime reminders"
@@ -84,6 +88,7 @@ enum BarAction: String, CaseIterable, Identifiable {
         case .goodNight: "Good night"
         case .changePlan: "Change plan"
         case .report: "Report something"
+        case .endThisAlarm: "End this alarm"
         }
     }
 
@@ -99,7 +104,8 @@ enum BarAction: String, CaseIterable, Identifiable {
         case .backToBed: "Back to bed: move this morning's alarms or turn them off"
         case .skip: "Skip \(day)'s wake-up and sleep in"
         case .undo: "Undo: put back the alarms from before"
-        case .noAlarmsTomorrow: Self.isToday(day) ? "Turn this morning's alarms off" : "Turn tomorrow's alarms off"
+        case .noAlarmsTomorrow: "Turn \(day)'s alarms off until you undo it"
+        case .endThisAlarm: "End this alarm; hold to end all of this morning's alarms"
         case .imAwake: "Good morning: Sleep In off, wake the house"
         case .goodNight: "Good night: start bedtime now; the lights go off"
         default: title(day: day)
@@ -127,6 +133,9 @@ struct BottomBar: Equatable {
     /// status line while it applies.
     var hold: BarAction? = nil
     var undoOffered = false
+    /// v0.4.10 item 9: what a plain slide does when the hold is something more (snoozing: the
+    /// slide ends this alarm, the hold ends them all).
+    var slide: BarAction? = nil
 
     struct Inputs {
         var now = Date.now
@@ -193,9 +202,13 @@ struct BottomBar: Equatable {
         if let up = i.napUpAt {
             return BottomBar(top: .status("Napping · up at \(format(up))", .accent), buttons: [.endNap, .changeNap])
         }
+        // v0.4.10 item 9: in the morning's windows, the status on top, that window's slider the
+        // whole width, then the buttons.
+        let temporary: [BarAction] = i.alarmStyleApp ? [.addTemporary] : []
         if i.snoozing {
             let rings = i.snoozingUntil.map { " · rings \(format($0))" } ?? ""
-            return BottomBar(top: .status("Snoozing" + rings, .snoozing), buttons: [.endAlarms, .wakeLater])
+            return BottomBar(top: .status("Snoozing" + rings, .snoozing), buttons: [.wakeLater] + temporary,
+                             hold: .endAlarms, slide: .endThisAlarm)
         }
         // v0.4.8 item 3: in the up-early window that window's bar wins over a re-plan prompt.
         if let changed = i.plansChanged, !i.upEarlyWindow {
@@ -219,21 +232,22 @@ struct BottomBar: Equatable {
         }
         if i.alarmsSet == 0, i.backToBedWindow {
             let leave = i.leaveBy.flatMap { $0 > i.now ? " · leave by \(format($0))" : nil } ?? ""
-            return BottomBar(top: .status("Alarms off" + leave, .muted), buttons: [.backToBed, .previewPlan])
+            return BottomBar(top: .status("Alarms off" + leave, .muted), buttons: [.previewPlan] + temporary, hold: .backToBed)
         }
         if i.alarmsSet > 0 {
             let count = i.alarmsSet == 1 ? "1 alarm set" : "\(i.alarmsSet) alarms set"
             if i.upEarlyWindow, let first = i.firstAlarm {
                 if first > i.now {
-                    return BottomBar(top: .status("\(count) · first at \(format(first))", .good), buttons: [.upEarly, .sleepLater])
+                    return BottomBar(top: .status("\(count) · first at \(format(first))", .good),
+                                     buttons: [.sleepLater] + temporary, hold: .upEarly)
                 }
                 let next = i.nextAlarm.map { " · next at \(format($0))" } ?? ""
-                return BottomBar(top: .status(count + next, .good), buttons: [.endAlarms, .wakeLater])
+                return BottomBar(top: .status(count + next, .good), buttons: [.wakeLater] + temporary, hold: .endAlarms)
             }
             if i.notReadyWindow {
                 // v0.4.8 item 14: after bedtime, what the check found, in one line.
                 let top: Top = i.healthIssue.map { .status("⚠ " + $0, .snoozing) } ?? .status("✓ " + count, .good)
-                return BottomBar(top: top, buttons: [.notReadyForBed, .sleepLater])
+                return BottomBar(top: top, buttons: [.sleepLater] + temporary, hold: .notReadyForBed)
             }
             // v0.4.3 item 3: No alarms tomorrow takes Edit alarms' place (Edit stays in ⋯).
             return BottomBar(top: .status("✓ " + count, .good), buttons: i.sleepLaterWindow ? [.sleepLater, .noAlarmsTomorrow] : [.noAlarmsTomorrow, .editAlarms])
@@ -276,15 +290,18 @@ struct BottomBar: Equatable {
     /// The ⋯ list: the same list in every state, hiding what doesn't apply.
     static func menu(_ i: Inputs, alarmStyleApp: Bool, morningKnown: Bool) -> [BarAction] {
         var items: [BarAction] = (i.reporting ? [.report] : []) + [.previewPlan]
-        if i.alarmsSet > 0 { items.append(.editAlarms) }
+        // v0.4.10 item 10: from bedtime to the end of the morning, only Change this morning's
+        // alarms (Edit single alarms is inside it); before bedtime, Edit alarms.
+        let afterBedtime = (i.alarmsSet > 0 && !i.goodNight) || i.snoozing || i.upEarlyWindow || i.backToBedWindow
+        if i.alarmsSet > 0 && !afterBedtime { items.append(.editAlarms) }
         if i.sleepLaterWindow { items.append(.sleepLater) }
         if i.napEnabled && i.napUpAt == nil { items.append(.nap) }
-        if i.snoozing || (i.alarmsSet > 0 && i.upEarlyWindow) || i.backToBedWindow { items.append(.changeMorning) }
+        if afterBedtime && (i.snoozing || i.alarmsSet > 0 || i.backToBedWindow) { items.append(.changeMorning) }
         // v0.4.8 item 7: up to the first alarm, the 2-hour window included.
         let beforeFirst = i.upEarlyWindow && (i.firstAlarm ?? i.now) > i.now
         let morning = i.snoozing || (i.upEarlyWindow && !beforeFirst) || i.backToBedWindow
         if !morning && (i.alarmsSet > 0 || i.tomorrowHasAlarm) { items.append(.noAlarmsTomorrow) }
-        if morningKnown { items.append(.skip) }
+        // v0.4.10 item 10: Skip is merged into No alarms.
         if i.notReadyWindow { items.append(.notGoingToSleep) }
         if let w = i.windDown {
             if w.canStartNow(hours: i.startWindDownHours, now: i.now) { items.append(.startWindDown) }

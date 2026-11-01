@@ -20,6 +20,7 @@ struct ChangeMorningFlow: View {
     @State private var askedScope: MorningChangeScope?
     @State private var note = ""
     @State private var context: MorningContext?
+    @State private var editingSingle = false
 
     /// This morning's own pattern (a Days morning: 3 alarms, 5 min apart, wake = last).
     private var pattern: SeriesPattern { BedtimeCoordinator.shared.seriesPattern(settings: settings) }
@@ -47,6 +48,13 @@ struct ChangeMorningFlow: View {
     var body: some View {
         NavigationStack {
             SettingsPage(title: "Change this morning") {
+                // v0.4.10 item 10: single alarms are edited from here after bedtime (its save is
+                // the slide-and-hold).
+                if !BedtimeCoordinator.shared.scheduledAlarmTimes().isEmpty {
+                    Section {
+                        Button("Edit single alarms", systemImage: "slider.horizontal.3") { editingSingle = true }
+                    }
+                }
                 Section("Reason") {
                     Picker("Reason", selection: $reasonID) {
                         Text("Choose…").tag(UUID?.none)
@@ -100,6 +108,7 @@ struct ChangeMorningFlow: View {
                     }
                 }
             }
+            .sheet(isPresented: $editingSingle) { EditAlarmsSheet(settings: settings, done: done) }
             .navigationBarTitleDisplayMode(.inline)
             .task { context = await BedtimeCoordinator.shared.morningContext(firstAlarm: nil, settings: settings) }
             .onChange(of: scope) { choice = nil }

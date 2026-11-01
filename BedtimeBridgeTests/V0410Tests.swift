@@ -159,4 +159,54 @@ final class V0410Tests: XCTestCase {
         let body = TestingReports.body(note: "x", automatic: false, kind: nil, app: [:], screenshot: nil, id: id)
         XCTAssertEqual(body["report_id"] as? String, id.uuidString)
     }
+
+    // MARK: Items 8–10, one place for each thing; the bar's rows
+
+    private func barInputs(now: Date) -> BottomBar.Inputs {
+        var i = BottomBar.Inputs(now: now)
+        i.alarmsSet = 3
+        i.firstAlarm = at(8, 0)
+        return i
+    }
+
+    func testItem9EachWindowHasTheStatusOneSliderAndButtons() {
+        var early = barInputs(now: at(6, 52))
+        early.upEarlyWindow = true
+        XCTAssertEqual(BottomBar.make(early).hold, .upEarly)
+        var snoozing = barInputs(now: at(8, 12))
+        snoozing.snoozing = true
+        let snooze = BottomBar.make(snoozing)
+        XCTAssertEqual(snooze.hold, .endAlarms, "the hold ends them all")
+        XCTAssertEqual(snooze.slide, .endThisAlarm, "the slide ends this one")
+        var back = BottomBar.Inputs(now: at(8, 24))
+        back.backToBedWindow = true
+        XCTAssertEqual(BottomBar.make(back).hold, .backToBed)
+        var night = barInputs(now: at(0, 10))
+        night.notReadyWindow = true
+        XCTAssertEqual(BottomBar.make(night).hold, .notReadyForBed)
+        for bar in [BottomBar.make(early), snooze, BottomBar.make(back), BottomBar.make(night)] {
+            XCTAssertTrue((2...3).contains(bar.buttons.count), "\(bar.buttons)")
+            if case .status = bar.top {} else { XCTFail("the status sits on top") }
+        }
+    }
+
+    func testItem10MenuNeverListsBothNoAlarmsAndSkipOrEditAndChange() {
+        var before = barInputs(now: at(21, 0, day: 0))
+        before.goodNight = true
+        var after = barInputs(now: at(0, 10))
+        after.notReadyWindow = true
+        var early = barInputs(now: at(6, 52))
+        early.upEarlyWindow = true
+        for i in [before, after, early] {
+            let menu = BottomBar.menu(i, alarmStyleApp: true, morningKnown: true)
+            XCTAssertFalse(menu.contains(.skip))
+            XCTAssertFalse(menu.contains(.editAlarms) && menu.contains(.changeMorning), "\(menu)")
+        }
+        XCTAssertTrue(BottomBar.menu(before, alarmStyleApp: true, morningKnown: true).contains(.editAlarms))
+        XCTAssertTrue(BottomBar.menu(after, alarmStyleApp: true, morningKnown: true).contains(.changeMorning))
+    }
+
+    func testItem10OneNoAlarmsNamedByItsDay() {
+        XCTAssertEqual(BarAction.noAlarmsTomorrow.title(day: "Sunday"), "No alarms Sunday")
+    }
 }

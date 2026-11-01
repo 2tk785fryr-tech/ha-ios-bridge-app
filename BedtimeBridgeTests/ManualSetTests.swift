@@ -69,7 +69,7 @@ final class ManualSetTests: XCTestCase {
 
         let start = at(500)
         XCTAssertEqual(NoAlarmsSheet.backstopNote(shift: ("Days", start)),
-                       "Days at \(f(start)) is still on your calendar, so the backstops stay on. Delete the shift or use Skip if you're not working.")
+                       "As if Days at \(f(start)) weren't there: the wake failsafe and backstops are off that morning.")
         XCTAssertEqual(record(kind: .noAlarms, previous: [at(400)], left: []).status(alarmsSet: 0), "No alarms tomorrow · Undo")
 
         // Bedtime planning afterwards sets nothing for that morning.

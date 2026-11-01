@@ -1,33 +1,43 @@
 import SwiftUI
 
-/// "No alarms tomorrow" (v0.4.3 item 3): the Sleep In switch, what happens to the backstops,
-/// and the slide-and-hold at the commit step.
+/// "No alarms Sunday" (v0.4.3 item 3; v0.4.10 item 10, Skip merged in): the alarms stay off
+/// until you undo it, the Sleep In switch, Wake at a different time, what happens to the
+/// backstops, and the slide-and-hold at the commit step.
 struct NoAlarmsSheet: View {
     let morning: Date
-    /// A shift still on the calendar that morning: its backstops stay on.
+    /// A shift still on the calendar that morning: its failsafe goes off too.
     let shift: (cause: String, start: Date)?
+    /// Wake at a different time instead (Skip's other choice).
+    var differentTime: (() -> Void)? = nil
     let confirm: (_ sleepIn: Bool) async -> Void
 
     @State private var sleepIn = true
     @State private var working = false
     @Environment(\.dismiss) private var dismiss
 
-    /// "this morning" once it's that morning (v0.4.8 item 7).
-    private var when: String { Calendar.current.isDateInToday(morning) ? "this morning" : "tomorrow" }
+    private var day: String { morning.formatted(.dateTime.weekday(.wide)) }
 
     static func backstopNote(shift: (cause: String, start: Date)?) -> String {
         guard let shift else { return "Nothing's on your calendar that morning, so the backstops are off too." }
-        return "\(shift.cause) at \(WakePlanner.format(shift.start)) is still on your calendar, so the backstops stay on. Delete the shift or use Skip if you're not working."
+        return "As if \(shift.cause) at \(WakePlanner.format(shift.start)) weren't there: the wake failsafe and backstops are off that morning."
     }
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    Text("Clears \(morning.formatted(.dateTime.weekday(.wide)))'s alarms. Temporary and nap alarms stay.")
+                    Text("Clears \(day)'s alarms, and bedtime planning won't set them again. Temporary and nap alarms stay.")
                     Toggle("Sleep In", isOn: $sleepIn)
                 } footer: {
                     Text("Sleep In keeps the curtains closed in the morning.")
+                }
+                if let differentTime {
+                    Section {
+                        Button("Wake at a different time…", systemImage: "clock") {
+                            dismiss()
+                            differentTime()
+                        }
+                    }
                 }
                 Section {
                     Label(Self.backstopNote(shift: shift), systemImage: shift == nil ? "shield.slash" : "shield")
@@ -37,17 +47,17 @@ struct NoAlarmsSheet: View {
                 Section {
                     HoldSlider(label: "Slide and hold", holdLabel: { "Turning off in \($0)…" },
                                knobSymbol: "stop.fill", tint: Theme.danger, onHold: commit,
-                               accessibilityHint: "Turns \(when)'s alarms off.")
+                               accessibilityHint: "Turns \(day)'s alarms off.")
                         .frame(height: 72)
                         .disabled(working)
                         .listRowBackground(Color.clear)
                 } footer: {
-                    Text("Undo on the main screen until bedtime runs.")
+                    Text("Undo on the main screen.")
                 }
             }
             .scrollContentBackground(.hidden)
             .background(Theme.ground.ignoresSafeArea())
-            .navigationTitle("No alarms \(when)")
+            .navigationTitle("No alarms \(day)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }

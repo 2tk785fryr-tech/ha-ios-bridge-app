@@ -89,13 +89,15 @@ struct TemporaryAlarmSheet: View {
     }
 }
 
-/// Temporary wake-ups beside the regular alarms, with the way to add or remove one.
+/// Temporary wake-ups beside the regular alarms, under the top card while one is set
+/// (v0.4.10 item 8): each one's time, house alarm and Cancel. Adding one is in the bar and ⋯.
 struct TemporaryAlarmsCard: View {
     let alarms: [TemporaryAlarm]
     /// Each one's ring, like the regular alarms (v0.4.2 item 5).
     var ring: (TemporaryAlarm) -> AlarmBubble.Ring = { _ in .set }
-    let add: () -> Void
     let remove: (UUID) -> Void
+    /// Disarm when it rings (true) or keep the house armed.
+    var houseAlarm: ((UUID, Bool) -> Void)? = nil
     /// Change a temporary alarm's time (tap it).
     var move: ((UUID, Date) -> Void)? = nil
     @State private var moving: TemporaryAlarm?
@@ -123,24 +125,30 @@ struct TemporaryAlarmsCard: View {
                         .buttonStyle(.plain)
                         .disabled(move == nil)
                         .accessibilityHint("Change this alarm's time")
-                        Text(alarm.disarmHouse ? "Disarms, then re-arms when you're back in bed" : "House alarm stays armed")
-                            .font(.footnote)
-                            .foregroundStyle(Theme.textMuted)
+                        Menu {
+                            Picker("House alarm", selection: Binding(get: { alarm.disarmHouse }, set: { houseAlarm?(alarm.id, $0) })) {
+                                Text("Disarm when it rings").tag(true)
+                                Text("Keep armed").tag(false)
+                            }
+                        } label: {
+                            Label(alarm.disarmHouse ? "Disarms, then re-arms when you're back in bed" : "House alarm stays armed",
+                                  systemImage: alarm.disarmHouse ? "lock.open" : "lock")
+                                .font(.footnote)
+                                .foregroundStyle(houseAlarm == nil ? Theme.textMuted : Theme.accentText)
+                                .multilineTextAlignment(.leading)
+                        }
+                        .disabled(houseAlarm == nil)
+                        .accessibilityHint("Change what the house alarm does when it rings")
+                        Button(role: .destructive) { remove(alarm.id) } label: {
+                            Text("Cancel")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(Theme.danger)
+                                .frame(minHeight: 32)
+                        }
+                        .accessibilityLabel("Cancel this temporary alarm")
                     }
                     Spacer()
-                    Button { remove(alarm.id) } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 20))
-                            .foregroundStyle(Theme.textFaint)
-                    }
-                    .accessibilityLabel("Remove temporary alarm")
                 }
-            }
-            Button(action: add) {
-                Label("Add a temporary alarm", systemImage: "alarm.waves.left.and.right")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(Theme.accentText)
-                    .frame(minHeight: 44)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

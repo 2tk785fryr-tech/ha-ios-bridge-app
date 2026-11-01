@@ -73,12 +73,19 @@ final class BedtimeCoordinator {
     /// Home Assistant turns the wake failsafe off for a skipped shift, and later plans don't
     /// bring it back. Then you either sleep in or get your own alarms. Temporary alarms stay.
     /// (Stopping alarms in the morning is different and always keeps the failsafe.)
-    func skipMorning(_ plan: WakePlan?, morning: Date, then choice: SkipChoice, settings phoneSettings: BridgeSettings) async throws -> WakePlan? {
+    /// - Parameter sleepIn: with no replacement time, whether Sleep In goes on (v0.4.10 item 10:
+    ///   No alarms asks).
+    func skipMorning(_ plan: WakePlan?, morning: Date, then choice: SkipChoice, sleepIn: Bool = true,
+                     settings phoneSettings: BridgeSettings) async throws -> WakePlan? {
         let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
         skippedMorning = morning
         skipReplacement = nil
-        var skipped: [String: Any] = ["morning": Self.iso(morning), "sleep_in": choice == .sleepIn]
+        var skipped: [String: Any] = ["morning": Self.iso(morning), "sleep_in": choice == .sleepIn && sleepIn]
         if plan?.source == .shift, let shift = plan?.shift {
+            skipped["shift"] = shift.cause
+            skipped["shift_start"] = Self.iso(shift.start)
+        } else if let shift = shiftOnCalendar(morning: morning, settings: settings) {
+            // Nothing planned yet, but the shift is on the calendar: its failsafe goes off too.
             skipped["shift"] = shift.cause
             skipped["shift_start"] = Self.iso(shift.start)
         }
@@ -385,6 +392,12 @@ final class BedtimeCoordinator {
         return time <= now ? .snoozing(until: NextAlarmSnapshot.load().snoozedUntil) : .set
     }
 
+    /// v0.4.10 item 8: disarm when it rings, or keep the house armed, changed after it's set.
+    /// Home Assistant gets the choice when the alarm is stopped.
+    func setTemporaryHouseAlarm(_ id: UUID, disarm: Bool) {
+        temporaryAlarms = temporaryAlarms.map { $0.id == id ? TemporaryAlarm(id: $0.id, time: $0.time, disarmHouse: disarm) : $0 }
+    }
+
     func cancelTemporaryAlarm(_ id: UUID) {
         alarms.cancel(id)
         temporaryAlarms = temporaryAlarms.filter { $0.id != id }
@@ -688,24 +701,12 @@ final class BedtimeCoordinator {
         return nil
     }
 
-    /// Clears that morning's regular alarms (temporary and nap alarms stay); Home Assistant gets
-    /// `cancelled` with Sleep In, and its ladder follows the calendar.
+    /// "No alarms Sunday" (v0.4.10 item 10, Skip merged in): that morning's alarms go and stay
+    /// off (bedtime planning won't set them again, a shift's failsafe is off), with Undo on the
+    /// skipped-morning card. Sleep In as asked. Temporary and nap alarms stay.
     func noAlarmsTomorrow(morning: Date, sleepIn: Bool, settings phoneSettings: BridgeSettings) async throws {
-        let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
-        let before = undoBaseline(kind: .noAlarms)
-        try alarms.cancelAll(keeping: keptAlarms)
-        leaveReminder.clear()
-        lastAppliedPlan = nil
-        alarmSeries = []
-        morningChangeReason = nil
-        plannedBeforeSleepLater = nil
-        storedPattern = nil
+        _ = try await skipMorning(lastAppliedPlan, morning: morning, then: .sleepIn, sleepIn: sleepIn, settings: phoneSettings)
         calendarChangedSinceSet = false
-        clearedMorning = morning
-        updateWidget { $0 = NextAlarmSnapshot(alarmStyle: settings.alarmStyle.rawValue, temporaryAlarms: temporaryAlarms.map(\.time)) }
-        lastCause = AlarmCause.none
-        await report(.cancelled, data: ["sleep_in": sleepIn, "morning": Self.iso(morning)], settings: settings)
-        saveUndo(before, left: [])
     }
 
     private static let undoKey = "undoRecord.v1"
