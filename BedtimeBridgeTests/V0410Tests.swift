@@ -209,4 +209,34 @@ final class V0410Tests: XCTestCase {
     func testItem10OneNoAlarmsNamedByItsDay() {
         XCTAssertEqual(BarAction.noAlarmsTomorrow.title(day: "Sunday"), "No alarms Sunday")
     }
+
+    // MARK: Item 11, Your morning for every alarm
+
+    func testItem11OwnAlarmsGiveOneStepPerAlarmWithTemporaryAndBackstops() {
+        let temporary = TemporaryAlarm(id: UUID(), time: at(6, 30), disarmHouse: false)
+        let tomorrowsTemporary = TemporaryAlarm(id: UUID(), time: at(6, 30, day: 2), disarmHouse: true)
+        let steps = AlarmTimeline.steps(alarms: [at(8, 20), at(8, 0), at(8, 10)], wake: at(8, 0),
+                                        temporary: [temporary, tomorrowsTemporary],
+                                        rungs: [BackstopInfo.Rung(name: "Early", time: at(8, 25))])
+        XCTAssertEqual(steps.map(\.kind), [.temporary, .wake, .alarm, .alarm, .backstop])
+        XCTAssertEqual(steps.map(\.title), ["Temporary alarm", "Wake up", "Alarm 2 of 3", "Alarm 3 of 3", "Early"])
+        XCTAssertEqual(steps.first?.detail, "House stays armed")
+    }
+
+    func testItem11NoBackstopsSaysWhyAtTheBottom() {
+        // Shown under the steps: "No backstops Sunday · armed for Monday 6:30".
+        let line = BackstopInfo.otherMorning(shown: at(8, 0), ladder: at(6, 30, day: 2), armed: true, calendar: newYork)
+        XCTAssertTrue(line.hasPrefix("No backstops Sunday · armed for Monday"), line)
+    }
+
+    // MARK: Item 12, the weather pill
+
+    func testItem12ThePillShowsTheForecastAtTheFirstAlarm() {
+        let rain = MorningForecast(moment: .wakeUp, at: at(8, 0), condition: "rainy", temperature: 41, unit: "°F")
+        XCTAssertEqual(rain.pillText(locale: Locale(identifier: "en_US")), "41° · Rain")
+        XCTAssertEqual(MorningForecast.symbol("rainy"), "cloud.rain.fill")
+        XCTAssertEqual(AlarmReasonText.wakeWeather(rain, firstAlarm: at(8, 0)), rain)
+        XCTAssertNil(AlarmReasonText.wakeWeather(rain, firstAlarm: at(8, 30)), "another morning's forecast")
+        XCTAssertNil(AlarmReasonText.wakeWeather(nil, firstAlarm: at(8, 0)), "no forecast, nothing shows")
+    }
 }

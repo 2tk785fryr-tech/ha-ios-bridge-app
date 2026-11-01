@@ -60,6 +60,31 @@ struct MorningForecast: Codable, Equatable {
         }
     }
 
+    /// v0.4.10 item 12: the condition's SF Symbol, for the top card's pill.
+    static func symbol(_ condition: String) -> String {
+        switch condition {
+        case "sunny": "sun.max.fill"
+        case "clear-night": "moon.stars.fill"
+        case "partlycloudy": "cloud.sun.fill"
+        case "fog": "cloud.fog.fill"
+        case "rainy": "cloud.rain.fill"
+        case "pouring": "cloud.heavyrain.fill"
+        case "lightning": "cloud.bolt.fill"
+        case "lightning-rainy": "cloud.bolt.rain.fill"
+        case "snowy": "cloud.snow.fill"
+        case "snowy-rainy": "cloud.sleet.fill"
+        case "hail": "cloud.hail.fill"
+        case "windy", "windy-variant": "wind"
+        case "exceptional": "exclamationmark.triangle.fill"
+        default: "cloud.fill"
+        }
+    }
+
+    /// "41° · Rain", for the pill.
+    func pillText(locale: Locale = .current) -> String {
+        [temperatureText(locale: locale), Self.conditionName(condition)].compactMap { $0 }.joined(separator: " · ")
+    }
+
     /// The temperature in the phone's unit (°F in the US, else °C), rounded: "38°".
     func temperatureText(locale: Locale = .current) -> String? {
         guard let temperature else { return nil }

@@ -115,7 +115,8 @@ struct ContentView: View {
                     if let plan, previewRequested || !(morningRingsShowing && !sameMorning(plan)) {
                         PlanCard(plan: plan, bubbles: isSet(plan) || sameMorning(plan) ? morningBubbles : AlarmBubble.preview(plan.alarmTimes, wake: plan.wakeTime),
                                  header: isSet(plan) || sameMorning(plan) ? morningHeader : AlarmStatus(kind: .notSet, text: "Preview · not set"),
-                                 alreadySet: plan.hasAlarm || store.settings.alarmStyle != .app ? [] : scheduled.filter { $0 > .now })
+                                 alreadySet: plan.hasAlarm || store.settings.alarmStyle != .app ? [] : scheduled.filter { $0 > .now },
+                                 wakeWeather: isSet(plan) ? (plan.wakeForecast ?? coordinator.lastAppliedPlan?.wakeForecast) : nil)
                         if let weather = plan.weather {
                             WarningBanner(text: "+\(weather.minutes) min for \(weather.reason)", systemImage: "cloud.rain")
                         }
@@ -129,6 +130,11 @@ struct ContentView: View {
                         }
                         if plan.source == .shift, let shift = plan.shift, let commute = plan.commute, let wake = plan.wakeTime {
                             MorningTimeline(shift: shift, commute: commute, weather: plan.weather, wake: wake, bufferMinutes: settings.workArrivalBufferMinutes, getReadyGoal: settings.getReadyMinutes).with(backstopInfo(leaveBy: plan.leaveBy(settings: settings), firstDayBack: plan.firstDayBack ?? false, replacedShift: plan.replacedShift, morning: plan.alarmTimes.min())).with(bedtime: bedtimeTimes(plan))
+                        } else if plan.hasAlarm, !(plan.source == .appointment && plan.appointment != nil && plan.wakeTime != nil) {
+                            // v0.4.10 item 11: the timeline for every alarm, not only with a drive.
+                            AlarmsTimeline(alarms: isSet(plan) || sameMorning(plan) ? morningBubbles.map(\.time) : plan.alarmTimes, wake: plan.wakeTime,
+                                           temporary: temporaryAlarms,
+                                           backstops: backstopInfo(leaveBy: plan.leaveBy(settings: settings), firstDayBack: plan.firstDayBack ?? false, replacedShift: plan.replacedShift, morning: plan.alarmTimes.min()))
                         }
                         ForEach(plan.missingLocations, id: \.eventID) { appointment in
                             MissingLocationCard(appointment: appointment) { location in
@@ -141,10 +147,11 @@ struct ContentView: View {
                     } else if !scheduled.isEmpty || morningRingsShowing {
                         // Set earlier (the bedtime shortcut, or before the app was closed), or
                         // this morning's, until the morning is over (v0.4.2 item 5).
-                        SetAlarmsCard(bubbles: morningBubbles, snapshot: NextAlarmSnapshot.load(), status: morningHeader)
-                        if let info = backstopInfo(leaveBy: NextAlarmSnapshot.load().leaveBy, firstDayBack: false, morning: morningBubbles.first?.time) {
-                            BackstopsCard(info: info)
-                        }
+                        SetAlarmsCard(bubbles: morningBubbles, snapshot: NextAlarmSnapshot.load(), status: morningHeader,
+                                      wakeWeather: AlarmReasonText.wakeWeather(coordinator.lastAppliedPlan?.wakeForecast, firstAlarm: morningBubbles.first?.time))
+                        // v0.4.10 item 11: Your morning's timeline in place of the Backstops card.
+                        AlarmsTimeline(alarms: morningBubbles.map(\.time), wake: NextAlarmSnapshot.load().wakeTime, temporary: temporaryAlarms,
+                                       backstops: backstopInfo(leaveBy: NextAlarmSnapshot.load().leaveBy, firstDayBack: false, morning: morningBubbles.first?.time))
                     } else {
                         EmptyPlanCard()
                     }
@@ -1028,8 +1035,8 @@ private struct PlanPreviewSheet: View {
                         MorningTimeline(appointment: appointment, weather: plan.weather, wake: wake, bufferMinutes: settings.arrivalBufferMinutes).with(backstops(plan)).with(bedtime: bedtime)
                     } else if plan.source == .shift, let shift = plan.shift, let commute = plan.commute, let wake = plan.wakeTime {
                         MorningTimeline(shift: shift, commute: commute, weather: plan.weather, wake: wake, bufferMinutes: settings.workArrivalBufferMinutes, getReadyGoal: settings.getReadyMinutes).with(backstops(plan)).with(bedtime: bedtime)
-                    } else if plan.hasAlarm, let info = backstops(plan) {
-                        BackstopsCard(info: info)
+                    } else if plan.hasAlarm {
+                        AlarmsTimeline(alarms: plan.alarmTimes, wake: plan.wakeTime, temporary: [], backstops: backstops(plan))
                     }
                     ForEach(plan.warnings, id: \.self) { warning in
                         Label(warning, systemImage: "info.circle")
@@ -1078,6 +1085,8 @@ private struct PlanCard: View {
     let header: AlarmStatus
     /// A preview with nothing on: the alarms already set (v0.4.10 item 7).
     var alreadySet: [Date] = []
+    /// Once set: the weather at the first alarm (v0.4.10 item 12).
+    var wakeWeather: MorningForecast? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -1101,9 +1110,7 @@ private struct PlanCard: View {
                     .foregroundStyle(Theme.accentText)
             }
 
-            Text(plan.reason)
-                .font(.subheadline)
-                .foregroundStyle(Theme.textSoft)
+            ReasonWithWeather(reason: plan.reason, weather: wakeWeather)
 
             if let already = AlarmReasonText.alreadySet(alreadySet) {
                 (Text(already.lead) + Text(already.times).bold().foregroundColor(Theme.text) + Text(already.tail))
@@ -1210,32 +1217,14 @@ private struct BackstopStatusLine: View {
     }
 }
 
-/// The backstops on their own, when the alarms are set and no plan is on screen.
-private struct BackstopsCard: View {
-    let info: BackstopInfo
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Backstops")
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(Theme.textMuted)
-            BackstopStatusLine(info: info)
-            ForEach(info.rungs, id: \.name) { rung in
-                TimelineStep(title: rung.name, value: WakePlanner.format(rung.time), detail: info.estimate ? "estimate" : nil,
-                             dot: .shield(Theme.textMuted), isLast: rung == info.rungs.last, small: true)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .nightfallCard()
-    }
-}
-
 /// Alarms already set (by the bedtime shortcut, or before the app was last closed), shown
 /// the same way as a plan.
 private struct SetAlarmsCard: View {
     let bubbles: [AlarmBubble]
     let snapshot: NextAlarmSnapshot
     let status: AlarmStatus
+    /// The weather at the first alarm (v0.4.10 item 12).
+    var wakeWeather: MorningForecast? = nil
 
     private var wake: Date? { bubbles.first(where: \.isWake)?.time ?? bubbles.last?.time }
 
@@ -1255,9 +1244,9 @@ private struct SetAlarmsCard: View {
             }
             if let wake { BigTime(date: wake) }
             if let reason = snapshot.reason, !reason.isEmpty {
-                Text(reason)
-                    .font(.subheadline)
-                    .foregroundStyle(Theme.textSoft)
+                ReasonWithWeather(reason: reason, weather: wakeWeather)
+            } else if wakeWeather != nil {
+                ReasonWithWeather(reason: "", weather: wakeWeather)
             }
             if let leaveBy = snapshot.leaveBy, leaveBy > .now {
                 Label("Leave by \(WakePlanner.format(leaveBy))", systemImage: "car")
@@ -1269,6 +1258,39 @@ private struct SetAlarmsCard: View {
             }
         }
         .nightfallCard(radius: 28, padding: 24)
+    }
+}
+
+/// The reason under the big time, and to its right the weather at wake-up as a pill: the
+/// condition's symbol, the temperature and its name, "Weather at wake-up" under it (v0.4.10
+/// item 12, Michael's choice B).
+private struct ReasonWithWeather: View {
+    let reason: String
+    let weather: MorningForecast?
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 10) {
+            Text(reason)
+                .font(.subheadline)
+                .foregroundStyle(Theme.textSoft)
+            Spacer(minLength: 8)
+            if let weather {
+                VStack(alignment: .trailing, spacing: 3) {
+                    Label(weather.pillText(), systemImage: MorningForecast.symbol(weather.condition))
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(Theme.text)
+                        .symbolRenderingMode(.multicolor)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Theme.surface, in: Capsule())
+                        .overlay(Capsule().stroke(Theme.border, lineWidth: 1))
+                    Text("Weather at wake-up")
+                        .font(.caption2)
+                        .foregroundStyle(Theme.textMuted)
+                }
+                .accessibilityElement(children: .combine)
+            }
+        }
     }
 }
 
@@ -1412,6 +1434,44 @@ private struct MorningTimeline: View {
         guard estimates.count > 1 else { return line }
         let parts = estimates.map { "\($0.service.displayName) \(Int(($0.seconds / 60).rounded()))" }
         return line + "\n" + parts.joined(separator: " · ") + " min"
+    }
+}
+
+/// v0.4.10 item 11: Your morning for alarms with no drive: each alarm (temporary ones too) and
+/// the backstops, or at the bottom why there are none ("No backstops Sunday · armed for Monday
+/// 6:30"). It replaces the Backstops card.
+private struct AlarmsTimeline: View {
+    let alarms: [Date]
+    let wake: Date?
+    let temporary: [TemporaryAlarm]
+    let backstops: BackstopInfo?
+
+    var body: some View {
+        let steps = AlarmTimeline.steps(alarms: alarms, wake: wake, temporary: temporary, rungs: backstops?.rungs ?? [])
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Your morning")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(Theme.textMuted)
+                .padding(.bottom, 12)
+            ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
+                let last = index == steps.count - 1
+                switch step.kind {
+                case .wake:
+                    TimelineStep(title: step.title, value: WakePlanner.format(step.time), dot: .filled(Theme.accent), bold: true, isLast: last)
+                case .alarm:
+                    TimelineStep(title: step.title, value: WakePlanner.format(step.time), dot: .ring(Theme.accent), isLast: last)
+                case .temporary:
+                    TimelineStep(title: step.title, value: WakePlanner.format(step.time), detail: step.detail, dot: .ring(Theme.amber), isLast: last)
+                case .backstop:
+                    TimelineStep(title: step.title, value: WakePlanner.format(step.time),
+                                 detail: backstops?.estimate == true ? "estimate" : nil, dot: .shield(Theme.textMuted), isLast: last, small: true)
+                }
+            }
+            if let backstops {
+                BackstopStatusLine(info: backstops).padding(.top, 12)
+            }
+        }
+        .nightfallCard(padding: 20)
     }
 }
 

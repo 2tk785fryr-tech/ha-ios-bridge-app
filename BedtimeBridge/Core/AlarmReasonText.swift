@@ -38,6 +38,12 @@ extension AlarmReasonText {
     /// v0.4.10 item 7: under a preview that found nothing, the alarms you already set, as
     /// ("You already have alarms set at ", "8:00, 8:10, 8:20", ". You can still change or cancel
     /// them."), so the times can be bold. nil with none set.
+    /// v0.4.10 item 12: the pill's forecast, only when it's for these alarms' first one.
+    static func wakeWeather(_ forecast: MorningForecast?, firstAlarm: Date?) -> MorningForecast? {
+        guard let forecast, let firstAlarm, abs(forecast.at.timeIntervalSince(firstAlarm)) < 60 else { return nil }
+        return forecast
+    }
+
     static func alreadySet(_ times: [Date]) -> (lead: String, times: String, tail: String)? {
         guard !times.isEmpty else { return nil }
         let one = times.count == 1

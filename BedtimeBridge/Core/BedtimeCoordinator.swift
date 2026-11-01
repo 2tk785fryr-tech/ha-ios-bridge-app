@@ -578,6 +578,9 @@ final class BedtimeCoordinator {
             let (moment, at) = MorningForecast.moment(leaveBy: plan.leaveBy(settings: settings), wakeUp: plan.wakeTime ?? plan.firstAlarm,
                                                       goodMorningFrom: settings.noAlarmEarliest, now: now)
             plan.forecast = MorningForecast.pick(hours: forecastHours.hours, at: at, moment: moment, unit: forecastHours.unit)
+            if let first = plan.firstAlarm {
+                plan.wakeForecast = MorningForecast.pick(hours: forecastHours.hours, at: first, moment: .wakeUp, unit: forecastHours.unit)
+            }
         }
         plan.warnings = extraWarnings + plan.warnings
         return (plan, settings)
@@ -613,6 +616,7 @@ final class BedtimeCoordinator {
         }
         clearedMorning = nil
         plan.forecast = await ownAlarmForecast(firstAlarm: plan.firstAlarm, settings: settings)
+        plan.wakeForecast = plan.forecast
         try await apply(plan, settings: settings)
         saveUndo(undoBefore, left: setAlarmTimes())
         return plan
