@@ -42,6 +42,12 @@ struct StopDescription: Equatable {
         upcoming.filter { $0.rings <= snoozeAt }.min { $0.rings < $1.rings }
     }
 
+    /// v0.4.11 item 6: the alarms left after a stop, for Home Assistant: this wake-up's still to
+    /// ring or snoozing (at their ring-again), and a later wake-up's already set.
+    static func left(wakeUp: [Date], later: [Date], now: Date = .now) -> [Date] {
+        Array(Set(wakeUp + later)).filter { $0 > now }.sorted()
+    }
+
     /// "1st", "2nd", "3rd", "4th".
     static func ordinal(_ n: Int) -> String {
         let suffix = (11...13).contains(n % 100) ? "th" : [1: "st", 2: "nd", 3: "rd"][n % 10] ?? "th"

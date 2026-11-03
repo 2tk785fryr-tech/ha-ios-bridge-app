@@ -158,6 +158,8 @@ PLAN_FIELDS = (
     "weather_extra_minutes",
     "warnings",
     "alarm_style",
+    # v0.4.11 item 5: a remote work day, with no trip.
+    "remote",
 )
 
 
@@ -175,6 +177,7 @@ def empty_state() -> dict[str, Any]:
         "weather_extra_minutes": 0,
         "warnings": [],
         "alarm_style": None,
+        "remote": False,
         "snoozed_until": None,
         "snooze_count": 0,
         # The wake routine (stop helper, Good Morning) already ran for this series (item 9).
@@ -420,7 +423,9 @@ class BedtimeBridge:
             # (v0.4.2 item 1, in _morning_changed).
             self.state["leave_reminders"] = []
             self._cancel_leave_checks()
-        if kind == MSG_STOPPED:
+        if kind == MSG_STOPPED and data.get("last", not self.state.get("alarm_times")):
+            # The morning Live Activity after the last alarm of the wake-up (v0.4.11 item 6); the
+            # phone says when it was the last, as tomorrow's alarms may already be set.
             self._schedule_morning_updates()
             if self.live.configured and self.state.get("morning_updates_until") and self.is_home():
                 await self.live.morning()
@@ -517,7 +522,7 @@ class BedtimeBridge:
 
     @callback
     def _schedule_morning_updates(self) -> None:
-        """After the first stop on a leave-by morning: RUN_MORNING_UPDATE every hour until 15 min
+        """After the last alarm's stop on a leave-by morning: RUN_MORNING_UPDATE every hour until 15 min
         after leave-by, while home."""
         until = _time(self.state.get("morning_updates_until"))
         if self._morning_unsubs and until is not None and until > dt_util.utcnow():
@@ -1302,7 +1307,8 @@ class BedtimeBridge:
         # all: the slide-and-hold that ends every alarm left in this wake-up (item 2).
         stop_all = bool(data.get("all"))
         remaining = [] if stop_all else data.get("alarm_times") or []
-        self.state["snoozed_until"] = None
+        # Another alarm still snoozing (v0.4.11 item 6): it's left, and its ring-again stays.
+        self.state["snoozed_until"] = (data.get("snoozed_until") or None) if remaining else None
         self.state["alarm_times"] = remaining
         self.state["alarm_time"] = remaining[0] if remaining else None
         if not remaining:
@@ -1524,7 +1530,8 @@ class BedtimeBridge:
         minutes after leave-by. The phone re-checks the drive, notifies and reports leave_by."""
         self._cancel_leave_checks()
         leave_by = _time(self.state.get("leave_by"))
-        if leave_by is None:
+        if leave_by is None or self.state.get("remote"):
+            # No trip on a remote day (v0.4.11 item 5): nothing to check.
             return
         now = dt_util.utcnow()
         if now > leave_by + timedelta(minutes=LEAVE_CHECK_TAIL_MINUTES):

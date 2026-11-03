@@ -65,13 +65,20 @@ enum MorningActivity {
         backstops.filter { $0.value > now }.min { $0.value < $1.value }.map { ($0.key.capitalized, $0.value) }
     }
 
+    /// v0.4.11 item 6: it shows once the wake-up is under way (the first alarm's time passed, or
+    /// one was stopped) and no alarm of it is still set or snoozing: after the last, not the
+    /// first of several.
+    static func shows(firstDone: Bool, stopped: Bool, wakeUpAlarmsLeft: Bool) -> Bool {
+        (firstDone || stopped) && !wakeUpAlarmsLeft
+    }
+
     /// It ends 15 min after leave-by.
     static func endsAt(leaveBy: Date) -> Date { leaveBy.addingTimeInterval(15 * 60) }
 }
 
 extension BedtimeCoordinator {
-    /// Shows or refreshes the morning Live Activity after the alarms (or once the first is
-    /// stopped) on a morning with a leave-by, and ends it 15 min after leave-by, once you've
+    /// Shows or refreshes the morning Live Activity after the last alarm on a morning with a
+    /// leave-by (v0.4.11 item 6), and ends it 15 min after leave-by, once you've
     /// left home, or when the morning changed to no alarms. Runs whenever the app does
     /// (RUN_MORNING_UPDATE, leave checks, opening it).
     func updateMorningActivity(settings phoneSettings: BridgeSettings) async {
@@ -80,7 +87,8 @@ extension BedtimeCoordinator {
         let now = Date.now
         let firstDone = snapshot.alarmTimes.min().map { $0 <= now } ?? false
         guard let trip = leaveReminder.pendingTrip, let leaveBy = snapshot.leaveBy ?? Optional(trip.leaveBy),
-              now < MorningActivity.endsAt(leaveBy: leaveBy), firstDone || stoppedThisWakeUp else {
+              now < MorningActivity.endsAt(leaveBy: leaveBy),
+              MorningActivity.shows(firstDone: firstDone, stopped: stoppedThisWakeUp, wakeUpAlarmsLeft: wakeUpAlarmsLeft(now: now)) else {
             await BedtimeActivities.end(.morning)
             return
         }

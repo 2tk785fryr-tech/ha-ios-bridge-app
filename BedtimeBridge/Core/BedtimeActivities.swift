@@ -64,8 +64,34 @@ enum BedtimeActivities {
             }
         }
         Task {
+            // Extras left from before (v0.4.11 item 6): one of each kind stays.
+            var keep: [BedtimeActivityAttributes.Kind: String] = [:]
+            for activity in Activity<BedtimeActivityAttributes>.activities { keep[activity.content.state.kind] = activity.id }
+            await endExtras(keeping: Set(keep.values))
             for activity in Activity<BedtimeActivityAttributes>.activities { watch(activity) }
-            for await activity in Activity<BedtimeActivityAttributes>.activityUpdates { watch(activity) }
+            for await activity in Activity<BedtimeActivityAttributes>.activityUpdates {
+                // v0.4.11 item 6: one of each kind. The app and Home Assistant's push-to-start can
+                // both start the morning's at once; the newest stays and the others end.
+                let others = Activity<BedtimeActivityAttributes>.activities.map { (id: $0.id, kind: $0.content.state.kind) }
+                await endExtras(ids: duplicates(others, newest: (activity.id, activity.content.state.kind)))
+                watch(activity)
+            }
+        }
+    }
+
+    /// The activities of the newest one's kind other than it.
+    static func duplicates(_ running: [(id: String, kind: BedtimeActivityAttributes.Kind)],
+                           newest: (id: String, kind: BedtimeActivityAttributes.Kind)) -> [String] {
+        running.filter { $0.kind == newest.kind && $0.id != newest.id }.map(\.id)
+    }
+
+    private static func endExtras(keeping: Set<String>) async {
+        await endExtras(ids: Activity<BedtimeActivityAttributes>.activities.map(\.id).filter { !keeping.contains($0) })
+    }
+
+    private static func endExtras(ids: [String]) async {
+        for activity in Activity<BedtimeActivityAttributes>.activities where ids.contains(activity.id) {
+            await activity.end(nil, dismissalPolicy: .immediate)
         }
     }
 
