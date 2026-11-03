@@ -193,6 +193,13 @@ Drive times from**, and:
 - [ ] **HACS → Bedtime Bridge → Update** to 0.4.10, restart Home Assistant, open the app once.
       Nothing to set up; what changed is in `docs/ha-handoffs-v0.4.10.md`.
 
+### 16. *(0.4.11)* Update the integration, and remote days if you work from home
+- [ ] **HACS → Bedtime Bridge → Update** to 0.4.11, restart Home Assistant, open the app once.
+      What changed is in `docs/ha-handoffs-v0.4.11.md`.
+- [ ] If you work from home some days: **Settings → Remote days** in the app. Pick how a remote
+      shift is recognised (location Home, Remote or your address; no location; a word such as
+      WFH in the title) and the get-ready time for those mornings.
+
 ---
 
 ## Part 5: Check it worked

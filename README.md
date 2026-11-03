@@ -419,6 +419,16 @@ Home Assistant side is in `docs/ha-handoffs-v*.md`.
 - **Your morning** shows for every alarm: each alarm, temporary ones too, the backstops, or why
   there are none ("No backstops Sunday · armed for Monday 6:30"). Once set, the top card has the
   **weather at wake-up** as a pill ("41° · Rain").
+- **Your morning stays (0.4.11):** once the alarms are set, or after an evening preview (yours or
+  Home Assistant's plan check), the full timeline stays after the app is closed, with *As of 10:42
+  PM · tap Preview to update* at the bottom and no new drive or weather requests. Through the
+  morning it keeps the backstops, Leave by and the event: stopped alarms greyed (*Stopped 4:21*),
+  past steps dimmed, the next one marked *Next*. With a drive it also shows **Leave by · worst
+  case** in deep blue, the latest you can leave on a bad-traffic day (Settings → Drive time: get
+  there when it starts, or early like Leave by).
+- **Remote days (0.4.11):** a shift worked from home (Settings → Remote days) wakes you by its own
+  get-ready time, shows *Be ready* instead of a drive, and has no leave reminders; the backstops
+  stay. During wind-down, *Set alarms* asks whether to start bedtime too.
 - **Wake at a different time** (day off, skip) shows a preview where you can add alarms and edit
   the backstops.
 - **Add a wake-up event** (the round button at the top) and **Add <vacation>**, straight into your
