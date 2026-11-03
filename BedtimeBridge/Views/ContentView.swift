@@ -244,6 +244,8 @@ struct ContentView: View {
             .task {
                 for await _ in AlarmManager.shared.alarmUpdates { refreshScheduled() }
             }
+            // v0.4.11 item 9: Home Assistant moved wind-down.
+            .onReceive(NotificationCenter.default.publisher(for: WindDownState.changedNotification)) { _ in refreshScheduled() }
             // Redraw at each minute while open, so the bar changes on time (v0.4.6 item 3).
             .task(id: scenePhase) {
                 guard scenePhase == .active else { return }

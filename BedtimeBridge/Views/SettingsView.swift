@@ -35,27 +35,11 @@ struct SettingsView: View {
                 Text("A calendar event whose title contains the word counts as a shift. Each shift has its own timing and alarm series.")
             }
 
-            // v0.4.11 item 5: remote and hybrid work.
+            // v0.4.11 items 5 and 11: remote and hybrid work, on a page of its own.
             Section {
-                DefaultToggle(title: "Location is Home, Remote or my address", isOn: $store.settings.remoteByLocation,
-                              defaultValue: BridgeSettings().remoteByLocation)
-                DefaultToggle(title: "No location means remote", isOn: $store.settings.remoteWhenNoLocation,
-                              defaultValue: BridgeSettings().remoteWhenNoLocation)
-                DefaultToggle(title: "Title has a remote word", isOn: $store.settings.remoteByKeyword,
-                              defaultValue: BridgeSettings().remoteByKeyword)
-                if store.settings.remoteByKeyword {
-                    TextField("Remote words", text: Binding(
-                        get: { store.settings.remoteKeywords.joined(separator: ", ") },
-                        set: { store.settings.remoteKeywords = $0.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty } }
-                    ))
-                    .textInputAutocapitalization(.never)
+                SettingsLink(title: "Remote days", icon: "house.and.flag", value: RemoteDaysText.summary(settings)) {
+                    RemoteDaysSettings(settings: $store.settings)
                 }
-                DefaultStepper(value: $store.settings.remoteGetReadyMinutes, in: 0...180, step: 5,
-                               defaultValue: BridgeSettings().remoteGetReadyMinutes, note: { "\($0) min" }) { "Get ready on a remote day: \($0) min" }
-            } header: {
-                Text("Remote days")
-            } footer: {
-                Text("A shift worked from home wakes you this long before it starts and plans no drive, Leave by or leave reminders; the backstops still go. Fixed-time shifts keep their time. The shift's own word still has to match, so \"Days WFH\" is a Days shift from home.")
             }
 
             Section {
@@ -179,6 +163,63 @@ struct SettingsView: View {
 }
 
 /// Settings → Mornings: get-ready time, arriving early and waking early enough.
+/// v0.4.11 items 5, 10 and 11: how a remote shift is recognised, its get-ready time and its
+/// backstops.
+private struct RemoteDaysSettings: View {
+    @Binding var settings: BridgeSettings
+
+    var body: some View {
+        SettingsPage(title: "Remote days") {
+            Section {
+                DefaultToggle(title: "Location is Home, Remote or my address", isOn: $settings.remoteByLocation,
+                              defaultValue: BridgeSettings().remoteByLocation)
+                DefaultToggle(title: "No location means remote", isOn: $settings.remoteWhenNoLocation,
+                              defaultValue: BridgeSettings().remoteWhenNoLocation)
+                DefaultToggle(title: "Title has a remote word", isOn: $settings.remoteByKeyword,
+                              defaultValue: BridgeSettings().remoteByKeyword)
+                if settings.remoteByKeyword {
+                    TextField("Remote words", text: Binding(
+                        get: { settings.remoteKeywords.joined(separator: ", ") },
+                        set: { settings.remoteKeywords = $0.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty } }
+                    ))
+                    .textInputAutocapitalization(.never)
+                }
+            } header: {
+                Text("A remote day")
+            } footer: {
+                Text("The shift's own word still has to match, so \"Days WFH\" is a Days shift worked from home. Office days keep their drive.")
+            }
+            Section {
+                DefaultStepper(value: $settings.remoteGetReadyMinutes, in: 0...180, step: 5,
+                               defaultValue: BridgeSettings().remoteGetReadyMinutes, note: { "\($0) min" }) { "Get ready: \($0) min" }
+            } header: {
+                Text("Mornings")
+            } footer: {
+                Text("A remote day wakes you this long before the shift starts and plans no drive, Leave by or leave reminders. Fixed-time shifts keep their time.")
+            }
+            Section {
+                Picker(selection: $settings.remoteBackstops) {
+                    ForEach(RemoteBackstops.Mode.allCases) { Text($0.displayName).tag($0) }
+                } label: {
+                    WithDefault(text: "Backstops", defaultText: settings.remoteBackstops == BridgeSettings().remoteBackstops ? nil : BridgeSettings().remoteBackstops.displayName.lowercased())
+                }
+                if settings.remoteBackstops == .afterLastAlarm {
+                    DefaultStepper(value: $settings.remoteEarlyMinutes, in: 1...120, defaultValue: BridgeSettings().remoteEarlyMinutes, note: { "\($0) min" }) { "Early: \($0) min after" }
+                    DefaultStepper(value: $settings.remoteDeadlineMinutes, in: 1...120, defaultValue: BridgeSettings().remoteDeadlineMinutes, note: { "\($0) min" }) { "Deadline: \($0) min after" }
+                    DefaultStepper(value: $settings.remoteLateMinutes, in: 1...120, defaultValue: BridgeSettings().remoteLateMinutes, note: { "\($0) min" }) { "Late: \($0) min after" }
+                }
+            } header: {
+                Text("Backstops")
+            } footer: {
+                Text("After the last alarm and before the shift starts. Spread: at a quarter, half and three quarters of the time between them (last alarm 6:00, start 6:30: 6:07, 6:15, 6:22). Never past the start.")
+            }
+            ResetPageSection(detail: "Only this page's settings go back to their defaults.") {
+                settings.resetToDefaults(SettingsPages.remoteDays)
+            }
+        }
+    }
+}
+
 private struct MorningsSettings: View {
     @Binding var settings: BridgeSettings
 

@@ -389,4 +389,64 @@ final class V0411Tests: XCTestCase {
         XCTAssertEqual(text.body, "Days at \(WakePlanner.format(at(6, 30))). Next check \(WakePlanner.format(at(5, 49))).")
         XCTAssertEqual(LeaveReminder.checkNowID, "leave-check-now", "one notification, replaced on each check")
     }
+
+    // MARK: Item 10, remote days' backstops
+
+    func testItem10SpreadBetweenTheLastAlarmAndTheStart() {
+        let times = RemoteBackstops.times(lastAlarm: at(6, 0), start: at(6, 30), mode: .spread, minutes: (10, 20, 30))
+        XCTAssertEqual(times, ["early": at(6, 7), "deadline": at(6, 15), "late": at(6, 22)])
+    }
+
+    func testItem10MinutesAfterTheLastAlarmNeverPastTheStart() {
+        let times = RemoteBackstops.times(lastAlarm: at(6, 0), start: at(6, 25), mode: .afterLastAlarm, minutes: (10, 20, 30))
+        XCTAssertEqual(times, ["early": at(6, 10), "deadline": at(6, 20), "late": at(6, 25)])
+    }
+
+    func testItem10NoGapNoBackstops() {
+        XCTAssertEqual(RemoteBackstops.times(lastAlarm: at(8, 0), start: at(8, 0), mode: .spread, minutes: (10, 20, 30)), [:])
+    }
+
+    func testItem10TheRemotePlanSendsItsTimesToHomeAssistant() {
+        var shift = ShiftCandidate(title: "Days WFH", start: at(6, 30), wakeMinutesBefore: 30, cause: "Days")
+        shift.remote = true
+        let plan = WakePlan(source: .shift, wakeTime: at(6, 0), alarmTimes: [at(5, 50), at(5, 55), at(6, 0)], reason: "Days shift", shift: shift)
+        let ladder = plan.homeAssistantPayload(settings: BridgeSettings())["ladder"] as? [String: Any]
+        let times = ladder?["remote_times"] as? [String: String]
+        XCTAssertEqual(times?.keys.sorted(), ["deadline", "early", "late"])
+        XCTAssertEqual(times?["deadline"].flatMap { ISO8601DateFormatter().date(from: $0) }, at(6, 15))
+    }
+
+    // MARK: Item 11, the Remote days page
+
+    func testItem11ThePageResetsTogether() {
+        var settings = BridgeSettings()
+        settings.remoteGetReadyMinutes = 45
+        settings.remoteBackstops = .afterLastAlarm
+        settings.remoteKeywords = ["Home office"]
+        settings.getReadyMinutes = 50
+        settings.resetToDefaults(SettingsPages.remoteDays)
+        XCTAssertEqual(settings.remoteGetReadyMinutes, 30)
+        XCTAssertEqual(settings.remoteBackstops, .spread)
+        XCTAssertEqual(settings.remoteKeywords, ["WFH", "Remote"])
+        XCTAssertEqual(settings.getReadyMinutes, 50, "other pages keep theirs")
+        XCTAssertFalse(SettingsPages.main.contains("remoteGetReadyMinutes"), "off the main page")
+    }
+
+    func testItem11TheRowsSummary() {
+        var settings = BridgeSettings()
+        XCTAssertEqual(RemoteDaysText.summary(settings), "Home, WFH, Remote · 30 min")
+        settings.remoteByLocation = false
+        settings.remoteByKeyword = false
+        XCTAssertEqual(RemoteDaysText.summary(settings), "Off")
+    }
+
+    // MARK: Item 9, the app follows a wind-down move
+
+    func testItem9TheAppReadsTheNewWindDownTime() {
+        // Home Assistant's silent push names this signal; the reply's wind-down replaces the old.
+        XCTAssertEqual(WindDownState.changedSignal, "wind_down_changed")
+        let moved = WindDownState(["status": "scheduled", "wind_down": "2026-11-03T02:05:00Z", "go_to_bed": "2026-11-03T02:50:00Z"])
+        XCTAssertEqual(moved.windDown, ISO8601DateFormatter().date(from: "2026-11-03T02:05:00Z"))
+        XCTAssertEqual(moved.status, .scheduled)
+    }
 }

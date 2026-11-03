@@ -26,6 +26,8 @@ STATUS_UNCOVERED = "idle_uncovered"
 STATUS_NO_SHIFT = "idle_no_shift"
 # Your own alarm on a day off or leave, with its backstops switched off (v0.4.1 item 14).
 STATUS_OWN_OFF = "idle_own_off"
+# v0.4.11 item 10: a remote day with no gap between the last alarm and the start.
+STATUS_REMOTE = "idle_remote"
 # Your own alarm's backstops, minutes after its LAST alarm.
 DEFAULT_OWN_OFFSETS = {"early": 15, "deadline": 30, "late": 45}
 STATUS_FAULT = "fault"

@@ -204,10 +204,15 @@ class LiveActivities:
     async def leave_checked(self) -> bool:
         """A silent push telling the app Home Assistant's leave check went out, so it withdraws
         its leave-time backup reminder (v0.4.7 item 2)."""
+        return await self.silent("leave_checked")
+
+    async def silent(self, signal: str) -> bool:
+        """A silent push to the app: `leave_checked`, or `wind_down_changed` (v0.4.11 item 9) so it
+        reads the new wind-down at once."""
         client, device = self.client(), self.s.get("device") or {}
         if client is None or not device.get("token"):
             return False
-        status = await client.send(device["token"], {"aps": {"content-available": 1}, "bedtime_bridge": "leave_checked"},
+        status = await client.send(device["token"], {"aps": {"content-available": 1}, "bedtime_bridge": signal},
                                    environment=device.get("environment") or "production", topic=self.s["bundle_id"],
                                    priority=5, push_type="background")
         return status == 200

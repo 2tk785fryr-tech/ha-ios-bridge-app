@@ -325,7 +325,7 @@ class WindDown:
 
         if status == "scheduled" and wind:
             warning = int(self.settings["warning_minutes"] or 0)
-            if warning and s.get("warned_for") != s.get("wind_down"):
+            if warning and s.get("warned_for") != s.get("wind_down") and not self._just_moved(wind, warning):
                 at(wind - timedelta(minutes=warning), self._warn)
             if wind <= now < (bed or wind):
                 self.hass.async_create_task(self._start())
@@ -349,6 +349,12 @@ class WindDown:
             at(first, self._morning)
         if status in ("off", "cancelled") or first is None:
             self._schedule_preview()
+
+    def _just_moved(self, wind: datetime, warning: int) -> bool:
+        """v0.4.11 item 9: no warning again within its lead of a "15 min later" (you were just
+        told): pressed at 20:45 for 21:05, none at 20:50."""
+        moved = self._t("later_at")
+        return moved is not None and wind - timedelta(minutes=warning) - moved < timedelta(minutes=warning)
 
     def _schedule_preview(self) -> None:
         """RUN_PLAN_PREVIEW: preview-before the wind-down the shift calendar gives, or the
@@ -459,8 +465,12 @@ class WindDown:
             return
         s["warned_for"] = s.get("wind_down")
         unchecked = "" if s.get("checked", True) else " (appointments not checked)"
+        # v0.4.11 item 9: after "15 min later", the next warning says it moved, so it can't read as
+        # wind-down starting at the old time.
+        moved = bool(s.get("later_minutes"))
         await self._notify(
-            "Wind-down soon", f"Wind-down at {short(wind)} · bed {short(bed)}{unchecked}", tag="wind_down_warning",
+            "Wind-down moved" if moved else "Wind-down soon",
+            f"Wind-down {'moved to' if moved else 'at'} {short(wind)} · bed {short(bed)}{unchecked}", tag="wind_down_warning",
             actions=[
                 {"action": WIND_DOWN_ACTION_LATER, "title": f"{int(self.settings['later_minutes'])} min later"},
                 {"action": WIND_DOWN_ACTION_CANCEL, "title": "Cancel tonight's wind-down", "destructive": True},
@@ -515,10 +525,20 @@ class WindDown:
         s = self.s
         if s.get("status") != "scheduled":
             return
+        # v0.4.11 item 9: once for each warning. A second one for the same warning (a second tap,
+        # or the phone replaying the action) does nothing.
+        warning = s.get("warned_for")
+        if warning is not None and s.get("later_for") == warning:
+            _LOGGER.info("Bedtime Bridge: wind-down already moved for the %s warning; ignored", warning)
+            return
+        s["later_for"] = warning
+        s["later_at"] = self._now().isoformat()
         s["later_minutes"] = int(s.get("later_minutes") or 0) + int(self.settings["later_minutes"])
-        s["warned_for"] = None
+        # The warning comes again before the new time (not at all if that's past), as "moved".
         self._retime()
         self.bridge._changed()
+        # The app shows the new time straight away.
+        await self.bridge.live.silent("wind_down_changed")
 
     async def cancel(self) -> None:
         """Tonight's wind-down off: helper off, no go to bed notification or reminders."""

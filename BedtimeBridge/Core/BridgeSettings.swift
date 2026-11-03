@@ -94,6 +94,12 @@ struct BridgeSettings: Codable, Equatable {
     var remoteKeywords = ["WFH", "Remote"]
     /// The wake-up on a remote day: this long before the shift starts.
     var remoteGetReadyMinutes = 30
+    /// v0.4.11 item 10: a remote day's backstops, spread between the last alarm and the start, or
+    /// these minutes after the last alarm.
+    var remoteBackstops: RemoteBackstops.Mode = .spread
+    var remoteEarlyMinutes = 10
+    var remoteDeadlineMinutes = 20
+    var remoteLateMinutes = 30
     /// Arrive this long before an appointment starts.
     var arrivalBufferMinutes = 10
     /// Arrive this long before a shift starts.
@@ -353,10 +359,12 @@ extension BridgeSettings {
         ]
         // v0.4.11 item 5's remote-day settings, only once changed, so updating doesn't read as a
         // settings change.
-        let remote: [Any] = [remoteByLocation, remoteWhenNoLocation, remoteByKeyword, remoteKeywords, remoteGetReadyMinutes]
+        let remote: [Any] = [remoteByLocation, remoteWhenNoLocation, remoteByKeyword, remoteKeywords, remoteGetReadyMinutes,
+                             remoteBackstops.rawValue, remoteEarlyMinutes, remoteDeadlineMinutes, remoteLateMinutes]
         let defaults = BridgeSettings()
         let remoteDefault: [Any] = [defaults.remoteByLocation, defaults.remoteWhenNoLocation, defaults.remoteByKeyword,
-                                    defaults.remoteKeywords, defaults.remoteGetReadyMinutes]
+                                    defaults.remoteKeywords, defaults.remoteGetReadyMinutes, defaults.remoteBackstops.rawValue,
+                                    defaults.remoteEarlyMinutes, defaults.remoteDeadlineMinutes, defaults.remoteLateMinutes]
         let tail = "\(remote)" == "\(remoteDefault)" ? [] : remote
         return (parts + tail).map { "\($0)" }.joined(separator: "|")
     }

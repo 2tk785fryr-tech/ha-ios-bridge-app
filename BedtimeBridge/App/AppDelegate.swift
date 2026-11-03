@@ -18,6 +18,17 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
 
     func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any],
                      fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+        if userInfo["bedtime_bridge"] as? String == WindDownState.changedSignal {
+            // v0.4.11 item 9: wind-down moved ("15 min later"): read it now, so Tonight shows it.
+            Task { @MainActor in
+                let settings = SettingsStore.shared.settings
+                _ = await BedtimeCoordinator.shared.morningContext(firstAlarm: nil, settings: settings)
+                await BedtimeActivities.syncWindDown(WindDownState.cached)
+                NotificationCenter.default.post(name: WindDownState.changedNotification, object: nil)
+                completionHandler(.newData)
+            }
+            return
+        }
         guard userInfo["bedtime_bridge"] as? String == LeaveReminder.checkedSignal else { return completionHandler(.noData) }
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [LeaveReminder.backupID])
         TestingChecklist.tick(.backupLeaveWithdrawn)

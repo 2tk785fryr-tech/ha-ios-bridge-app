@@ -438,7 +438,14 @@ extension WakePlan {
             block["type"] = "shift"
             block["shift_start"] = iso.string(from: shift.start)
             if let leaveBy = leaveBy(settings: settings) { block["leave_by"] = iso.string(from: leaveBy) }
-            if shift.remote { block["remote"] = true }
+            if shift.remote {
+                block["remote"] = true
+                // v0.4.11 item 10: the backstops after the last alarm, up to the start.
+                if let last = alarmTimes.max() {
+                    block["remote_times"] = RemoteBackstops.times(lastAlarm: last, start: shift.start, settings: settings)
+                        .mapValues { iso.string(from: $0) }
+                }
+            }
             if let firstDayBack { block["first_day_back"] = firstDayBack }
         case .appointment:
             guard let appointment, let leaveBy = leaveBy(settings: settings) else { break }

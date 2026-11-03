@@ -22,6 +22,11 @@ enum WindDownTimes {
 
 /// What Home Assistant says about tonight's wind-down, from its last reply.
 struct WindDownState: Codable, Equatable {
+    /// Home Assistant's silent push when wind-down moved (v0.4.11 item 9), and the app's own
+    /// notice that the cached state changed.
+    static let changedSignal = "wind_down_changed"
+    static let changedNotification = Notification.Name("BedtimeBridge.windDownChanged")
+
     enum Status: String, Codable { case scheduled, windingDown = "winding_down", bedtime, cancelled, off }
 
     var status: Status = .off

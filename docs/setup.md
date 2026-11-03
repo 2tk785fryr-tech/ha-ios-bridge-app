@@ -198,7 +198,8 @@ Drive times from**, and:
       What changed is in `docs/ha-handoffs-v0.4.11.md`.
 - [ ] If you work from home some days: **Settings → Remote days** in the app. Pick how a remote
       shift is recognised (location Home, Remote or your address; no location; a word such as
-      WFH in the title) and the get-ready time for those mornings.
+      WFH in the title), the get-ready time for those mornings, and the backstops (spread up to
+      the start, or minutes after the last alarm).
 
 ---
 

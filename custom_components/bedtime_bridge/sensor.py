@@ -35,7 +35,7 @@ class BridgeSensorDescription(SensorEntityDescription):
 
 
 LADDER_STATUSES = [
-    "armed", "done", "idle_override_off", "idle_leave", "idle_uncovered", "idle_no_shift", "idle_own_off", "fault",
+    "armed", "done", "idle_override_off", "idle_leave", "idle_uncovered", "idle_no_shift", "idle_own_off", "idle_remote", "fault",
 ]
 
 

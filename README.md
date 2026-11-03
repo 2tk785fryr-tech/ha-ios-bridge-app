@@ -427,8 +427,8 @@ Home Assistant side is in `docs/ha-handoffs-v*.md`.
   case** in deep blue, the latest you can leave on a bad-traffic day (Settings → Drive time: get
   there when it starts, or early like Leave by).
 - **Remote days (0.4.11):** a shift worked from home (Settings → Remote days) wakes you by its own
-  get-ready time, shows *Be ready* instead of a drive, and has no leave reminders; the backstops
-  stay. During wind-down, *Set alarms* asks whether to start bedtime too.
+  get-ready time, shows *Be ready* instead of a drive, and has no leave reminders; its backstops
+  come after the last alarm, spread up to the start. During wind-down, *Set alarms* asks whether to start bedtime too.
 - **Wake at a different time** (day off, skip) shows a preview where you can add alarms and edit
   the backstops.
 - **Add a wake-up event** (the round button at the top) and **Add <vacation>**, straight into your

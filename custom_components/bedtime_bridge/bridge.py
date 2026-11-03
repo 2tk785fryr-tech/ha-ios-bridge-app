@@ -952,6 +952,9 @@ class BedtimeBridge:
                 status, reason = ldr.STATUS_UNCOVERED, f"{shift_type or 'This shift'} mornings have no ladder"
             else:
                 shift_morning = await self._shift_morning(next_start, plan)
+                if shift_morning.leave_by_source == "remote" and not shift_morning.fixed_times:
+                    shift_morning = None
+                    status, reason = ldr.STATUS_REMOTE, "No backstops: the remote shift starts at its last alarm"
         own: ldr.Morning | None = None
         own_off = False
         last_alarm = _time(plan.get("last_alarm"))
@@ -1006,6 +1009,11 @@ class BedtimeBridge:
         buffer = int(self.state.get("work_buffer_minutes") or DEFAULT_WORK_BUFFER)
         calendar = ldr.calendar_leave_by(start, int(self.setting_value("fallback_drive_minutes")), buffer)
         planned = plan.get("type") == "shift" and ldr.same_morning(_time(plan.get("shift_start")), start)
+        if planned and plan.get("remote"):
+            # v0.4.11 item 10: a remote day's backstops are the plan's times after its last alarm.
+            remote = plan.get("remote_times") or {}
+            times = {rung: t for rung in ("early", "deadline", "late") if (t := _time(remote.get(rung)))}
+            return ldr.Morning("shift", start, "remote", False, shift_start=start, fixed_times=times)
         leave_by, source, warning = ldr.pick_leave_by(_time(plan.get("leave_by")) if planned else None, calendar)
         if warning:
             _LOGGER.warning("Bedtime Bridge ladder: %s", warning)

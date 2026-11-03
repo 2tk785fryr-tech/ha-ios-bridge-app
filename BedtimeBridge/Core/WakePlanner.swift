@@ -412,3 +412,51 @@ enum WakePlanner {
         date.clockTime()
     }
 }
+
+/// v0.4.11 item 10: a remote day's backstops, after its last alarm and before the start.
+enum RemoteBackstops {
+    enum Mode: String, Codable, CaseIterable, Identifiable {
+        /// Early, deadline and late at a quarter, a half and three quarters of the gap.
+        case spread
+        /// Minutes after the last alarm, never past the start.
+        case afterLastAlarm
+
+        var id: String { rawValue }
+
+        var displayName: String {
+            switch self {
+            case .spread: "Spread up to the start"
+            case .afterLastAlarm: "Minutes after the last alarm"
+            }
+        }
+    }
+
+    /// Times by rung ("early", "deadline", "late"), to the minute (rounded down); none with no
+    /// gap between the last alarm and the start.
+    static func times(lastAlarm: Date, start: Date, mode: Mode, minutes: (early: Int, deadline: Int, late: Int)) -> [String: Date] {
+        let gap = start.timeIntervalSince(lastAlarm)
+        guard gap > 0 else { return [:] }
+        func minute(_ date: Date) -> Date { Date(timeIntervalSince1970: (date.timeIntervalSince1970 / 60).rounded(.down) * 60) }
+        let offsets: [(String, TimeInterval)] = switch mode {
+        case .spread: [("early", gap / 4), ("deadline", gap / 2), ("late", gap * 3 / 4)]
+        case .afterLastAlarm: [("early", Double(minutes.early) * 60), ("deadline", Double(minutes.deadline) * 60), ("late", Double(minutes.late) * 60)]
+        }
+        return Dictionary(uniqueKeysWithValues: offsets.map { key, offset in (key, minute(min(lastAlarm.addingTimeInterval(offset), start))) })
+    }
+
+    static func times(lastAlarm: Date, start: Date, settings: BridgeSettings) -> [String: Date] {
+        times(lastAlarm: lastAlarm, start: start, mode: settings.remoteBackstops,
+              minutes: (settings.remoteEarlyMinutes, settings.remoteDeadlineMinutes, settings.remoteLateMinutes))
+    }
+}
+
+/// v0.4.11 item 11: the Remote days row in Settings: "Home, WFH, Remote · 30 min", or "Off".
+enum RemoteDaysText {
+    static func summary(_ settings: BridgeSettings) -> String {
+        var parts: [String] = []
+        if settings.remoteByLocation { parts.append("Home") }
+        if settings.remoteWhenNoLocation { parts.append("No location") }
+        if settings.remoteByKeyword { parts += settings.remoteKeywords }
+        return parts.isEmpty ? "Off" : parts.joined(separator: ", ") + " · \(settings.remoteGetReadyMinutes) min"
+    }
+}

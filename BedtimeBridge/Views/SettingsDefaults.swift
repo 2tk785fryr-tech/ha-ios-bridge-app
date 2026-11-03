@@ -114,7 +114,10 @@ enum DurationText {
 
 /// Which settings each page shows, for "Reset this page to defaults" (v0.4.3 item 8).
 enum SettingsPages {
-    static let main = ["shiftRules", "remoteByLocation", "remoteWhenNoLocation", "remoteByKeyword", "remoteKeywords", "remoteGetReadyMinutes"]
+    static let main = ["shiftRules"]
+    /// v0.4.11 item 11.
+    static let remoteDays = ["remoteByLocation", "remoteWhenNoLocation", "remoteByKeyword", "remoteKeywords", "remoteGetReadyMinutes",
+                             "remoteBackstops", "remoteEarlyMinutes", "remoteDeadlineMinutes", "remoteLateMinutes"]
     static let mornings = ["getReadyMinutes", "workArrivalBufferMinutes", "wakeEarlyToGetReady", "noAlarmMorningEnabled", "noAlarmEarliest", "noAlarmUpMinutes", "noAlarmWaitMinutes"]
     static let home = ["homeAddress"]
     static let alarms = ["chargeWarningEnabled", "chargeWarningThreshold", "alarmStyle", "snoozeMinutes", "alarmSound", "lookAheadHours"]
@@ -136,5 +139,5 @@ enum SettingsPages {
     static let weekly = ["weeklySummaryEnabled", "weeklySummaryWeekday", "weeklySummaryTime"]
     static let clock = ["clockStyle"]
 
-    static let all = [main, mornings, home, alarms, appointmentAlarms, ownAlarms, clock, optionWindows, morningChange, nap, windDown, appointments, driveTime, homeAssistant, weather, calendars, leave, weekly, shortcuts, notifications]
+    static let all = [main, remoteDays, mornings, home, alarms, appointmentAlarms, ownAlarms, clock, optionWindows, morningChange, nap, windDown, appointments, driveTime, homeAssistant, weather, calendars, leave, weekly, shortcuts, notifications]
 }
