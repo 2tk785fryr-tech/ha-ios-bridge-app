@@ -48,18 +48,48 @@ final class LeaveReminder {
     }
 
     /// "Leave by 5:48 · 32 min drive (5 min worse than planned)", or "Leave now · …" once leave-by
-    /// is within a minute.
-    static func message(leaveBy: Date, travelSeconds: TimeInterval, bedtimeSeconds: TimeInterval?, now: Date = .now) -> String {
+    /// is within a minute. v0.4.11 item 8: after a re-check, what changed since the one before, of
+    /// any size: "Leave by 5:44 (was 5:43) · 31 min drive, 1 min shorter than the last check".
+    static func message(leaveBy: Date, travelSeconds: TimeInterval, bedtimeSeconds: TimeInterval?,
+                        previous: Previous? = nil, now: Date = .now) -> String {
         let minutes = Int((travelSeconds / 60).rounded())
-        let head = leaveBy <= now.addingTimeInterval(60) ? "Leave now" : "Leave by \(WakePlanner.format(leaveBy))"
+        var head = leaveBy <= now.addingTimeInterval(60) ? "Leave now" : "Leave by \(WakePlanner.format(leaveBy))"
+        if let previous, WakePlanner.format(previous.leaveBy) != WakePlanner.format(leaveBy) {
+            head += " (was \(WakePlanner.format(previous.leaveBy)))"
+        }
         var text = "\(head) · \(minutes) min drive"
         if let bedtimeSeconds {
             let change = Int(((travelSeconds - bedtimeSeconds) / 60).rounded())
             if change >= 3 { text += " (\(change) min worse than planned)" }
             if change <= -3 { text += " (\(-change) min lighter than planned)" }
         }
+        if let previous, previous.wasChecked {
+            let change = minutes - Int((previous.travelSeconds / 60).rounded())
+            if change > 0 { text += ", \(change) min longer than the last check" }
+            if change < 0 { text += ", \(-change) min shorter than the last check" }
+        }
         return text
     }
+
+    /// The figures before a re-check: leave-by and the drive, and whether they came from a check
+    /// (or only from bedtime).
+    struct Previous: Equatable {
+        var leaveBy: Date
+        var travelSeconds: TimeInterval
+        var wasChecked: Bool
+    }
+
+    /// v0.4.11 item 8: when Home Assistant checks the drive next, from the leave reminders in
+    /// Settings and the new leave-by: "Checking the drive again now" when one is due within a
+    /// minute (leave-by moved later, so a reminder is ahead again), "Next check 5:44", or nil
+    /// after the last.
+    static func nextCheck(leaveBy: Date, offsets: [Int], now: Date = .now) -> String? {
+        guard let due = dueTimes(leaveBy: leaveBy, offsets: offsets, now: now).map(\.due).min() else { return nil }
+        return due <= now.addingTimeInterval(60) ? "Checking the drive again now" : "Next check \(WakePlanner.format(due))"
+    }
+
+    /// The morning's one leave notification: a re-check replaces it rather than adding another.
+    static let checkNowID = "leave-check-now"
 
     /// v0.4.7 item 2: with Home Assistant checking the drive, one reminder at leave time stays on
     /// the phone in case Home Assistant is down; its leave check's silent push withdraws it.
@@ -125,11 +155,14 @@ final class LeaveReminder {
     }
 
     /// Re-asks the drive-time service and moves the reminders still ahead. With `notify` (Check
-    /// drive and remind), also notifies now and drops the fallback for the reminder that's due.
+    /// drive and remind), also notifies now and drops the fallback for the reminder that's due;
+    /// `checkOffsets` are Home Assistant's checks, for the next one in the notification.
     /// Returns the updated trip, or nil when there's nothing to check.
     @discardableResult
-    func recheck(using provider: DriveTimeProvider, origin: MKMapItem, travel: TravelTimeService, offsets: [Int], notify: Bool = false) async -> PendingTrip? {
+    func recheck(using provider: DriveTimeProvider, origin: MKMapItem, travel: TravelTimeService, offsets: [Int],
+                 checkOffsets: [Int] = [], notify: Bool = false) async -> PendingTrip? {
         guard var trip = pendingTrip, Date.now < trip.leaveBy.addingTimeInterval(Self.tail) else { return nil }
+        let previous = Previous(leaveBy: trip.leaveBy, travelSeconds: trip.plannedTravelSeconds, wasChecked: trip.checkedAt != nil)
         let coordinates = trip.latitude.flatMap { lat in trip.longitude.map { CLLocation(latitude: lat, longitude: $0) } }
         if let destination = try? await travel.destination(locationText: trip.location, coordinates: coordinates),
            let fresh = try? await provider.drivingTime(from: origin, to: destination, arrivingBy: trip.arriveBy) {
@@ -143,13 +176,28 @@ final class LeaveReminder {
         let ahead = Self.dueTimes(leaveBy: trip.leaveBy, offsets: offsets, now: Date.now.addingTimeInterval(Self.fallbackDelay)).map(\.minutes)
         await schedule(trip, offsets: ahead)
         if notify {
+            let text = Self.checkText(trip, previous: previous, checkOffsets: checkOffsets)
             let content = UNMutableNotificationContent()
-            content.title = Self.message(leaveBy: trip.leaveBy, travelSeconds: trip.plannedTravelSeconds, bedtimeSeconds: trip.bedtimeTravelSeconds)
-            content.body = "\(trip.title) at \(WakePlanner.format(trip.start))." + (trip.checkedAt == nil ? " Couldn't re-check the drive." : "")
+            content.title = text.title
+            content.body = text.body
             content.sound = .default
             content.interruptionLevel = NotificationKind.leaveReminder.interruptionLevel
-            try? await center.add(UNNotificationRequest(identifier: "leave-check-now", content: content, trigger: nil))
+            // One notification for the morning: the fallbacks already shown and the last check's go.
+            let shown = await center.deliveredNotifications().map(\.request.identifier).filter { $0.hasPrefix(Self.requestPrefix) }
+            center.removeDeliveredNotifications(withIdentifiers: shown + [Self.checkNowID])
+            try? await center.add(UNNotificationRequest(identifier: Self.checkNowID, content: content, trigger: nil))
         }
         return trip
+    }
+
+    /// The check's notification: the message, then the event and the next check.
+    static func checkText(_ trip: PendingTrip, previous: Previous?, checkOffsets: [Int], now: Date = .now) -> (title: String, body: String) {
+        let checked = trip.checkedAt != nil
+        let title = message(leaveBy: trip.leaveBy, travelSeconds: trip.plannedTravelSeconds, bedtimeSeconds: trip.bedtimeTravelSeconds,
+                            previous: checked ? previous : nil, now: now)
+        var body = "\(trip.title) at \(WakePlanner.format(trip.start))."
+        if !checked { body += " Couldn't re-check the drive." }
+        if let next = nextCheck(leaveBy: trip.leaveBy, offsets: checkOffsets, now: now) { body += " \(next)." }
+        return (title, body)
     }
 }

@@ -142,6 +142,10 @@ struct BottomBar: Equatable {
     /// v0.4.10 item 16: Set alarms' own wording in the action row ("Set 3 alarms · up 4:30").
     var setTitle: String? = nil
 
+    /// v0.4.11 item 7: the hold layout's status line ("Alarms off · leave by 5:43") is centred
+    /// like the buttons below it; with Undo beside it, it stays on the left.
+    var statusCentered: Bool { !undoOffered }
+
     struct Inputs {
         var now = Date.now
         var napUpAt: Date?
