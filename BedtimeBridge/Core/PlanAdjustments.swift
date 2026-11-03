@@ -1,13 +1,13 @@
 import Foundation
 
-struct ForecastHour: Equatable {
+struct ForecastHour: Codable, Equatable {
     var start: Date
     var condition: String
     var temperature: Double?
 }
 
 /// Extra time added to the morning because of the forecast.
-struct WeatherAdjustment: Equatable {
+struct WeatherAdjustment: Codable, Equatable {
     var minutes: Int
     /// e.g. "pouring at 6 AM"
     var reason: String

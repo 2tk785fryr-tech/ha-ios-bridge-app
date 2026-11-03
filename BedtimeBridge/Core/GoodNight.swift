@@ -26,6 +26,18 @@ enum GoodNight {
         return (bedtimeRanAt ?? .distantPast) < set
     }
 
+    /// v0.4.11 item 2: Set alarms (and Pick a time) asks whether to start bedtime too, from the
+    /// start of tonight's wind-down until bedtime runs. Not with wind-down off, away from home
+    /// (Home Assistant doesn't run bedtime then) or without the integration.
+    static func asksWithSet(windDown: WindDownState, windDownEnabled: Bool, atHome: Bool?, integration: Bool,
+                            bedtimeRanAt: Date?, now: Date = .now) -> Bool {
+        guard windDownEnabled, integration, atHome != false, !windDown.bedtimeRan,
+              windDown.status == .windingDown || windDown.status == .bedtime else { return false }
+        // Bedtime ran since wind-down started (the shortcut, Good night, into bed).
+        if let ran = bedtimeRanAt, let started = windDown.windDown, ran >= started, ran <= now { return false }
+        return true
+    }
+
     enum Outcome: Equatable {
         case sent
         case already

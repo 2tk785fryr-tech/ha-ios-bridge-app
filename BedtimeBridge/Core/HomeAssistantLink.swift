@@ -438,6 +438,7 @@ extension WakePlan {
             block["type"] = "shift"
             block["shift_start"] = iso.string(from: shift.start)
             if let leaveBy = leaveBy(settings: settings) { block["leave_by"] = iso.string(from: leaveBy) }
+            if shift.remote { block["remote"] = true }
             if let firstDayBack { block["first_day_back"] = firstDayBack }
         case .appointment:
             guard let appointment, let leaveBy = leaveBy(settings: settings) else { break }
@@ -509,6 +510,11 @@ extension WakePlan {
         body["ladder"] = ladderBlock(settings: settings)
         if let shift {
             var shiftBody: [String: Any] = ["title": shift.title, "start": iso.string(from: shift.start)]
+            if source == .shift, shift.remote {
+                // v0.4.11 item 5: worked from home, so no leave check or anything tied to leaving.
+                body["remote"] = true
+                shiftBody["remote"] = true
+            }
             if source == .shift, let commute, let leaveBy = leaveBy(settings: settings) {
                 let minutes = Int((commute.travelSeconds / 60).rounded())
                 body["leave_by"] = iso.string(from: leaveBy)

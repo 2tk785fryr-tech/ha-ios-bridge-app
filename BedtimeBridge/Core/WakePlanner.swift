@@ -1,7 +1,7 @@
 import Foundation
 
 /// The next shift found on the calendar, with the rule that matched it.
-struct ShiftCandidate: Equatable {
+struct ShiftCandidate: Codable, Equatable {
     var title: String
     var start: Date
     var wakeMinutesBefore: Int
@@ -19,8 +19,20 @@ struct ShiftCandidate: Equatable {
     var location = ""
     var latitude: Double? = nil
     var longitude: Double? = nil
+    /// Worked from home (v0.4.11 item 5): no trip, and the wake-up is the remote get-ready
+    /// time before the start (fixed-time rules keep their time).
+    var remote = false
 
     var wakeTime: Date { fixedWake ?? start.addingTimeInterval(-Double(wakeMinutesBefore) * 60) }
+
+    /// v0.4.11 item 5: this shift as a remote day, when the settings' markers say it is.
+    func markingRemote(settings: BridgeSettings) -> ShiftCandidate {
+        guard WakePlanner.isRemote(title: title, location: location, settings: settings) else { return self }
+        var shift = self
+        shift.remote = true
+        if fixedWake == nil { shift.wakeMinutesBefore = settings.remoteGetReadyMinutes }
+        return shift
+    }
 
     /// Builds the candidate from its rule. A fixed time that would land at or after the shift
     /// start (a misconfigured rule) falls back to minutes-before, with a warning.
@@ -46,7 +58,7 @@ struct ShiftCandidate: Equatable {
 
 /// The drive to a shift, worked out like an appointment's, so the plan can say when to leave.
 /// It doesn't move the alarm: shift alarms keep their rule's timing.
-struct Commute: Equatable {
+struct Commute: Codable, Equatable {
     var travelSeconds: TimeInterval
     var driveEstimates: [DriveEstimate] = []
     /// Set when the drive time could not be calculated and the fallback was used.
@@ -56,7 +68,7 @@ struct Commute: Equatable {
 }
 
 /// An appointment whose notes asked for a wake-up, with its drive time already resolved.
-struct AppointmentCandidate: Equatable {
+struct AppointmentCandidate: Codable, Equatable {
     var title: String
     var start: Date
     var location: String
@@ -116,7 +128,7 @@ enum AlarmCause {
     static let nap = "nap"
 }
 
-struct WakePlan: Equatable {
+struct WakePlan: Codable, Equatable {
     var source: WakeSource
     /// When you need to be up: the last or first alarm, per Settings.
     var wakeTime: Date? = nil
@@ -154,6 +166,8 @@ struct WakePlan: Equatable {
     /// A "wake up" appointment replaced this shift's alarms for the morning (v0.4.1 item 11):
     /// the shift's cause, e.g. "Days".
     var replacedShift: String? = nil
+    /// When it was worked out, for the saved plan's "As of" (v0.4.11 items 3 and 4).
+    var madeAt: Date? = nil
 
     /// A shift whose alarm leaves less than the get-ready time before you have to leave:
     /// how many minutes there are, and when to wake to have the full time.
@@ -206,6 +220,31 @@ struct WakePlan: Equatable {
 
 /// Pure decision logic: no EventKit, MapKit or AlarmKit, so it can be unit tested.
 enum WakePlanner {
+    /// v0.4.11 item 5: a shift worked from home, by whichever markers are on: a title with one of
+    /// the remote words, a location of Home, Remote or the home address, or no location.
+    static func isRemote(title: String, location: String, settings: BridgeSettings) -> Bool {
+        if settings.remoteByKeyword, settings.remoteKeywords.contains(where: { word in
+            let word = word.trimmingCharacters(in: .whitespaces)
+            return !word.isEmpty && title.range(of: word, options: [.caseInsensitive, .diacriticInsensitive]) != nil
+        }) { return true }
+        let place = location.trimmingCharacters(in: .whitespacesAndNewlines)
+        if place.isEmpty { return settings.remoteWhenNoLocation }
+        guard settings.remoteByLocation else { return false }
+        if ["home", "remote"].contains(place.lowercased()) { return true }
+        return sameAddress(place, settings.homeAddress)
+    }
+
+    /// The same street line, ignoring case, punctuation and what follows it ("12 Oak St, Town,
+    /// ST 12345, United States" is "12 Oak St.").
+    static func sameAddress(_ a: String, _ b: String) -> Bool {
+        func street(_ text: String) -> String {
+            let line = text.split(separator: ",").first.map(String.init) ?? text
+            return line.lowercased().filter { $0.isLetter || $0.isNumber }
+        }
+        let (x, y) = (street(a), street(b))
+        return !x.isEmpty && x == y
+    }
+
     static func matchingRule(forTitle title: String, rules: [ShiftRule]) -> ShiftRule? {
         rules.first { rule in
             let keyword = rule.keyword.trimmingCharacters(in: .whitespaces)

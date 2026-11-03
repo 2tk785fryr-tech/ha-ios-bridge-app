@@ -24,6 +24,8 @@ enum Theme {
     static let shiftChip = (background: Color(hex: 0x2B1F5C), text: Color(hex: 0xDDD6FE))
     static let appointmentChip = (background: Color(hex: 0x13305A), text: Color(hex: 0xBFDBFE))
     static let leaveBy = Color(hex: 0x60A5FA)
+    /// Leave by's worst case on Your morning (v0.4.11 item 1): a deeper blue than Leave by.
+    static let leaveByWorst = Color(hex: 0x3B6FE8)
 
     static let good = Color(hex: 0x7DE3C8)
     static let warning = (background: Color(hex: 0x2A1E12), border: Color(hex: 0x5B3B1A), text: Color(hex: 0xFCD9B0))

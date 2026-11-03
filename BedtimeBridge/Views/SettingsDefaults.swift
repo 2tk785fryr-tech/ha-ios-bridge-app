@@ -114,7 +114,7 @@ enum DurationText {
 
 /// Which settings each page shows, for "Reset this page to defaults" (v0.4.3 item 8).
 enum SettingsPages {
-    static let main = ["shiftRules"]
+    static let main = ["shiftRules", "remoteByLocation", "remoteWhenNoLocation", "remoteByKeyword", "remoteKeywords", "remoteGetReadyMinutes"]
     static let mornings = ["getReadyMinutes", "workArrivalBufferMinutes", "wakeEarlyToGetReady", "noAlarmMorningEnabled", "noAlarmEarliest", "noAlarmUpMinutes", "noAlarmWaitMinutes"]
     static let home = ["homeAddress"]
     static let alarms = ["chargeWarningEnabled", "chargeWarningThreshold", "alarmStyle", "snoozeMinutes", "alarmSound", "lookAheadHours"]
@@ -126,7 +126,7 @@ enum SettingsPages {
     static let nap = ["napEnabled", "napAlarmCount", "napSpacingMinutes", "napReadyWithAddressMinutes", "napReadyNoAddressMinutes", "napLengths"]
     static let windDown = ["windDownEnabled", "sleepGoalMinutes", "windDownMinutes", "freeAfterHomeMinutes", "minimumWindDownMinutes", "windDownWarningMinutes", "windDownLaterMinutes", "notInBedReminders", "reminderFirstMinutes", "reminderEveryMinutes", "reminderStopMinutes", "planCheckBeforeMinutes", "planCheckFallback", "windDownOwnAlarm", "startWindDownHours"]
     static let appointments = ["appointmentKeyword", "arrivalBufferMinutes", "askAboutMissingLocations"]
-    static let driveTime = ["driveTimeSource", "googlePessimisticTraffic", "fallbackTravelMinutes", "driveFromHereWhenAway", "leaveReminderEnabled", "leaveReminderOffsets", "widgetLeaveByMinutes"]
+    static let driveTime = ["driveTimeSource", "googlePessimisticTraffic", "worstCaseArrival", "fallbackTravelMinutes", "driveFromHereWhenAway", "leaveReminderEnabled", "leaveReminderOffsets", "widgetLeaveByMinutes"]
     static let homeAssistant = ["homeAssistantURL", "snoozeHelper", "stopHelper", "shiftOverrideEntity", "shiftSensorEntity", "nextAlarmSensor", "bedtimeHelper", "presenceEntity", "homeOnly", "bedSensor", "exitLatch"]
     static let weather = ["weatherSource", "weatherEntity", "weatherExtraMinutes", "badWeatherConditions", "weatherConditionMinutes", "addTimeWhenFreezing"]
     static let calendars = ["shiftCalendarIDs", "appointmentCalendarIDs", "newEventsCalendarID"]

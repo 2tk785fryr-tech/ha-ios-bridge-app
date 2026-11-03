@@ -16,8 +16,52 @@ final class BedtimeCoordinator {
     let leaveReminder = LeaveReminder()
 
     /// The plan whose alarms were last set (by the app or the bedtime shortcut), so Tonight
-    /// can show it when it comes back to the front. Cleared when the alarms are cleared.
-    private(set) var lastAppliedPlan: WakePlan?
+    /// can show it when it comes back to the front. Cleared when the alarms are cleared some
+    /// other way than stopping them (No alarms, a skip, Clear). v0.4.11 item 3: saved, so it
+    /// outlasts the app being closed.
+    private(set) var lastAppliedPlan: WakePlan? {
+        get { savedApplied?.plan }
+        set { savedApplied = newValue.map { SavedPlan(plan: $0, asOf: $0.madeAt ?? .now) } }
+    }
+
+    private static let appliedPlanKey = "appliedPlan.v1"
+    private static let previewPlanKey = "previewPlan.v1"
+    private var appliedMemo: SavedPlan??
+    private var previewMemo: SavedPlan??
+
+    /// The set plan with when it was worked out, for Your morning's "As of" footer.
+    private(set) var savedApplied: SavedPlan? {
+        get {
+            if case .some(let memo) = appliedMemo { return memo.flatMap { $0.expired() ? nil : $0 } }
+            let loaded = SavedPlan.load(Self.appliedPlanKey)
+            appliedMemo = .some(loaded)
+            return loaded
+        }
+        set {
+            appliedMemo = .some(newValue)
+            SavedPlan.save(newValue, key: Self.appliedPlanKey)
+        }
+    }
+
+    /// v0.4.11 item 4: the last preview (Preview, or Home Assistant's evening plan check), shown
+    /// until the alarms are set, bedtime runs, another preview, No alarms or a skip, or its
+    /// morning passes.
+    private(set) var savedPreview: SavedPlan? {
+        get {
+            if case .some(let memo) = previewMemo { return memo.flatMap { $0.expired() ? nil : $0 } }
+            let loaded = SavedPlan.load(Self.previewPlanKey)
+            previewMemo = .some(loaded)
+            return loaded
+        }
+        set {
+            previewMemo = .some(newValue)
+            SavedPlan.save(newValue, key: Self.previewPlanKey)
+        }
+    }
+
+    func savePreview(_ plan: WakePlan) {
+        savedPreview = SavedPlan(plan: plan, asOf: plan.madeAt ?? .now)
+    }
 
     private static let seriesKey = "alarmSeries.v1"
 
@@ -94,6 +138,7 @@ final class BedtimeCoordinator {
         try alarms.cancelAll(keeping: keptAlarms)
         leaveReminder.clear()
         lastAppliedPlan = nil
+        savedPreview = nil
         alarmSeries = []
         morningChangeReason = nil
         plannedBeforeSleepLater = nil
@@ -155,6 +200,7 @@ final class BedtimeCoordinator {
         try alarms.cancelAll(keeping: keptAlarms)
         leaveReminder.clear()
         lastAppliedPlan = nil
+        savedPreview = nil
         alarmSeries = []
         morningChangeReason = nil
         plannedBeforeSleepLater = nil
@@ -291,6 +337,30 @@ final class BedtimeCoordinator {
             let rings = entry.map(\.ringsAgain).flatMap { $0 > now ? $0 : nil } ?? (alarm.date > now ? alarm.date : nil)
             return rings.map { StopDescription.Upcoming(id: alarm.id, set: entry?.original ?? alarm.date, rings: $0) }
         }
+    }
+
+    private static let stopTimesKey = "alarmStopTimes.v1"
+
+    /// v0.4.11 item 3: when each alarm of this wake-up was stopped (by the time it was set for),
+    /// for Your morning's "Stopped 6:12". Cleared when a new series is set.
+    private(set) var alarmStopTimes: [Date: Date] {
+        get {
+            let pairs = UserDefaults.standard.array(forKey: Self.stopTimesKey) as? [[Date]] ?? []
+            return Dictionary(pairs.compactMap { $0.count == 2 ? ($0[0], $0[1]) : nil }, uniquingKeysWith: { _, last in last })
+        }
+        set { UserDefaults.standard.set(newValue.map { [$0.key, $0.value] }, forKey: Self.stopTimesKey) }
+    }
+
+    /// This morning's alarms for Your morning once one has rung or been stopped; empty before.
+    func morningMarks(wake: Date?, now: Date = .now) -> [MorningSteps.AlarmMark] {
+        let bubbles = alarmBubbles(wake: wake, now: now)
+        let stoppedAt = stoppedThisWakeUp ? lastStopAt : nil
+        return MorningSteps.marks(bubbles, stops: alarmStopTimes, lastStop: stoppedAt, now: now)
+    }
+
+    /// v0.4.11 item 6: an alarm of this wake-up is still to ring, or snoozing.
+    func wakeUpAlarmsLeft(now: Date = .now) -> Bool {
+        !upcomingRings(excluding: UUID(), ringing: now, now: now).isEmpty
     }
 
     var isNapping: Bool { !napAlarms.isEmpty }
@@ -499,6 +569,9 @@ final class BedtimeCoordinator {
             }
         }
 
+        // v0.4.11 item 5: a remote day wakes by its own get-ready time and plans no trip.
+        shift = shift?.markingRemote(settings: settings)
+
         // Away (Home Assistant says so): drives start from where you are, not from home.
         startsFromHere = settings.driveFromHereWhenAway && context?.atHome == false
         if startsFromHere {
@@ -548,7 +621,7 @@ final class BedtimeCoordinator {
         }
 
         // Shift alarms keep their rule's timing; the drive only says when to leave.
-        if plan.source == .shift, let shift = plan.shift, !shift.location.trimmingCharacters(in: .whitespaces).isEmpty {
+        if plan.source == .shift, let shift = plan.shift, !shift.remote, !shift.location.trimmingCharacters(in: .whitespaces).isEmpty {
             plan.commute = await commute(to: shift, settings: settings)
             // Bad weather slows the drive to work too, as it does an appointment's.
             if let weather = plan.weather { plan.commute?.travelSeconds += Double(weather.minutes) * 60 }
@@ -583,6 +656,7 @@ final class BedtimeCoordinator {
             }
         }
         plan.warnings = extraWarnings + plan.warnings
+        plan.madeAt = now
         return (plan, settings)
     }
 
@@ -636,6 +710,7 @@ final class BedtimeCoordinator {
         try alarms.cancelAll(keeping: keptAlarms)
         leaveReminder.clear()
         lastAppliedPlan = nil
+        savedPreview = nil
         alarmSeries = []
         morningChangeReason = nil
         plannedBeforeSleepLater = nil
@@ -808,6 +883,7 @@ final class BedtimeCoordinator {
         try? alarms.cancelAll()
         leaveReminder.clear()
         lastAppliedPlan = nil
+        savedPreview = nil
         alarmSeries = []
         skippedMorning = nil
         skipReplacement = nil
@@ -846,6 +922,8 @@ final class BedtimeCoordinator {
     func previewTomorrow(settings phoneSettings: BridgeSettings) async throws -> WakePlan {
         let made = try await previewForSet(settings: phoneSettings)
         let plan = adjustedForSkip(made.plan, settings: made.settings)
+        // v0.4.11 item 4: on screen when the app opens, with no request of its own.
+        savePreview(plan)
         var data: [String: Any] = ["cause": plan.cause]
         if let first = plan.firstAlarm { data["first_alarm"] = Self.iso(first) }
         if let event = plan.appointment {
@@ -928,6 +1006,9 @@ final class BedtimeCoordinator {
     /// Sets (or clears) alarms, the leave-by reminder and the HA sensor for a plan.
     private func apply(_ plan: WakePlan, settings: BridgeSettings) async throws {
         lastAppliedPlan = plan
+        // The set plan takes over from a preview (v0.4.11 item 4).
+        savedPreview = nil
+        alarmStopTimes = [:]
         // v0.4.8 item 5: Good night until bedtime runs, unless this is bedtime's own plan.
         if plan.hasAlarm, GoodNight.countsAsBeforeBedtime(bedtimeRanAt: bedtimeRanAt) { GoodNight.alarmsSetAt = .now }
         var actual = plan.alarmTimes
@@ -1771,6 +1852,7 @@ final class BedtimeCoordinator {
         // v0.4.10 items 2 and 3: the slide ends this alarm only, the hold every alarm left in
         // this wake-up ("the rest" never includes tomorrow's, v0.4.9 item 4). Nothing else, not
         // Home Assistant saying you're up, ends the others.
+        alarmStopTimes[snoozes[id]?.original ?? alarms.scheduledAlarms().first { $0.id == id }?.date ?? ringing] = .now
         alarms.cancel(id)
         snoozes[id] = nil
         if all {
@@ -1779,14 +1861,24 @@ final class BedtimeCoordinator {
         }
         stoppedThisWakeUp = true
         lastStopAt = .now
-        let remaining = scheduledAlarmTimes().filter { $0 > .now }
+        // v0.4.11 item 6: what's left counts an alarm still snoozing at its ring-again, so ending
+        // one alarm with another snoozing doesn't say none are left.
+        let wakeUpLeft = all ? [] : upcomingRings(excluding: id, ringing: ringing)
+        let later = laterWakeUpAlarms(ringing: ringing).subtracting(keptAlarms)
+        let remaining = StopDescription.left(wakeUp: wakeUpLeft.map(\.rings),
+                                             later: alarms.scheduledAlarms().filter { later.contains($0.id) }.map(\.date))
+        let ledger = snoozes
+        let snoozedUntil = wakeUpLeft.filter { ledger[$0.id] != nil }.map(\.rings).min()
         updateWidget { snapshot in
-            snapshot.snoozedUntil = nil
+            snapshot.snoozedUntil = snoozedUntil
             snapshot.alarmTimes = remaining
         }
         if remaining.isEmpty { lastCause = AlarmCause.none }
         var stopped: [String: Any] = ["alarm_times": remaining.map(Self.iso), "alarm_cause": lastCause]
         stopped["alarm_time"] = remaining.first.map(Self.iso)
+        stopped["snoozed_until"] = snoozedUntil.map(Self.iso)
+        // The last of this wake-up: Home Assistant starts the morning Live Activity.
+        stopped["last"] = wakeUpLeft.isEmpty
         // How this stop was decided, so a morning can be traced afterwards (item 1).
         stopped["all"] = all
         await report(.stopped, data: stopped, settings: settings)
@@ -1812,7 +1904,8 @@ final class BedtimeCoordinator {
               let provider = try? travel.provider(for: settings),
               let origin = try? await origin(settings: settings),
               let trip = await leaveReminder.recheck(using: provider, origin: origin, travel: travel,
-                                                     offsets: Self.localLeaveOffsets(settings, atHome: lastAppliedPlan?.atHome), notify: notify)
+                                                     offsets: Self.localLeaveOffsets(settings, atHome: lastAppliedPlan?.atHome),
+                                                     checkOffsets: settings.leaveReminderOffsets, notify: notify)
         else { return nil }
         updateWidget { $0.leaveBy = trip.leaveBy }
         await updateMorningActivity(settings: settings)
@@ -2077,6 +2170,8 @@ final class BedtimeCoordinator {
         guard let first = plan.firstAlarm else { return nil }
         // A fixed-time shift alarm doesn't move for weather (see WakePlanner).
         if plan.source == .shift, plan.shift?.fixedWake != nil { return nil }
+        // No trip on a remote day (v0.4.11 item 5), so no drive for the weather to slow.
+        if plan.source == .shift, plan.shift?.remote == true { return nil }
         let arrival = plan.source == .appointment ? plan.appointment?.start : plan.shift?.start
         guard let arrival, arrival > first else { return nil }
         return first...arrival

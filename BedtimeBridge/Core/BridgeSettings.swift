@@ -85,6 +85,15 @@ struct BridgeSettings: Codable, Equatable {
     var newEventsCalendarID = ""
     /// Time to get ready before leaving for an appointment.
     var getReadyMinutes = 60
+    /// v0.4.11 item 5: a shift is worked from home when its location is Home, Remote or the
+    /// home address; when it has no location (off by default); or when its title has one of
+    /// `remoteKeywords`.
+    var remoteByLocation = true
+    var remoteWhenNoLocation = false
+    var remoteByKeyword = true
+    var remoteKeywords = ["WFH", "Remote"]
+    /// The wake-up on a remote day: this long before the shift starts.
+    var remoteGetReadyMinutes = 30
     /// Arrive this long before an appointment starts.
     var arrivalBufferMinutes = 10
     /// Arrive this long before a shift starts.
@@ -95,6 +104,9 @@ struct BridgeSettings: Codable, Equatable {
     var driveTimeSource: DriveTimeSource = .apple
     /// Google only: plan for a bad-traffic day instead of a typical one.
     var googlePessimisticTraffic = false
+    /// v0.4.11 item 1: Your morning's *Leave by · worst case* gets you there when it starts, or
+    /// early by the arrival buffer like Leave by.
+    var worstCaseArrival: WorstCaseArrival = .whenItStarts
     /// Used when a drive time cannot be calculated (no signal, unknown address).
     var fallbackTravelMinutes = 30
     var alarmCount = 3
@@ -339,7 +351,14 @@ extension BridgeSettings {
             badWeatherConditions.sorted(), weatherConditionMinutes.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" },
             shiftCalendarIDs.sorted(), appointmentCalendarIDs.sorted(), alarmStyle.rawValue,
         ]
-        return parts.map { "\($0)" }.joined(separator: "|")
+        // v0.4.11 item 5's remote-day settings, only once changed, so updating doesn't read as a
+        // settings change.
+        let remote: [Any] = [remoteByLocation, remoteWhenNoLocation, remoteByKeyword, remoteKeywords, remoteGetReadyMinutes]
+        let defaults = BridgeSettings()
+        let remoteDefault: [Any] = [defaults.remoteByLocation, defaults.remoteWhenNoLocation, defaults.remoteByKeyword,
+                                    defaults.remoteKeywords, defaults.remoteGetReadyMinutes]
+        let tail = "\(remote)" == "\(remoteDefault)" ? [] : remote
+        return (parts + tail).map { "\($0)" }.joined(separator: "|")
     }
 }
 

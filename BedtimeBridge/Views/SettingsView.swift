@@ -35,6 +35,29 @@ struct SettingsView: View {
                 Text("A calendar event whose title contains the word counts as a shift. Each shift has its own timing and alarm series.")
             }
 
+            // v0.4.11 item 5: remote and hybrid work.
+            Section {
+                DefaultToggle(title: "Location is Home, Remote or my address", isOn: $store.settings.remoteByLocation,
+                              defaultValue: BridgeSettings().remoteByLocation)
+                DefaultToggle(title: "No location means remote", isOn: $store.settings.remoteWhenNoLocation,
+                              defaultValue: BridgeSettings().remoteWhenNoLocation)
+                DefaultToggle(title: "Title has a remote word", isOn: $store.settings.remoteByKeyword,
+                              defaultValue: BridgeSettings().remoteByKeyword)
+                if store.settings.remoteByKeyword {
+                    TextField("Remote words", text: Binding(
+                        get: { store.settings.remoteKeywords.joined(separator: ", ") },
+                        set: { store.settings.remoteKeywords = $0.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty } }
+                    ))
+                    .textInputAutocapitalization(.never)
+                }
+                DefaultStepper(value: $store.settings.remoteGetReadyMinutes, in: 0...180, step: 5,
+                               defaultValue: BridgeSettings().remoteGetReadyMinutes, note: { "\($0) min" }) { "Get ready on a remote day: \($0) min" }
+            } header: {
+                Text("Remote days")
+            } footer: {
+                Text("A shift worked from home wakes you this long before it starts and plans no drive, Leave by or leave reminders; the backstops still go. Fixed-time shifts keep their time. The shift's own word still has to match, so \"Days WFH\" is a Days shift from home.")
+            }
+
             Section {
                 SettingsLink(title: "Mornings", icon: "sunrise", value: "Get ready \(settings.getReadyMinutes) min") {
                     MorningsSettings(settings: $store.settings)
@@ -369,12 +392,18 @@ private struct DriveTimeSection: View {
                     WithDefault(text: "Google plans for", defaultText: settings.googlePessimisticTraffic == BridgeSettings().googlePessimisticTraffic ? nil : (BridgeSettings().googlePessimisticTraffic ? "worst case" : "a typical day"))
                 }
             }
+            // v0.4.11 item 1: Your morning's Leave by · worst case.
+            Picker(selection: $settings.worstCaseArrival) {
+                ForEach(WorstCaseArrival.allCases) { Text($0.displayName).tag($0) }
+            } label: {
+                WithDefault(text: "Worst case gets you there", defaultText: settings.worstCaseArrival == BridgeSettings().worstCaseArrival ? nil : BridgeSettings().worstCaseArrival.displayName.lowercased())
+            }
             DefaultStepper(value: $settings.fallbackTravelMinutes, in: 0...180, step: 5, defaultValue: BridgeSettings().fallbackTravelMinutes, note: { "\($0) min" }) { "If no drive time: \($0) min" }
             DefaultToggle(title: "Start from where I am when away", isOn: $settings.driveFromHereWhenAway, defaultValue: BridgeSettings().driveFromHereWhenAway)
         } header: {
             Text("Drive time")
         } footer: {
-            Text(driveTimeFooter(for: settings.driveTimeSource))
+            Text(driveTimeFooter(for: settings.driveTimeSource) + " Your morning also shows Leave by · worst case, the latest you can leave on a bad-traffic day: when it starts gets you there right at the start, early takes off the same arrive-early time as Leave by.")
         }
 
         Section {

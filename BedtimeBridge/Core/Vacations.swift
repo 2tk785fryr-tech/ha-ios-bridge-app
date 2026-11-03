@@ -25,7 +25,7 @@ struct Vacation: Identifiable, Equatable {
 }
 
 /// First and last day of a vacation, for Home Assistant's weekly summary (item 6f).
-struct DayRange: Equatable {
+struct DayRange: Codable, Equatable {
     var first: Date
     var last: Date
 }

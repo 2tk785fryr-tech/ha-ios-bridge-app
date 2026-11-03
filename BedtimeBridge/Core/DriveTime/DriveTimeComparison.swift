@@ -2,8 +2,8 @@ import Foundation
 import MapKit
 
 /// One service's answer for a trip, so the plan can show how they compare.
-struct DriveEstimate: Equatable {
-    enum Service: String, CaseIterable {
+struct DriveEstimate: Codable, Equatable {
+    enum Service: String, Codable, CaseIterable {
         case apple, tomTom, googleTypical, googleWorst
 
         var displayName: String {
