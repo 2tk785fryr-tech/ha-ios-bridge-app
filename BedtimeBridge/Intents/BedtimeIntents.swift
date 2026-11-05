@@ -418,8 +418,10 @@ struct BedtimeBridgeShortcuts: AppShortcutsProvider {
         )
         AppShortcut(
             intent: SleepLaterIntent(),
-            phrases: ["Sleep later \(\.$amount) with \(.applicationName)", "Sleep later with \(.applicationName)"],
-            shortTitle: "Sleep Later",
+            phrases: ["Wake up later \(\.$amount) with \(.applicationName)", "Wake up later with \(.applicationName)",
+                      // v0.4.11 item 18: the old phrases keep working.
+                      "Sleep later \(\.$amount) with \(.applicationName)", "Sleep later with \(.applicationName)"],
+            shortTitle: "Wake Up Later",
             systemImageName: "clock.arrow.circlepath"
         )
         // v0.4.8 item 13: Start and Cancel wind-down share one, so Good night has a slot.

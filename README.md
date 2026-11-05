@@ -96,7 +96,7 @@ All pictures are from the simulator with made-up calendar events.
 ### The bottom bar
 
 The bar at the bottom of Tonight shows what matters right now and the one or two things you'd
-do next: *Plan and set alarms* in the evening, *3 alarms set* with *Sleep later* once they're
+do next: *Plan and set alarms* in the evening, *3 alarms set* with *Wake up later* once they're
 set, *I'm up early* before the first alarm, *Snoozing · rings 4:34* with *End alarms*,
 *Napping · up at 2:47* with *End nap*, *Winding down · bed 9:50*, *I'm awake* on a morning
 with no alarms. Everything else is in **⋯**, the same list every time with what doesn't apply
@@ -106,9 +106,9 @@ With **alarms set and bedtime still to come**, the bar is "✓ 3 alarms set · f
 *Undo* while it applies), a violet **Good night** slide-and-hold that starts bedtime (Home
 Assistant sends RUN_BEDTIME, the push the bedtime nudge sends), and **Change plan** and
 **Temporary alarm** under it. *Change plan* holds every way to change tonight's alarms: Undo,
-change times, set alarms for a time, plan from the calendar again, sleep later, and *No alarms
+change times, set alarms for a time, plan from the calendar again, wake up later, and *No alarms
 tomorrow* (*this morning* after midnight). Each change can be undone, one step back, until
-bedtime runs. In the 2 hours before the alarms, *I'm up early* and *Sleep later* are in the bar.
+bedtime runs. In the 2 hours before the alarms, *I'm up early* and *Wake up later* are in the bar.
 
 With **nothing set and nothing coming** (on opening, or after a preview finds no shift or
 event), the bar gets a second row: *Set alarms for a time* in violet and *Nap* in orange, then
@@ -119,7 +119,7 @@ event), the bar gets a second row: *Set alarms for a time* in violet and *Nap* i
 It changes on time by itself while the app is open (5:00 PM, wind-down, go to bed, an alarm
 passing, the morning windows closing, Undo running out), not just when you touch it.
 
-**Protected actions** (End alarms, Not ready for bed, Back to bed, Skip, Sleep later, End nap,
+**Protected actions** (End alarms, Not ready for bed, Back to bed, Skip, Wake up later, End nap,
 No alarms tomorrow, Undo, I'm awake and others) are amber, and swap the bar for a
 **slide-and-hold**: slide to the end and hold for 5 seconds while a ring fills.
 
@@ -209,7 +209,7 @@ that just ended.
   cancel), Tonight, I'm awake and, for the testing phase, Report something.
 - **Quick actions** on the app icon (long-press), chosen in Settings → Shortcuts, controls and
   Siri.
-- **Siri:** plan, cancel, nap, no alarms tomorrow, sleep later, start or cancel wind-down, good
+- **Siri:** plan, cancel, nap, no alarms tomorrow, wake up later, start or cancel wind-down, good
   night (it asks first), add a vacation, add a wake-up event, I'm awake. Settings → Shortcuts,
   controls and Siri → **Siri phrases** lists each phrase, and how to make your own (a shortcut
   named what you want to say, e.g. "Let's go sleepy bye", running the Good Night action).
@@ -407,7 +407,7 @@ Home Assistant side is in `docs/ha-handoffs-v*.md`.
 - **Calendar changed:** "Tomorrow changed: Days shift deleted. Your 4:20 alarms are still set.
   Re-plan?" Nothing moves until you confirm.
 - **Change this morning** (reason first, then just the alarms or the whole wake-up for a snow
-  delay; the confirm screen shows the backstops before and after), **Sleep later** with *Back to
+  delay; the confirm screen shows the backstops before and after), **Wake up later** with *Back to
   planned*, and **Edit alarms** to move, add or remove any single one (from bedtime on, *Edit
   single alarms* is inside Change this morning, and ⋯ shows only that).
 - **The bar (0.4.10):** the status on top, then the moment's slider the whole width (*I'm up
@@ -429,6 +429,13 @@ Home Assistant side is in `docs/ha-handoffs-v*.md`.
 - **Remote days (0.4.11):** a shift worked from home (Settings → Remote days) wakes you by its own
   get-ready time, shows *Be ready* instead of a drive, and has no leave reminders; its backstops
   come after the last alarm, spread up to the start. During wind-down, *Set alarms* asks whether to start bedtime too.
+- **The morning Live Activity (0.4.11):** after Leave by it reads *Past leave time · 5:43* with the
+  minutes late; once you've left home (Home Assistant's presence), *On your way · Days 6:30* until
+  the start.
+- **Weather on the widgets (0.4.11):** the large and medium widgets show the forecast at leave-by
+  (or at the first alarm with no drive), with any extra time added for it.
+- **Wind-down (0.4.11):** every *15 min later* gets a warning before the new start; after a cancel,
+  *Wind-down off tonight* offers *Start wind-down* until go to bed.
 - **Wake at a different time** (day off, skip) shows a preview where you can add alarms and edit
   the backstops.
 - **Add a wake-up event** (the round button at the top) and **Add <vacation>**, straight into your
@@ -725,7 +732,7 @@ them; re-render after editing a design.
 | **Report Shortcut Ran** | Last step of a shortcut a [phone command](#phone-commands) runs, so Home Assistant clears that command's notification. |
 | **Check Drive and Remind** | Run by the `RUN_LEAVE_CHECK` automation: re-checks this morning's drive, notifies when to leave, tells Home Assistant the new leave-by. |
 | **Get Drive Time** | Drive minutes from home to a place, arriving by a given time. Useful in other shortcuts. |
-| **Nap**, **No Alarms Tomorrow**, **Sleep Later**, **Start / Cancel Wind-Down**, **Add Vacation**, **Add a Wake-Up Event**, **I'm Awake** | The same as in the app, for Siri and your own shortcuts. |
+| **Nap**, **No Alarms Tomorrow**, **Wake Up Later**, **Start / Cancel Wind-Down**, **Add Vacation**, **Add a Wake-Up Event**, **I'm Awake** | The same as in the app, for Siri and your own shortcuts. |
 | **Preview Tomorrow**, **Morning Update** | Run by the `RUN_PLAN_PREVIEW` and `RUN_MORNING_UPDATE` automations. |
 
 ## Alarm cause

@@ -1,5 +1,6 @@
 import CoreLocation
 import Foundation
+import WidgetKit
 
 /// The morning Live Activity's lines (v0.4.3 item 14): "Leave in 25 min · 5:45", "Drive 32
 /// min · worst case 41 min", weather for the drive and for the day, and the next backstop.
@@ -113,13 +114,20 @@ extension BedtimeCoordinator {
             let lines = MorningActivity.weatherLines(hours: forecast.hours, leaveBy: leaveBy, now: now)
             state.driveWeather = lines.drive
             state.dayWeather = lines.day
+            // v0.4.11 item 19: the widgets' weather line follows the fresher forecast.
+            if let fresh = MorningForecast.pick(hours: forecast.hours, at: leaveBy, moment: .commute, unit: forecast.temperatureUnit) {
+                var saved = NextAlarmSnapshot.load()
+                saved.weather = WidgetWeather(fresh, extraMinutes: saved.weather?.extraMinutes)
+                saved.save()
+                WidgetCenter.shared.reloadAllTimelines()
+            }
         }
         // Only the ladder for this morning, not the next shift's (v0.4.9 item 6).
         if context?.ladderIsFor(morning: leaveBy) ?? false, let next = MorningActivity.nextBackstop(context?.backstops ?? [:], now: now) {
             state.nextBackstopName = next.name
             state.nextBackstop = next.at
         }
-        await BedtimeActivities.show(state, title: trip.title, until: MorningActivity.endsAt(leaveBy: leaveBy))
+        await BedtimeActivities.show(state, title: trip.title, until: MorningActivity.endsAt(leaveBy: leaveBy), staleAt: leaveBy)
         await BedtimeActivities.reportMorningContent(state)
     }
 }

@@ -8,7 +8,7 @@ import WidgetKit
 struct BedtimeLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: BedtimeActivityAttributes.self) { context in
-            LockScreenView(state: context.state)
+            LockScreenView(state: context.state, title: context.attributes.title, stale: context.isStale)
                 .padding()
                 .activityBackgroundTint(Theme.surface)
                 .activitySystemActionForegroundColor(Theme.accentText)
@@ -30,14 +30,19 @@ struct BedtimeLiveActivity: Widget {
             } compactLeading: {
                 Image(systemName: state.symbol).foregroundStyle(Theme.accentIcon)
             } compactTrailing: {
-                // Compact: the countdown and, in the morning, the drive minutes.
+                // Compact: the countdown and, in the morning, the drive minutes. v0.4.11 item 17:
+                // always in full (minutes and seconds, 65:00 over an hour), centred on the line.
                 HStack(spacing: 4) {
-                    Countdown(to: state.countdownTarget)
+                    Countdown(to: state.countdownTarget, showsHours: false, past: state.kind == .morning && state.departed == nil ? "late" : "now")
                         .monospacedDigit()
-                        .frame(maxWidth: 48)
-                    if state.kind == .morning, let drive = state.driveMinutes { Text("\(drive)m").foregroundStyle(Theme.textMuted) }
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 44, alignment: .trailing)
+                    if state.kind == .morning, state.departed == nil, let drive = state.driveMinutes {
+                        Text("\(drive)m").foregroundStyle(Theme.textMuted)
+                    }
                 }
-                .font(.caption2)
+                .font(.caption)
+                .frame(maxHeight: .infinity, alignment: .center)
             } minimal: {
                 Image(systemName: state.symbol).foregroundStyle(Theme.accentIcon)
             }
@@ -66,7 +71,7 @@ private extension BedtimeActivityAttributes.ContentState {
     var countdownTarget: Date? {
         switch kind {
         case .windDown: goToBed
-        case .morning: leaveBy
+        case .morning: departed != nil ? eventStart : leaveBy
         case .nap: snoozedUntil.flatMap { $0 > .now ? $0 : nil } ?? firstAlarm
         }
     }
@@ -87,12 +92,15 @@ private struct EndNapLink: View {
 
 private struct Countdown: View {
     let to: Date?
+    var showsHours = true
+    var past = "now"
 
     var body: some View {
         if let to, to > .now {
-            Text(timerInterval: Date.now...to, countsDown: true)
+            Text(timerInterval: Date.now...to, countsDown: true, showsHours: showsHours)
+                .accessibilityLabel(CompactCountdown.label(to.timeIntervalSinceNow))
         } else {
-            Text("now")
+            Text(past)
         }
     }
 }
@@ -101,6 +109,8 @@ private func clock(_ date: Date) -> String { date.clockTime() }
 
 private struct LockScreenView: View {
     let state: BedtimeActivityAttributes.ContentState
+    let title: String
+    let stale: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -111,6 +121,19 @@ private struct LockScreenView: View {
                     Text("Snoozing · rings \(clock(snoozed))").font(.headline)
                 } else if state.kind == .nap, let up = state.firstAlarm {
                     Text("Napping · up at \(clock(up))").font(.headline)
+                } else if state.kind == .morning, let headline = MorningHeadline.of(state, stale: stale) {
+                    // v0.4.11 item 20: past Leave by, it says so; once you've left, On your way.
+                    switch headline {
+                    case .leaveIn(let leave):
+                        Text("Leave in \(Text(leave, style: .relative)) · \(clock(leave))").font(.headline)
+                    case .pastLeaveTime(let leave):
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Past leave time · \(clock(leave))").font(.headline).foregroundStyle(Theme.amber)
+                            Text("\(Text(leave, style: .relative)) late").font(.subheadline).foregroundStyle(Theme.amber)
+                        }
+                    case .onYourWay(let start):
+                        Text("On your way" + (start.map { " · \(title) \(clock($0))" } ?? "")).font(.headline).foregroundStyle(Theme.good)
+                    }
                 } else if let leave = state.leaveBy {
                     Text("Leave in \(Text(leave, style: .relative)) · \(clock(leave))").font(.headline)
                 }

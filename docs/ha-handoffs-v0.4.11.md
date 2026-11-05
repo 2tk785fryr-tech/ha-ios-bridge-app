@@ -52,3 +52,26 @@ remote day (30 min to get ready) has backstops and reads `armed`.
 `script.bedtime_readout` also reads the ladder status. I couldn't open its config from here, so
 check that it reads a new status sensibly ("No backstops: the remote shift starts at its last
 alarm" is in the status's `reason`).
+
+## 4. Install 0.4.11.1 (items 12, 16 and 20)
+
+**HACS → Bedtime Bridge → Update** to 0.4.11.1, then restart Home Assistant. No settings change,
+nothing to edit in your automations or blueprints. What's different:
+
+- **Home late only on arriving (item 12).** Wind-down's *home late* rule now acts only when
+  `person.michael_perschy` changes to `home` from something else. A location update while you're
+  already home (the attribute updates at 20:49:47 and 20:59:55 on 3 Nov) no longer moves
+  wind-down or go to bed. *15 min later* counts from the planned wind-down, and getting home late
+  can only push it later, not add on top.
+- **A warning after every *later* (item 16).** Replaces item 9's "not within the warning time of
+  the press": every *15 min later* gets *Wind-down moved to 9:05 · bed 9:50* before the new start,
+  1 min after the press if the warning time has already passed. Once wind-down is up against go to
+  bed − the 30-min minimum, the warning offers *Cancel tonight's wind-down* only.
+- **On your way (item 20).** With the Apple push key, the morning Live Activity goes stale at Leave
+  by, so the Lock Screen reads *Past leave time · 5:43* and counts the minutes late on its own.
+  When `person.michael_perschy` changes from `home` to away between the first alarm and the
+  shift's start, Home Assistant ends the activity showing *On your way · Days 6:30* (left on the
+  Lock Screen until the start) and drops any leave check still to come. Coming back home before
+  the start puts *Leave in* / *Past leave time* back. Only the integration's **Presence** option is
+  used; nothing new to set up.
+

@@ -385,6 +385,49 @@ private struct WidgetStepRow: View {
     }
 }
 
+/// v0.4.11 item 19: the drive's weather (or the first alarm's), from the saved plan, until an
+/// hour after its time.
+private func widgetWeather(_ entry: NextAlarmEntry) -> WidgetWeather? {
+    guard let weather = entry.snapshot.weather, entry.date < weather.at.addingTimeInterval(3600) else { return nil }
+    return weather
+}
+
+private func widgetClock(_ date: Date) -> String {
+    date.formatted(.dateTime.hour().minute().locale(ClockStyle.locale))
+}
+
+/// Medium: "☁︎ Rain · 41° at 5:43", lined up with the steps.
+private struct WidgetWeatherLine: View {
+    let weather: WidgetWeather
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: weather.symbol).symbolRenderingMode(.multicolor).font(.caption).frame(width: 16)
+            Text(weather.line(format: widgetClock)).font(.caption).foregroundStyle(Theme.textSoft).lineLimit(1)
+                .minimumScaleFactor(0.8)
+            if let extra = weather.extraText { Text(extra).font(.caption.weight(.semibold)).foregroundStyle(Theme.danger) }
+        }
+    }
+}
+
+/// Large: the symbol and the temperature big, the condition and time under it.
+private struct WidgetWeatherBlock: View {
+    let weather: WidgetWeather
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 2) {
+            HStack(spacing: 6) {
+                Image(systemName: weather.symbol).symbolRenderingMode(.multicolor).font(.title2)
+                if let temperature = weather.temperature {
+                    Text(temperature).font(.sora(fixed: 30, .light)).foregroundStyle(Theme.text)
+                }
+            }
+            Text(weather.conditionAndTime(format: widgetClock)).font(.caption).foregroundStyle(Theme.textSoft).lineLimit(1)
+            if let extra = weather.extraText { Text(extra).font(.caption.weight(.semibold)).foregroundStyle(Theme.danger) }
+        }
+    }
+}
+
 /// "3 alarms set", "Clock app alarms" or "Nothing set".
 private struct WidgetStatus: View {
     let entry: NextAlarmEntry
@@ -421,6 +464,7 @@ private struct NightfallMediumView: View {
                 } else {
                     ForEach(Array(steps.enumerated()), id: \.offset) { WidgetStepRow(step: $0.element) }
                 }
+                if let weather = widgetWeather(entry) { WidgetWeatherLine(weather: weather) }
                 Spacer(minLength: 0)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -448,7 +492,11 @@ private struct NightfallLargeView: View {
                 WidgetChip(entry: entry)
             }
             WidgetHeading(entry: entry)
-            WidgetBigTime(entry: entry, size: 64)
+            HStack(alignment: .center) {
+                WidgetBigTime(entry: entry, size: 64)
+                Spacer(minLength: 8)
+                if let weather = widgetWeather(entry) { WidgetWeatherBlock(weather: weather) }
+            }
             if let reason = entry.snapshot.reason, !reason.isEmpty, entry.nextAlarm != nil {
                 Text(reason).font(.footnote).foregroundStyle(Theme.textSoft).lineLimit(2)
             }

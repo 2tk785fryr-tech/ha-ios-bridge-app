@@ -168,7 +168,7 @@ enum MorningSteps {
                 steps.append(Step(kind: .leaveByWorst, title: "Leave by · worst case", value: WakePlanner.format(worst.time),
                                   detail: worst.note + "\n" + worst.drive, time: worst.time))
             }
-            steps.append(Step(kind: .arrive, title: "Arrive", value: "\(WakePlanner.format(arrive)) · \(input.bufferMinutes) min early", time: arrive))
+            steps.append(Step(kind: .arrive, title: "Arrive", value: "\(input.bufferMinutes) min early · \(WakePlanner.format(arrive))", time: arrive))
         } else {
             readyBy = arrive
             steps.append(Step(kind: .getReady, title: "Get ready", value: "\(Int(arrive.timeIntervalSince(input.wake) / 60)) min", time: input.wake))

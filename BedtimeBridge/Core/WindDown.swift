@@ -84,9 +84,18 @@ struct WindDownState: Codable, Equatable {
         }
     }
 
-    /// "Start wind-down now" shows from `hours` before go to bed, until wind-down starts.
+    /// "Start wind-down now" shows from `hours` before go to bed, until wind-down starts; after a
+    /// cancel (v0.4.11 item 13), until go to bed.
     func canStartNow(hours: Int, now: Date = .now) -> Bool {
-        guard status == .scheduled, let goToBed, let windDown, now < windDown else { return false }
+        guard let goToBed else { return false }
+        switch status {
+        case .scheduled:
+            guard let windDown, now < windDown else { return false }
+        case .cancelled:
+            guard now < goToBed else { return false }
+        default:
+            return false
+        }
         return now >= goToBed.addingTimeInterval(-Double(hours) * 3600)
     }
 }

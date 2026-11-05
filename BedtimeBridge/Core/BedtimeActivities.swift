@@ -10,10 +10,11 @@ enum BedtimeActivities {
         Activity<BedtimeActivityAttributes>.activities.first { $0.content.state.kind == kind }
     }
 
-    /// Shows (or updates) one activity of this kind, gone by `staleAfter` at the latest.
-    static func show(_ state: BedtimeActivityAttributes.ContentState, title: String, until end: Date) async {
+    /// Shows (or updates) one activity of this kind, gone by `end` at the latest; stale from
+    /// `staleAt` (v0.4.11 item 20: the morning's turns to Past leave time at Leave by).
+    static func show(_ state: BedtimeActivityAttributes.ContentState, title: String, until end: Date, staleAt: Date? = nil) async {
         guard ActivityAuthorizationInfo().areActivitiesEnabled, end > .now else { return }
-        let content = ActivityContent(state: state, staleDate: end)
+        let content = ActivityContent(state: state, staleDate: staleAt ?? end)
         if let activity = current(state.kind) {
             await activity.update(content)
         } else {

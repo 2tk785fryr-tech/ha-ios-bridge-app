@@ -36,7 +36,7 @@ enum ResetKind: String, CaseIterable, Identifiable {
         switch self {
         case .alarms: [
             "Cancels every alarm the app set: regular, temporary, nap and test.",
-            "Clears tonight's plan, a skip or your own time, a morning change, Sleep later, a nap, leave-by reminders and their notifications.",
+            "Clears tonight's plan, a skip or your own time, a morning change, Wake up later, a nap, leave-by reminders and their notifications.",
             "Resets the widget and the alarm card.",
             "Home Assistant clears the alarm state (next alarm, times, cause, snoozing, snooze count, last morning change), the ladder's delay and weather moves, pending leave checks and phone commands, and turns the napping and winding-down helpers off.",
             "Then Home Assistant works the backstops out from the calendar alone: armed again if a covered shift is on it.",

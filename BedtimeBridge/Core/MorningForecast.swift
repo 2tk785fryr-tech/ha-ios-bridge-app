@@ -104,3 +104,20 @@ struct MorningForecast: Codable, Equatable {
         return "\(Self.conditionName(condition))\(temperature) at \(WakePlanner.format(at))"
     }
 }
+
+extension WidgetWeather {
+    init(_ forecast: MorningForecast, extraMinutes: Int? = nil, locale: Locale = .current) {
+        self.init(symbol: MorningForecast.symbol(forecast.condition), condition: MorningForecast.conditionName(forecast.condition),
+                  temperature: forecast.temperatureText(locale: locale), at: forecast.at, extraMinutes: extraMinutes)
+    }
+
+    /// v0.4.11 item 19: the forecast at leave-by with a drive (and the weather's extra time),
+    /// else at the first alarm; nil with no forecast.
+    static func from(_ plan: WakePlan, hasDrive: Bool, locale: Locale = .current) -> WidgetWeather? {
+        if hasDrive, let forecast = plan.forecast, forecast.moment == .commute {
+            return WidgetWeather(forecast, extraMinutes: plan.weather?.minutes, locale: locale)
+        }
+        let wake = plan.wakeForecast ?? plan.forecast.flatMap { $0.moment == .commute ? nil : $0 }
+        return wake.map { WidgetWeather($0, locale: locale) }
+    }
+}

@@ -1062,6 +1062,7 @@ final class BedtimeCoordinator {
                 reason: plan.reason,
                 leaveByShownMinutes: settings.widgetLeaveByMinutes
             )
+            snapshot.weather = WidgetWeather.from(plan, hasDrive: plan.leaveBy(settings: settings) != nil)
         }
 
         lastCause = plan.cause
@@ -1603,7 +1604,7 @@ final class BedtimeCoordinator {
         if plannedBeforeSleepLater == nil { plannedBeforeSleepLater = alarmSeries }
         var change = change
         change.scope = .alarms
-        try await changeMorning(change, phase: .bedtime, sleepIn: true, reason: reason ?? "Sleep later", note: nil, settings: settings)
+        try await changeMorning(change, phase: .bedtime, sleepIn: true, reason: reason ?? "Wake up later", note: nil, settings: settings)
     }
 
     func backToPlannedAlarms(settings: BridgeSettings) async throws {

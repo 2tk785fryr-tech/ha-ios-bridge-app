@@ -68,7 +68,7 @@ struct NoAlarmsTomorrowIntent: AppIntent {
 enum SleepLaterAmount: String, AppEnum {
     case thirty, hour, twoHours, eightHours
 
-    static var typeDisplayRepresentation: TypeDisplayRepresentation = "Sleep Later"
+    static var typeDisplayRepresentation: TypeDisplayRepresentation = "Wake Up Later"
     static var caseDisplayRepresentations: [SleepLaterAmount: DisplayRepresentation] = [
         .thirty: "30 minutes", .hour: "an hour", .twoHours: "2 hours", .eightHours: "8 hours from now",
     ]
@@ -84,13 +84,13 @@ enum SleepLaterAmount: String, AppEnum {
 }
 
 struct SleepLaterIntent: AppIntent {
-    static var title: LocalizedStringResource = "Sleep Later"
+    static var title: LocalizedStringResource = "Wake Up Later"
     static var description = IntentDescription("Moves tonight's alarms later in the same pattern, before bed. Leave-by and the deadline and late backstops stay.")
 
     @Parameter(title: "Amount")
     var amount: SleepLaterAmount
 
-    static var parameterSummary: some ParameterSummary { Summary("Sleep later \(\.$amount)") }
+    static var parameterSummary: some ParameterSummary { Summary("Wake up later \(\.$amount)") }
 
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {

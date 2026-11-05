@@ -449,4 +449,97 @@ final class V0411Tests: XCTestCase {
         XCTAssertEqual(moved.windDown, ISO8601DateFormatter().date(from: "2026-11-03T02:05:00Z"))
         XCTAssertEqual(moved.status, .scheduled)
     }
+
+    // MARK: Item 13, Start wind-down after a cancel
+
+    func testItem13CancelledOffersStartUntilGoToBed() {
+        let cancelled = WindDownState(status: .cancelled, windDown: at(20, 50), goToBed: at(21, 50))
+        XCTAssertTrue(cancelled.canStartNow(hours: 2, now: at(21, 0)))
+        XCTAssertFalse(cancelled.canStartNow(hours: 2, now: at(21, 50)), "not once go to bed has come")
+        var inputs = BottomBar.Inputs(now: at(21, 0))
+        inputs.windDown = cancelled
+        let bar = BottomBar.make(inputs)
+        XCTAssertEqual(bar.top, .status("Wind-down off tonight · bed \(WakePlanner.format(at(21, 50)))", .muted))
+        XCTAssertEqual(bar.buttons.first, .startWindDown)
+        XCTAssertTrue(BottomBar.menu(inputs, alarmStyleApp: true, morningKnown: true).contains(.startWindDown))
+    }
+
+    // MARK: Item 15, Arrive's time on the right
+
+    func testItem15ArrivesValueEndsWithItsTime() {
+        let input = MorningSteps.Input(eventTitle: "Days starts", start: at(6, 30), location: "Work",
+                                       drive: drive(estimates(), travel: 31), wake: at(4, 30), bufferMinutes: 10)
+        let arrive = MorningSteps.steps(input).first { $0.kind == .arrive }
+        XCTAssertEqual(arrive?.value, "10 min early · \(WakePlanner.format(at(6, 20)))")
+    }
+
+    // MARK: Item 17, the Dynamic Island countdown
+
+    func testItem17CompactCountdownIsMinutesAndSecondsOverAnHour() {
+        XCTAssertEqual(CompactCountdown.label(58), "0:58")
+        XCTAssertEqual(CompactCountdown.label(9 * 60 + 58), "9:58")
+        XCTAssertEqual(CompactCountdown.label(59 * 60 + 58), "59:58")
+        XCTAssertEqual(CompactCountdown.label(65 * 60), "65:00", "not 1:05:00")
+    }
+
+    // MARK: Item 18, Wake up later
+
+    func testItem18WakeUpLaterEverywhere() {
+        XCTAssertEqual(BarAction.sleepLater.title(day: "Tuesday"), "Wake up later…")
+        XCTAssertEqual(QuickAction.sleepLater.title, "Wake up later")
+        let phrases = SiriPhrases.groups.flatMap(\.entries).flatMap(\.phrases)
+        XCTAssertTrue(phrases.contains("Wake up later with Bedtime Bridge"))
+        XCTAssertFalse(phrases.contains("Sleep later with Bedtime Bridge"), "the list shows the new phrase")
+    }
+
+    // MARK: Item 19, the drive's weather on the widgets
+
+    private func forecast(_ moment: MorningForecast.Moment, at time: Date, _ condition: String = "rainy") -> MorningForecast {
+        MorningForecast(moment: moment, at: time, condition: condition, temperature: 41, unit: "°F")
+    }
+
+    private func weatherPlan(forecast: MorningForecast?, wake: MorningForecast? = nil, extra: Int? = nil) -> WakePlan {
+        var plan = WakePlan(source: .shift, wakeTime: at(4, 30), alarmTimes: [at(4, 20)], reason: "Days shift")
+        plan.forecast = forecast
+        plan.wakeForecast = wake
+        plan.weather = extra.map { WeatherAdjustment(minutes: $0, reason: "rain at 5 AM") }
+        return plan
+    }
+
+    func testItem19TheDrivesWeather() {
+        let us = Locale(identifier: "en_US")
+        let weather = WidgetWeather.from(weatherPlan(forecast: forecast(.commute, at: at(5, 43))), hasDrive: true, locale: us)
+        XCTAssertEqual(weather?.symbol, "cloud.rain.fill")
+        XCTAssertEqual(weather?.line(format: WakePlanner.format), "Rain · 41° at \(WakePlanner.format(at(5, 43)))")
+        XCTAssertEqual(weather?.conditionAndTime(format: WakePlanner.format), "Rain · \(WakePlanner.format(at(5, 43)))")
+        XCTAssertNil(weather?.extraText)
+    }
+
+    func testItem19ExtraWeatherTimeIsShown() {
+        let weather = WidgetWeather.from(weatherPlan(forecast: forecast(.commute, at: at(5, 43)), extra: 15), hasDrive: true)
+        XCTAssertEqual(weather?.extraText, "+15 min")
+    }
+
+    func testItem19NoDriveUsesTheFirstAlarm() {
+        let plan = weatherPlan(forecast: forecast(.commute, at: at(5, 43)), wake: forecast(.wakeUp, at: at(4, 20), "sunny"))
+        let weather = WidgetWeather.from(plan, hasDrive: false)
+        XCTAssertEqual(weather?.at, at(4, 20))
+        XCTAssertEqual(weather?.condition, "Sunny")
+    }
+
+    func testItem19NoForecastNoWeather() {
+        XCTAssertNil(WidgetWeather.from(weatherPlan(forecast: nil), hasDrive: true))
+    }
+
+    // MARK: Item 20, past leave time and on your way
+
+    func testItem20TheMorningHeadline() {
+        var state = BedtimeActivityAttributes.ContentState(kind: .morning, leaveBy: at(5, 43))
+        XCTAssertEqual(MorningHeadline.of(state, stale: false, now: at(5, 30)), .leaveIn(at(5, 43)))
+        XCTAssertEqual(MorningHeadline.of(state, stale: false, now: at(5, 45)), .pastLeaveTime(at(5, 43)))
+        XCTAssertEqual(MorningHeadline.of(state, stale: true, now: at(5, 40)), .pastLeaveTime(at(5, 43)), "stale is past")
+        state.departed = at(5, 41)
+        state.eventStart = at(6, 30)
+        XCTAssertEqual(MorningHeadline.of(state, stale: true, now: at(5, 45)), .onYourWay(start: at(6, 30)))
+    }
 }

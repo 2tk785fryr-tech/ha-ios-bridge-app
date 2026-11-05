@@ -42,6 +42,9 @@ struct NextAlarmSnapshot: Codable, Equatable {
     var startWindDownHours: Int? = nil
     /// The nap's alarms while one is on (v0.4.9 item 3), cleared when it ends.
     var napAlarms: [Date]? = nil
+    /// v0.4.11 item 19: the drive's weather (or the first alarm's with no drive), for the large
+    /// and medium widgets. Saved by the app; a widget can't fetch it.
+    var weather: WidgetWeather? = nil
 
     /// A nap shows this long after its last alarm if the end was never heard.
     static let napTail: TimeInterval = 3600
@@ -180,4 +183,29 @@ struct NextAlarmSnapshot: Codable, Equatable {
         guard let data = try? JSONEncoder().encode(self) else { return }
         UserDefaults(suiteName: Self.appGroup)?.set(data, forKey: Self.key)
     }
+}
+
+/// v0.4.11 item 19: the weather line on the large and medium widgets, worked out by the app.
+struct WidgetWeather: Codable, Equatable {
+    /// The SF Symbol, the same as the app's weather pill.
+    var symbol: String
+    /// "Rain"
+    var condition: String
+    /// "41°"
+    var temperature: String?
+    var at: Date
+    /// Extra time added for the weather, shown in red: "+15 min".
+    var extraMinutes: Int?
+
+    /// "Rain · 41° at 5:43" (medium)
+    func line(format: (Date) -> String) -> String {
+        [condition, temperature].compactMap { $0 }.joined(separator: " · ") + " at \(format(at))"
+    }
+
+    /// "Rain · 5:43" (large, under the temperature)
+    func conditionAndTime(format: (Date) -> String) -> String {
+        "\(condition) · \(format(at))"
+    }
+
+    var extraText: String? { extraMinutes.flatMap { $0 > 0 ? "+\($0) min" : nil } }
 }

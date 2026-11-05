@@ -41,7 +41,7 @@ struct SleepLaterSheet: View {
 
     var body: some View {
         NavigationStack {
-            SettingsPage(title: "Sleep later") {
+            SettingsPage(title: "Wake up later") {
                 Section {
                     ForEach([30, 60, 120], id: \.self) { minutes in
                         option(.later(minutes: minutes), title: minutes < 60 ? "+\(minutes) min" : "+\(minutes / 60) hr")
@@ -65,7 +65,7 @@ struct SleepLaterSheet: View {
                 }
                 Section {
                     HoldSlider(
-                        label: "Slide and hold to sleep later",
+                        label: "Slide and hold to wake up later",
                         holdLabel: { "Moving the alarms in \($0)…" },
                         knobSymbol: "clock.fill",
                         tint: Theme.accent,
@@ -147,7 +147,7 @@ struct SleepLaterCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button { open = true } label: {
-                Label("Sleep later…", systemImage: "moon.zzz")
+                Label("Wake up later…", systemImage: "moon.zzz")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Theme.accentText)
                     .frame(minHeight: 44)

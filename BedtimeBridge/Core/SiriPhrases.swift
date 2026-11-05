@@ -23,8 +23,8 @@ enum SiriPhrases {
             Entry(phrases: ["Cancel my Bedtime Bridge alarms"], does: "Turns the alarms off."),
             Entry(phrases: ["No alarms tomorrow in Bedtime Bridge", "No Bedtime Bridge alarms tomorrow"],
                   does: "Turns the next morning's alarms off and asks about Sleep In."),
-            Entry(phrases: ["Sleep later 30 minutes with Bedtime Bridge", "Sleep later with Bedtime Bridge"],
-                  does: "Moves tonight's alarms later."),
+            Entry(phrases: ["Wake up later 30 minutes with Bedtime Bridge", "Wake up later with Bedtime Bridge"],
+                  does: "Moves tonight's alarms later. “Sleep later” works too."),
         ]),
         Group(title: "Bedtime", entries: [
             Entry(phrases: ["Good night in Bedtime Bridge", "Bedtime Bridge good night"],

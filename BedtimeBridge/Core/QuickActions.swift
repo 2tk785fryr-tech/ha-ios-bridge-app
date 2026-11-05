@@ -16,7 +16,7 @@ enum QuickAction: String, CaseIterable, Codable, Identifiable {
         case .previewTomorrow: "Preview tomorrow"
         case .addWakeUpEvent: "Add a wake-up event"
         case .addLeave: "Add vacation"
-        case .sleepLater: "Sleep later"
+        case .sleepLater: "Wake up later"
         case .noAlarmsTomorrow: "No alarms tomorrow"
         case .startWindDown: "Start wind-down"
         case .wakeLater: "Wake later…"

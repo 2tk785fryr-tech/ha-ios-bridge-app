@@ -65,7 +65,7 @@ enum BarAction: String, CaseIterable, Identifiable {
         case .previewPlan: "Preview plan"
         case .nap: "Nap"
         case .notReadyForBed: "Not ready for bed"
-        case .sleepLater: "Sleep later…"
+        case .sleepLater: "Wake up later…"
         case .editAlarms: "Edit alarms"
         case .upEarly: "I'm up early"
         case .endAlarms: "End alarms"
@@ -211,6 +211,10 @@ struct BottomBar: Equatable {
         }
         if w.status == .windingDown, let bed = w.goToBed {
             return BottomBar(top: .status("Winding down · bed \(format(bed))", .accent), buttons: [.cancelWindDown, .sleepLater])
+        }
+        if w.status == .cancelled, w.canStartNow(hours: i.startWindDownHours, now: i.now), let bed = w.goToBed {
+            // v0.4.11 item 13: cancelled, it can start again until go to bed.
+            return BottomBar(top: .status("Wind-down off tonight · bed \(format(bed))", .muted), buttons: [.startWindDown, .sleepLater])
         }
         if w.canStartNow(hours: i.startWindDownHours, now: i.now), let wind = w.windDown, let bed = w.goToBed {
             return BottomBar(top: .status("Wind-down \(format(wind)) · bed \(format(bed))", .accent), buttons: [.startWindDown, .sleepLater])
