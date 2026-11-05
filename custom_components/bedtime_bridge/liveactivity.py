@@ -218,7 +218,7 @@ class LiveActivities:
         return status == 200
 
     async def _push(self, kind: str, event: str, state: dict[str, Any], *, title: str, stale: datetime | None = None,
-                    alert: dict[str, str] | None = None) -> bool:
+                    alert: dict[str, str] | None = None, dismissal: datetime | None = None) -> bool:
         """Updates or ends the running activity of this kind, or starts one by push-to-start."""
         client = self.client()
         if client is None:
@@ -232,7 +232,7 @@ class LiveActivities:
             # Nothing running: start one, without the app.
             target, event = self.s["start"], "start"
         topic = f"{self.s['bundle_id']}.push-type.liveactivity"
-        body = payload(event, state, now, stale=stale, dismissal=now if event == "end" else None, title=title, alert=alert)
+        body = payload(event, state, now, stale=stale, dismissal=(dismissal or now) if event == "end" else None, title=title, alert=alert)
         try:
             status = await client.send(target["token"], body, environment=target.get("environment", "production"), topic=topic)
         except (HomeAssistantError, OSError, ImportError, ValueError) as err:
@@ -265,6 +265,9 @@ class LiveActivities:
         now = dt_util.utcnow()
         if leave_by is None or now >= leave_by + MORNING_TAIL:
             return await self.end_morning()
+        if state.get("departed"):
+            # On your way (v0.4.11 item 20): already showing until the start.
+            return False
         extra = self.s.get("morning_content") or {}
         drive_weather, day_weather = await self._weather(leave_by, now)
         ladder = state.get("ladder") or {}
@@ -282,8 +285,28 @@ class LiveActivities:
             nextBackstopName=backstop[1].capitalize() if backstop else None, nextBackstop=backstop[0] if backstop else None,
         )
         title = state.get("label") or "Leave by"
-        return await self._push("morning", "update", content, title=title, stale=leave_by + MORNING_TAIL,
+        # v0.4.11 item 20: stale at Leave by, so the Lock Screen turns to "Past leave time" then
+        # on its own.
+        return await self._push("morning", "update", content, title=title, stale=leave_by,
                                 alert={"title": f"Leave by {timefmt.short(leave_by)}", "body": title})
+
+    async def on_the_way(self, event_start: datetime) -> bool:
+        """v0.4.11 item 20: left home. "On your way · Days 6:30", ended now and left on the Lock
+        Screen until the event's start."""
+        state = self.bridge.state
+        leave_by = dt_util.parse_datetime(state.get("leave_by") or "")
+        now = dt_util.utcnow()
+        if event_start <= now:
+            return await self.end_morning()
+        extra = self.s.get("morning_content") or {}
+        drive_weather, day_weather = (await self._weather(leave_by, now)) if leave_by else (None, None)
+        drive = state.get("drive_minutes") if isinstance(state.get("drive_minutes"), int) else extra.get("drive_minutes")
+        content = content_state(
+            "morning", leaveBy=leave_by, driveMinutes=drive, worstCaseMinutes=extra.get("worst_case_minutes"),
+            driveWeather=drive_weather or extra.get("drive_weather"), dayWeather=day_weather or extra.get("day_weather"),
+            departed=now, eventStart=event_start,
+        )
+        return await self._push("morning", "end", content, title=state.get("label") or "Leave by", dismissal=event_start)
 
     async def end_morning(self) -> bool:
         return await self._push("morning", "end", content_state("morning"), title="Leave by")

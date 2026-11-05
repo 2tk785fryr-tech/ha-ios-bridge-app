@@ -265,7 +265,11 @@ class WindDown:
         cfg = self.settings
         times = compute(first, sleep_goal=int(cfg["sleep_goal_minutes"]), length=int(cfg["length_minutes"]),
                         free=int(cfg["free_minutes"]), minimum=int(cfg["minimum_minutes"]), home_at=self._home_at())
-        wind = times.wind_down + timedelta(minutes=int(s.get("later_minutes") or 0))
+        planned = compute(first, sleep_goal=int(cfg["sleep_goal_minutes"]), length=int(cfg["length_minutes"]),
+                          free=int(cfg["free_minutes"]), minimum=int(cfg["minimum_minutes"]))
+        # v0.4.11 item 12: "later" counts from the planned wind-down; getting home late can only
+        # push it later, not stack on top.
+        wind = max(planned.wind_down + timedelta(minutes=int(s.get("later_minutes") or 0)), times.wind_down)
         wind = min(wind, times.go_to_bed - timedelta(minutes=int(cfg["minimum_minutes"])))
         old_bed = self._t("go_to_bed")
         status = s.get("status", "off")
@@ -325,8 +329,8 @@ class WindDown:
 
         if status == "scheduled" and wind:
             warning = int(self.settings["warning_minutes"] or 0)
-            if warning and s.get("warned_for") != s.get("wind_down") and not self._just_moved(wind, warning):
-                at(wind - timedelta(minutes=warning), self._warn)
+            if warning and s.get("warned_for") != s.get("wind_down"):
+                at(self._warning_time(wind, warning), self._warn)
             if wind <= now < (bed or wind):
                 self.hass.async_create_task(self._start())
             else:
@@ -350,11 +354,23 @@ class WindDown:
         if status in ("off", "cancelled") or first is None:
             self._schedule_preview()
 
-    def _just_moved(self, wind: datetime, warning: int) -> bool:
-        """v0.4.11 item 9: no warning again within its lead of a "15 min later" (you were just
-        told): pressed at 20:45 for 21:05, none at 20:50."""
+    def _warning_time(self, wind: datetime, warning: int) -> datetime | None:
+        """The warning time before wind-down. v0.4.11 item 16: after "15 min later" there's always
+        one before the new start, 1 min after the press if the warning time is already past."""
+        when = wind - timedelta(minutes=warning)
         moved = self._t("later_at")
-        return moved is not None and wind - timedelta(minutes=warning) - moved < timedelta(minutes=warning)
+        if moved is not None and when < moved + timedelta(minutes=1):
+            when = moved + timedelta(minutes=1)
+            if when >= wind:
+                return None
+        return when
+
+    def _at_latest(self) -> bool:
+        """Wind-down is up against go to bed − the minimum: no more "later"."""
+        wind, bed = self._t("wind_down"), self._t("go_to_bed")
+        if wind is None or bed is None:
+            return False
+        return wind + timedelta(minutes=int(self.settings["minimum_minutes"])) >= bed - timedelta(seconds=1)
 
     def _schedule_preview(self) -> None:
         """RUN_PLAN_PREVIEW: preview-before the wind-down the shift calendar gives, or the
@@ -468,13 +484,14 @@ class WindDown:
         # v0.4.11 item 9: after "15 min later", the next warning says it moved, so it can't read as
         # wind-down starting at the old time.
         moved = bool(s.get("later_minutes"))
+        actions = [{"action": WIND_DOWN_ACTION_CANCEL, "title": "Cancel tonight's wind-down", "destructive": True}]
+        if not self._at_latest():
+            # v0.4.11 item 16: the last possible move offers Cancel only.
+            actions.insert(0, {"action": WIND_DOWN_ACTION_LATER, "title": f"{int(self.settings['later_minutes'])} min later"})
         await self._notify(
             "Wind-down moved" if moved else "Wind-down soon",
             f"Wind-down {'moved to' if moved else 'at'} {short(wind)} · bed {short(bed)}{unchecked}", tag="wind_down_warning",
-            actions=[
-                {"action": WIND_DOWN_ACTION_LATER, "title": f"{int(self.settings['later_minutes'])} min later"},
-                {"action": WIND_DOWN_ACTION_CANCEL, "title": "Cancel tonight's wind-down", "destructive": True},
-            ],
+            actions=actions,
         )
         self.bridge._changed()
 
@@ -531,10 +548,12 @@ class WindDown:
         if warning is not None and s.get("later_for") == warning:
             _LOGGER.info("Bedtime Bridge: wind-down already moved for the %s warning; ignored", warning)
             return
+        if self._at_latest():
+            return
         s["later_for"] = warning
         s["later_at"] = self._now().isoformat()
         s["later_minutes"] = int(s.get("later_minutes") or 0) + int(self.settings["later_minutes"])
-        # The warning comes again before the new time (not at all if that's past), as "moved".
+        # The warning comes again before the new time, as "moved" (v0.4.11 item 16).
         self._retime()
         self.bridge._changed()
         # The app shows the new time straight away.
@@ -671,8 +690,9 @@ class WindDown:
 
     @callback
     def _presence_changed(self, event: Event) -> None:
-        new = event.data.get("new_state")
-        if new is None or new.state != "home":
+        new, old = event.data.get("new_state"), event.data.get("old_state")
+        # v0.4.11 item 12: only arriving counts, never a location update while already home.
+        if new is None or new.state != "home" or old is None or old.state in ("home", "unknown", "unavailable"):
             return
         s = self.s
         wind = self._t("wind_down")

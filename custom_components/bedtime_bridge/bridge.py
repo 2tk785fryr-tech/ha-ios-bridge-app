@@ -178,6 +178,7 @@ def empty_state() -> dict[str, Any]:
         "warnings": [],
         "alarm_style": None,
         "remote": False,
+        "departed": None,
         "snoozed_until": None,
         "snooze_count": 0,
         # The wake routine (stop helper, Good Morning) already ran for this series (item 9).
@@ -561,16 +562,55 @@ class BedtimeBridge:
 
     @callback
     def _morning_presence(self, event: Event[EventStateChangedData]) -> None:
-        """Left home during the morning: one more update, so the app ends the activity."""
-        until = _time(self.state.get("morning_updates_until"))
-        new = event.data.get("new_state")
-        if until is None or dt_util.utcnow() > until or new is None or self.is_home():
+        """Left home during the morning: "On your way" until the event starts (v0.4.11 item 20),
+        and no more leave reminders. Only a change of state counts, not a location update."""
+        new, old = event.data.get("new_state"), event.data.get("old_state")
+        if new is None or old is None or new.state == old.state:
             return
+        now = dt_util.utcnow()
+        if new.state in HOME_STATES and old.state not in UNKNOWN_STATES:
+            self._back_home(now)
+            return
+        if old.state not in HOME_STATES or new.state in UNKNOWN_STATES or not self._leaving_window(now):
+            return
+        self.state["departed"] = now.isoformat()
+        self.state["leave_reminders"] = []
+        self._cancel_leave_checks()
         self._cancel_morning_updates()
-        if self.live.configured:
+        event_start = self._event_start()
+        if self.live.configured and event_start is not None:
+            self.hass.async_create_task(self.live.on_the_way(event_start))
+        elif self.live.configured:
             self.hass.async_create_task(self.live.end_morning())
         else:
             self.hass.async_create_task(self._command(CMD_MORNING_UPDATE))
+        self._changed()
+
+    def _leaving_window(self, now: datetime) -> bool:
+        """Between the first alarm and the event's start, on a morning with a trip."""
+        leave_by = _time(self.state.get("leave_by"))
+        if leave_by is None or self.state.get("remote"):
+            return False
+        first = _time(self.state.get("series_start")) or min(
+            (t for t in (_time(v) for v in self.state.get("alarm_times") or []) if t), default=None)
+        start = self._event_start() or leave_by + timedelta(minutes=LEAVE_CHECK_TAIL_MINUTES)
+        return (first is None or first - timedelta(minutes=1) <= now) and now < start and now > leave_by - timedelta(hours=4)
+
+    def _event_start(self) -> datetime | None:
+        ladder = self.state.get("ladder") or {}
+        return _time(ladder.get("shift_start")) or _time(ladder.get("appointment_start"))
+
+    @callback
+    def _back_home(self, now: datetime) -> None:
+        """Back before the event (forgot something): Leave in or Past leave time again."""
+        departed = _time(self.state.get("departed"))
+        start = self._event_start()
+        if departed is None or (start is not None and now >= start):
+            return
+        self.state["departed"] = None
+        self._changed()
+        if self.live.configured:
+            self.hass.async_create_task(self.live.morning())
 
     # MARK: Weekly summary (v0.4.3 item 15)
 
@@ -776,6 +816,7 @@ class BedtimeBridge:
         self.state["plan_error"] = None
         self.state["ladder_plan"] = data.get("ladder") or {}
         self.state["leave_reminders"] = [int(m) for m in data.get("leave_reminders") or []]
+        self.state["departed"] = None
         # Where and when the morning's drive arrives, for drive checks here (0.4.4).
         self.state["trip"] = data.get("trip") if isinstance(data.get("trip"), dict) else None
         self._check_alarms_set(data)
