@@ -53,7 +53,7 @@ remote day (30 min to get ready) has backstops and reads `armed`.
 check that it reads a new status sensibly ("No backstops: the remote shift starts at its last
 alarm" is in the status's `reason`).
 
-## 4. Install 0.4.11.1 (items 12, 16 and 20)
+## 3. Install 0.4.11.1 (items 12, 16 and 20)
 
 **HACS → Bedtime Bridge → Update** to 0.4.11.1, then restart Home Assistant. No settings change,
 nothing to edit in your automations or blueprints. What's different:
