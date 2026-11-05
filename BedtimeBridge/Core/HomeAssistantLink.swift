@@ -61,6 +61,11 @@ struct MorningContext {
     var houseTimes: [String: Date] = [:]
     /// Home Assistant says the plan is out of date (override or next shift changed).
     var planOutdated = false
+    /// Why (v0.4.11 item 23: the app checks once per reason whether the alarms would change).
+    var outdatedReason: String? = nil
+
+    /// The reason while the plan is out of date ("" when Home Assistant gave none).
+    var outdatedKey: String? { planOutdated ? (outdatedReason ?? "") : nil }
 
     var houseUsesOldTimes: Bool { houseSource == "old" }
 
@@ -215,7 +220,8 @@ struct IntegrationLink: HomeAssistantLink {
             firstDayBack: ladder["first_day_back"] as? Bool ?? false,
             houseSource: house["source"] as? String ?? "old",
             houseTimes: (house["times"] as? [String: String] ?? [:]).compactMapValues(Self.parseDate),
-            planOutdated: reply["plan_outdated"] as? Bool ?? false
+            planOutdated: reply["plan_outdated"] as? Bool ?? false,
+            outdatedReason: reply["outdated_reason"] as? String
         )
     }
 

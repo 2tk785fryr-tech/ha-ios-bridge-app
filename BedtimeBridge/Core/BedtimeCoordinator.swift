@@ -1003,6 +1003,120 @@ final class BedtimeCoordinator {
         return text
     }
 
+    // MARK: Plan changed only when the alarms would (v0.4.11 item 23)
+
+    private static let confirmedFingerprintKey = "planChangeConfirmedFingerprint.v1"
+    private static let outdatedConfirmedKey = "planOutdatedConfirmed.v1"
+    private static let outdatedSameKey = "planOutdatedSame.v1"
+    private static let changeFirstKey = "planChangeFirst.v1"
+
+    /// The settings fingerprint a check found would change the alarms (or couldn't check).
+    private var confirmedFingerprint: String? {
+        get { UserDefaults.standard.string(forKey: Self.confirmedFingerprintKey) }
+        set { UserDefaults.standard.set(newValue, forKey: Self.confirmedFingerprintKey) }
+    }
+
+    /// Home Assistant's out-of-date reason a check found would change the alarms.
+    private(set) var outdatedConfirmed: String? {
+        get { UserDefaults.standard.string(forKey: Self.outdatedConfirmedKey) }
+        set { UserDefaults.standard.set(newValue, forKey: Self.outdatedConfirmedKey) }
+    }
+
+    /// Home Assistant's out-of-date reason a check found leaves the alarms as they are.
+    private var outdatedSame: String? {
+        get { UserDefaults.standard.string(forKey: Self.outdatedSameKey) }
+        set { UserDefaults.standard.set(newValue, forKey: Self.outdatedSameKey) }
+    }
+
+    /// The first alarm as set and as a re-plan would set it, for the prompt's label.
+    private(set) var planChangeFirst: (from: Date, to: Date)? {
+        get {
+            guard let pair = UserDefaults.standard.array(forKey: Self.changeFirstKey) as? [Date], pair.count == 2 else { return nil }
+            return (pair[0], pair[1])
+        }
+        set { UserDefaults.standard.set(newValue.map { [$0.from, $0.to] }, forKey: Self.changeFirstKey) }
+    }
+
+    /// The prompt for a settings change or Home Assistant's out-of-date flag: only once a check
+    /// found the alarms would change, or couldn't tell.
+    func planChangeConfirmed(settings: BridgeSettings, outdatedReason: String?) -> Bool {
+        let settingsChange = settingsChangedSinceSet(settings) && confirmedFingerprint == settings.planFingerprint
+        let outdated = outdatedReason.map { $0 == outdatedConfirmed } ?? false
+        return settingsChange || outdated
+    }
+
+    /// Works the plan out again quietly (as Preview does, setting nothing) and compares it with
+    /// the alarms as set. Same alarms: the trigger is cleared. Different, or no way to tell: the
+    /// prompt. `outdatedReason`: Home Assistant's reason while its plan is out of date.
+    @discardableResult
+    func confirmPlanChange(settings: BridgeSettings, outdatedReason: String?) async -> Bool {
+        let fingerprint = settings.planFingerprint
+        let settingsChange = settingsChangedSinceSet(settings) && confirmedFingerprint != fingerprint
+        let outdated = outdatedReason.flatMap { $0 != outdatedConfirmed && $0 != outdatedSame ? $0 : nil }
+        guard settingsChange || outdated != nil else { return planChangeConfirmed(settings: settings, outdatedReason: outdatedReason) }
+        let set = setAlarmTimes().filter { $0 > .now }
+        let planned = (lastAppliedPlan?.alarmTimes ?? []).filter { $0 > .now }
+        let snapshot = NextAlarmSnapshot.load()
+        let verdict = await Self.planChangeVerdict(set: planned.isEmpty ? set : planned, shownFirst: set.first,
+                                                   ownAlarms: ownAlarmsSet, setCause: lastAppliedPlan?.cause ?? snapshot.cause,
+                                                   setLabel: lastAppliedPlan?.appointment?.title ?? (snapshot.label.isEmpty ? nil : snapshot.label)) {
+            try await self.buildPlan(settings: settings)
+        }
+        switch verdict {
+        case .same:
+            if settingsChange { setFingerprint = fingerprint }
+            if let outdated { outdatedSame = outdated }
+            planChangeFirst = nil
+            return planChangeConfirmed(settings: settings, outdatedReason: outdatedReason)
+        case .changed(let text, let first):
+            if settingsChange { confirmedFingerprint = fingerprint }
+            if let outdated {
+                outdatedConfirmed = outdated
+                if UserDefaults.standard.string(forKey: Self.changeNotifiedKey) != text {
+                    UserDefaults.standard.set(text, forKey: Self.changeNotifiedKey)
+                    await PlanChangeNotice.post(text)
+                }
+            }
+            planChangeFirst = first
+            return true
+        case .unknown:
+            // Better a prompt than a missed change.
+            if settingsChange { confirmedFingerprint = fingerprint }
+            if let outdated { outdatedConfirmed = outdated }
+            planChangeFirst = nil
+            return true
+        }
+    }
+
+    enum PlanChangeVerdict: Equatable {
+        case same
+        case changed(String, first: (from: Date, to: Date)?)
+        case unknown
+
+        static func == (a: Self, b: Self) -> Bool {
+            switch (a, b) {
+            case (.same, .same), (.unknown, .unknown): true
+            case let (.changed(x, f), .changed(y, g)): x == y && f?.from == g?.from && f?.to == g?.to
+            default: false
+            }
+        }
+    }
+
+    /// Whether a re-plan would move the alarms: `set` is the plan as set, `build` works it out again.
+    nonisolated static func planChangeVerdict(set: [Date], shownFirst: Date?, ownAlarms: Bool, setCause: String,
+                                              setLabel: String?, build: () async throws -> WakePlan) async -> PlanChangeVerdict {
+        // Your own alarms aren't from a plan, so nothing can put them out of date (v0.4.8 item 3).
+        if ownAlarms { return .same }
+        guard !set.isEmpty else { return .unknown }
+        guard let new = try? await build() else { return .unknown }
+        guard let text = PlanChange.describe(set: set, shownFirst: shownFirst, setCause: setCause, setLabel: setLabel, new: new) else {
+            return .same
+        }
+        var first: (from: Date, to: Date)?
+        if let was = set.sorted().first, let will = new.firstAlarm, was != will { first = (was, will) }
+        return .changed(text, first: first)
+    }
+
     /// Sets (or clears) alarms, the leave-by reminder and the HA sensor for a plan.
     private func apply(_ plan: WakePlan, settings: BridgeSettings) async throws {
         lastAppliedPlan = plan
@@ -1034,6 +1148,10 @@ final class BedtimeCoordinator {
         UserDefaults.standard.removeObject(forKey: Self.changeNotifiedKey)
         PlanChangeNotice.clear()
         setFingerprint = settings.planFingerprint
+        confirmedFingerprint = nil
+        outdatedConfirmed = nil
+        outdatedSame = nil
+        planChangeFirst = nil
         stoppedThisWakeUp = false
         recordShortfall(planned: planned, actual: actual)
 

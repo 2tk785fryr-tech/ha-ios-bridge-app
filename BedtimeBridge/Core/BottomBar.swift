@@ -126,6 +126,8 @@ struct BottomBar: Equatable {
         case main(BarAction, String)
         /// "3 alarms set · Undo": the status, and Undo is a tap away (v0.4.3 item 2).
         case undo(String)
+
+        var isMain: Bool { if case .main = self { true } else { false } }
     }
 
     var top: Top
@@ -240,6 +242,13 @@ struct BottomBar: Equatable {
         }
         // v0.4.8 item 3: in the up-early window that window's bar wins over a re-plan prompt.
         if let changed = i.plansChanged, !i.upEarlyWindow {
+            // v0.4.11 item 22: after bedtime, what you need in bed: Not going to sleep yet's
+            // slide-and-hold, Change this morning and Temporary (Preview stays in ⋯; Edit is
+            // inside Change this morning).
+            if i.alarmsSet > 0, !i.goodNight, !i.backToBedWindow {
+                return BottomBar(top: .main(.replan, changed), buttons: [.changeMorning] + temporary,
+                                 hold: i.notReadyWindow ? .notGoingToSleep : nil)
+            }
             return BottomBar(top: .main(.replan, changed), buttons: [.previewPlan, .editAlarms])
         }
         // v0.4.8 item 5: alarms set, bedtime still to come: Good night, Change plan, Temporary

@@ -245,6 +245,8 @@ struct ContentView: View {
             }
             // v0.4.11 item 9: Home Assistant moved wind-down.
             .onReceive(NotificationCenter.default.publisher(for: WindDownState.changedNotification)) { _ in refreshScheduled() }
+            // v0.4.11 item 23: a setting the plan depends on changed: check it moves the alarms.
+            .onChange(of: store.settings.planFingerprint) { _, _ in Task { await confirmPlanChange() } }
             // Redraw at each minute while open, so the bar changes on time (v0.4.6 item 3).
             .task(id: scenePhase) {
                 guard scenePhase == .active else { return }
@@ -474,6 +476,13 @@ struct ContentView: View {
         return night.formatted(.dateTime.weekday(.wide)).uppercased() + " NIGHT"
     }
 
+    /// v0.4.11 item 23: checks a settings change or Home Assistant's out-of-date flag, then redraws.
+    private func confirmPlanChange() async {
+        guard !scheduled.isEmpty else { return }
+        await coordinator.confirmPlanChange(settings: store.settings, outdatedReason: morningContext?.outdatedKey)
+        tick = .now
+    }
+
     /// v0.4.1 item 10: the big button only when nothing is set or something changed.
     private var primaryAction: PrimaryAction {
         PrimaryAction.make(
@@ -482,7 +491,8 @@ struct ContentView: View {
             changedThisMorning: coordinator.morningChangeReason,
             missingAlarms: coordinator.alarmShortfall != nil,
             calendarChanged: coordinator.calendarChangedSinceSet,
-            planChanged: morningContext?.planOutdated == true || coordinator.settingsChangedSinceSet(store.settings),
+            // v0.4.11 item 23: only once a quiet re-plan found the alarms would change.
+            planChanged: coordinator.planChangeConfirmed(settings: store.settings, outdatedReason: morningContext?.outdatedKey),
             ownAlarms: coordinator.ownAlarmsSet,
             thisMorning: morningEnd != nil || backToBed
         )
@@ -518,7 +528,9 @@ struct ContentView: View {
         i.snoozingUntil = snapshot.snoozedUntil
         if !set.isEmpty, let title = primaryAction.buttonTitle {
             i.plansChanged = title.hasPrefix("Calendar") ? "Calendar changed · re-plan"
-                : title.hasPrefix("Set the missing") ? "Alarm missing · re-set" : "Plan changed · re-plan"
+                : title.hasPrefix("Set the missing") ? "Alarm missing · re-set"
+                : coordinator.planChangeFirst.map { "Plan changed · first \(WakePlanner.format($0.from)) → \(WakePlanner.format($0.to)) · re-plan" }
+                ?? "Plan changed · re-plan"
         }
         i.alarmsSet = set.count
         i.firstAlarm = (coordinator.alarmSeries.min() ?? set.first)
@@ -972,10 +984,9 @@ struct ContentView: View {
         Task {
             morningContext = await coordinator.morningContext(firstAlarm: nil, settings: store.settings)
             morningContextLoaded = true
-            // Home Assistant's plan_out_of_date: say what changed, if tomorrow did (v0.4.3 item 4).
-            if morningContext?.planOutdated == true {
-                _ = await coordinator.checkPlanStillMatches(settings: store.settings)
-            }
+            // Home Assistant's plan_out_of_date or a settings change: the prompt (and the
+            // notification) only if a quiet re-plan would move the alarms (v0.4.11 item 23).
+            await confirmPlanChange()
             // During wind-down, tomorrow's plan already previewed (not set), and its Live Activity.
             if store.settings.windDownEnabled, coordinator.windDown.status == .windingDown {
                 if plan == nil { plan = try? await coordinator.buildPlan(settings: store.settings) }
@@ -2009,6 +2020,10 @@ private struct BottomBarView: View {
                 // Alarms set, bedtime to come (v0.4.8 item 5): the status line with Undo, Good
                 // night's slide-and-hold, then Change plan and Temporary alarm outlined.
                 VStack(spacing: Self.spacing) {
+                    if case .main = bar.top {
+                        // v0.4.11 item 22: Re-plan keeps its full row above the slider.
+                        top.frame(height: Self.rowHeight)
+                    } else {
                     HStack(spacing: 8) {
                         if bar.statusCentered { Spacer(minLength: 0) }
                         top
@@ -2024,6 +2039,7 @@ private struct BottomBarView: View {
                         }
                     }
                     .frame(height: Self.statusHeight)
+                    }
                     // v0.4.10 item 9: the window's slider; snoozing, the slide ends this alarm and
                     // the hold all of them.
                     HoldSlider(
@@ -2061,6 +2077,7 @@ private struct BottomBarView: View {
         }
         .frame(height: (bar.actionRow.isEmpty && bar.hold == nil) || slider != nil
                ? Self.topHeight + Self.rowHeight + Self.spacing
+               : bar.hold != nil && bar.top.isMain ? 3 * Self.rowHeight + 2 * Self.spacing
                : Self.statusHeight + 2 * Self.rowHeight + 2 * Self.spacing)
         .disabled(working)
     }

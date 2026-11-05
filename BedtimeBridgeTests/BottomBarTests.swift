@@ -46,6 +46,9 @@ final class BottomBarTests: XCTestCase {
         var i = BottomBar.Inputs(now: first.addingTimeInterval(-6 * 3600))
         i.alarmsSet = 3
         i.plansChanged = "Calendar changed · re-plan"
+        // v0.4.11 item 22: alarms set and Good night not offered is after bedtime.
+        XCTAssertEqual(BottomBar.make(i), BottomBar(top: .main(.replan, "Calendar changed · re-plan"), buttons: [.changeMorning, .addTemporary]))
+        i.goodNight = true
         XCTAssertEqual(BottomBar.make(i), BottomBar(top: .main(.replan, "Calendar changed · re-plan"), buttons: [.previewPlan, .editAlarms]))
     }
 

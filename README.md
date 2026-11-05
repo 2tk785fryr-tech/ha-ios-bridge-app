@@ -436,6 +436,9 @@ Home Assistant side is in `docs/ha-handoffs-v*.md`.
   (or at the first alarm with no drive), with any extra time added for it.
 - **Wind-down (0.4.11):** every *15 min later* gets a warning before the new start; after a cancel,
   *Wind-down off tonight* offers *Start wind-down* until go to bed.
+- **Plan changed (0.4.11):** the prompt shows only when a quiet re-plan would move your alarms
+  (*Plan changed · first 4:50 → 4:40 · re-plan*). After bedtime it comes with *Not going to sleep
+  yet*, *Change this morning* and *Temporary alarm*.
 - **Wake at a different time** (day off, skip) shows a preview where you can add alarms and edit
   the backstops.
 - **Add a wake-up event** (the round button at the top) and **Add <vacation>**, straight into your

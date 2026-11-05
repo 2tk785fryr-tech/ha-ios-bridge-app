@@ -561,4 +561,65 @@ final class V0411Tests: XCTestCase {
         inputs.alarmsSet = 3
         XCTAssertEqual(BottomBar.make(inputs).buttons.first, .startWindDown, "alarms set: the wind-down bar as before")
     }
+
+    // MARK: Item 22, plan changed after bedtime
+
+    func testItem22PlanChangedAfterBedtimeOffersWhatYouNeedInBed() {
+        var inputs = BottomBar.Inputs(now: at(22, 26))
+        inputs.alarmsSet = 3
+        inputs.alarmStyleApp = true
+        inputs.notReadyWindow = true
+        inputs.plansChanged = "Plan changed · re-plan"
+        let bar = BottomBar.make(inputs)
+        XCTAssertEqual(bar.top, .main(.replan, "Plan changed · re-plan"))
+        XCTAssertEqual(bar.hold, .notGoingToSleep)
+        XCTAssertEqual(bar.buttons, [.changeMorning, .addTemporary])
+        XCTAssertFalse(bar.buttons.contains(.previewPlan))
+        XCTAssertFalse(bar.buttons.contains(.editAlarms))
+    }
+
+    func testItem22BeforeBedtimeUnchanged() {
+        var inputs = BottomBar.Inputs(now: at(20, 0))
+        inputs.alarmsSet = 3
+        inputs.goodNight = true
+        inputs.plansChanged = "Plan changed · re-plan"
+        XCTAssertEqual(BottomBar.make(inputs), BottomBar(top: .main(.replan, "Plan changed · re-plan"), buttons: [.previewPlan, .editAlarms]))
+    }
+
+    // MARK: Item 23, plan changed only when the alarms would
+
+    private func daysPlan(_ times: [Date]) -> WakePlan {
+        var plan = WakePlan(source: .shift, wakeTime: times.last, alarmTimes: times, reason: "Days shift")
+        plan.shift = ShiftCandidate(title: "Days", start: at(6, 30), wakeMinutesBefore: 70, cause: "Days")
+        return plan
+    }
+
+    func testItem23SameAlarmsNoPrompt() async {
+        let set = [at(4, 20), at(4, 30)]
+        let verdict = await BedtimeCoordinator.planChangeVerdict(set: set, shownFirst: set.first, ownAlarms: false,
+                                                                 setCause: "Days", setLabel: nil) { self.daysPlan(set) }
+        XCTAssertEqual(verdict, .same)
+    }
+
+    func testItem23MovedAlarmsPromptWithTheTimes() async {
+        let set = [at(4, 20), at(4, 30)]
+        let verdict = await BedtimeCoordinator.planChangeVerdict(set: set, shownFirst: set.first, ownAlarms: false,
+                                                                 setCause: "Days", setLabel: nil) { self.daysPlan([at(4, 10), at(4, 20)]) }
+        guard case .changed(_, let first) = verdict else { return XCTFail("expected a change") }
+        XCTAssertEqual(first?.from, at(4, 20))
+        XCTAssertEqual(first?.to, at(4, 10))
+    }
+
+    func testItem23CantCheckStillPrompts() async {
+        struct Offline: Error {}
+        let verdict = await BedtimeCoordinator.planChangeVerdict(set: [at(4, 20)], shownFirst: nil, ownAlarms: false,
+                                                                 setCause: "Days", setLabel: nil) { throw Offline() }
+        XCTAssertEqual(verdict, .unknown)
+    }
+
+    func testItem23OwnAlarmsNeverPrompt() async {
+        let verdict = await BedtimeCoordinator.planChangeVerdict(set: [at(4, 20)], shownFirst: nil, ownAlarms: true,
+                                                                 setCause: "", setLabel: nil) { self.daysPlan([at(3, 0)]) }
+        XCTAssertEqual(verdict, .same)
+    }
 }
