@@ -213,9 +213,8 @@ struct ContentView: View {
 
                     // v0.4.10 item 8: no "Set on this iPhone" card: the alarms are in the top card's
                     // bubbles, and Edit alarms, No alarms and Not going to sleep yet are in ⋯.
-                    if skippedMorning == nil, scheduled.isEmpty, plan?.hasAlarm != true, !nothingSetBar {
-                        DayOffCard { sheet = .dayOff }
-                    }
+                    // v0.4.11 item 21: no Set alarms for a time card either; Pick a time is in the
+                    // bar or ⋯.
 
                     Text(reasonLine)
                         .font(.caption)
@@ -507,7 +506,6 @@ struct ContentView: View {
     }
 
     /// The bar holds Set alarms for a time and Add a temporary alarm (v0.4.7 item 8).
-    private var nothingSetBar: Bool { !BottomBar.make(barInputs).actionRow.isEmpty }
 
     /// The moment the bottom bar is for (v0.4.2 item 6).
     private var barInputs: BottomBar.Inputs {
@@ -1815,21 +1813,6 @@ private struct OwnBackstopsToggle: View {
 /// The alarm whose snooze the slide-to-stop screen ends.
 private struct SnoozedAlarm: Identifiable {
     let id: UUID
-}
-
-/// No alarm planned: set one for a day off.
-private struct DayOffCard: View {
-    let setTime: () -> Void
-
-    var body: some View {
-        Button(action: setTime) {
-            Label("Set alarms for a time", systemImage: "alarm")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(Theme.accentText)
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-        }
-        .nightfallCard()
-    }
 }
 
 /// Shown while a morning's alarms are turned off, with the way back.

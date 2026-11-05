@@ -458,6 +458,7 @@ final class V0411Tests: XCTestCase {
         XCTAssertFalse(cancelled.canStartNow(hours: 2, now: at(21, 50)), "not once go to bed has come")
         var inputs = BottomBar.Inputs(now: at(21, 0))
         inputs.windDown = cancelled
+        inputs.alarmsSet = 3
         let bar = BottomBar.make(inputs)
         XCTAssertEqual(bar.top, .status("Wind-down off tonight · bed \(WakePlanner.format(at(21, 50)))", .muted))
         XCTAssertEqual(bar.buttons.first, .startWindDown)
@@ -541,5 +542,23 @@ final class V0411Tests: XCTestCase {
         state.departed = at(5, 41)
         state.eventStart = at(6, 30)
         XCTAssertEqual(MorningHeadline.of(state, stale: true, now: at(5, 45)), .onYourWay(start: at(6, 30)))
+    }
+
+    // MARK: Item 21, nothing set in the wind-down window
+
+    func testItem21NoAlarmsSetTheEveningBarWins() {
+        var inputs = BottomBar.Inputs(now: at(20, 13))
+        inputs.windDown = WindDownState(status: .scheduled, windDown: at(20, 50), goToBed: at(21, 50))
+        inputs.evening = true
+        inputs.tomorrowLabel = "Days shift 6:30"
+        let bar = BottomBar.make(inputs)
+        XCTAssertEqual(bar.top, .status("Days shift 6:30 · no alarms set", .muted))
+        XCTAssertEqual(bar.actionRow, [.setAlarms, .setAlarmsForTime])
+        let menu = BottomBar.menu(inputs, alarmStyleApp: true, morningKnown: true)
+        XCTAssertTrue(menu.contains(.startWindDown))
+        XCTAssertTrue(menu.contains(.cancelWindDown))
+        XCTAssertTrue(menu.contains(.setAlarmsForTime), "Pick a time in ⋯ with no card")
+        inputs.alarmsSet = 3
+        XCTAssertEqual(BottomBar.make(inputs).buttons.first, .startWindDown, "alarms set: the wind-down bar as before")
     }
 }

@@ -74,7 +74,7 @@ final class BottomBarTests: XCTestCase {
 
     func testMenuHidesWhatDoesntApplyAndProtectedActions() {
         var i = BottomBar.Inputs(now: first.addingTimeInterval(-6 * 3600))
-        XCTAssertEqual(BottomBar.menu(i, alarmStyleApp: true, morningKnown: false), [.previewPlan, .addTemporary, .addWakeUpEvent, .addLeave, .settings])
+        XCTAssertEqual(BottomBar.menu(i, alarmStyleApp: true, morningKnown: false), [.previewPlan, .setAlarmsForTime, .addTemporary, .addWakeUpEvent, .addLeave, .settings], "v0.4.11 item 21: Pick a time with nothing set")
         i.alarmsSet = 3
         i.sleepLaterWindow = true
         i.notReadyWindow = true

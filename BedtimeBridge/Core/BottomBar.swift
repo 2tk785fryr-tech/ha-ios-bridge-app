@@ -212,6 +212,9 @@ struct BottomBar: Equatable {
         if w.status == .windingDown, let bed = w.goToBed {
             return BottomBar(top: .status("Winding down · bed \(format(bed))", .accent), buttons: [.cancelWindDown, .sleepLater])
         }
+        // v0.4.11 item 21: with no alarms set the evening bar wins (Set alarms / Pick a time);
+        // Start and Cancel wind-down are in ⋯.
+        guard i.alarmsSet > 0 else { return nil }
         if w.status == .cancelled, w.canStartNow(hours: i.startWindDownHours, now: i.now), let bed = w.goToBed {
             // v0.4.11 item 13: cancelled, it can start again until go to bed.
             return BottomBar(top: .status("Wind-down off tonight · bed \(format(bed))", .muted), buttons: [.startWindDown, .sleepLater])
@@ -333,6 +336,8 @@ struct BottomBar: Equatable {
         let beforeFirst = i.upEarlyWindow && (i.firstAlarm ?? i.now) > i.now
         let morning = i.snoozing || (i.upEarlyWindow && !beforeFirst) || i.backToBedWindow
         if !morning && (i.alarmsSet > 0 || i.tomorrowHasAlarm) { items.append(.noAlarmsTomorrow) }
+        // v0.4.11 item 21: with no card, Pick a time is in ⋯ whenever nothing is set.
+        if i.alarmsSet == 0 && !morning && i.napUpAt == nil { items.append(.setAlarmsForTime) }
         // v0.4.10 item 10: Skip is merged into No alarms.
         if i.notReadyWindow { items.append(.notGoingToSleep) }
         if let w = i.windDown {
