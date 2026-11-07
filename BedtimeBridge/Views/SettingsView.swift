@@ -68,17 +68,8 @@ struct SettingsView: View {
                 SettingsLink(title: "Nap", icon: "powersleep", value: settings.napEnabled ? "\(settings.napAlarmCount) alarms, \(settings.napSpacingMinutes) min apart" : "Off") {
                     NapSettings(settings: $store.settings)
                 }
-                SettingsLink(title: "Home", icon: "house.fill", value: settings.homeAddress.isEmpty ? "Current location" : "Set") {
-                    HomeSettings(settings: $store.settings)
-                }
                 SettingsLink(title: "Drive time", icon: "car", value: settings.driveTimeSource.displayName) {
-                    SettingsPage(title: "Drive time") {
-                        DriveTimeSection(settings: $store.settings)
-                        LeaveReminderSection(settings: $store.settings)
-                        ResetPageSection(detail: "Only this page's settings go back to their defaults. API keys stay (Settings → Reset clears them).") {
-                            store.settings.resetToDefaults(SettingsPages.driveTime)
-                        }
-                    }
+                    DriveTimePage(settings: $store.settings)
                 }
                 SettingsLink(title: "Bad weather", icon: "cloud.rain", value: settings.checksWeather ? "Default +\(settings.weatherExtraMinutes) min" : "Off") {
                     SettingsPage(title: "Bad weather") {
@@ -291,22 +282,23 @@ private struct MorningsSettings: View {
     }
 }
 
-/// Settings → Home: where drives start.
-private struct HomeSettings: View {
+/// Settings → Drive time, with the home address first (v0.4.11 item 54: Home moved in).
+private struct DriveTimePage: View {
     @Binding var settings: BridgeSettings
 
     var body: some View {
-        SettingsPage(title: "Home") {
+        SettingsPage(title: "Drive time") {
             Section {
                 HomeAddressField(address: $settings.homeAddress)
             } header: {
-                Text("Home")
+                Text("Drives start from")
             } footer: {
-                Text("Where drives to appointments start. Blank uses your current location (Apple Maps only).")
+                Text("Your home address, for every drive and the weather forecast. Blank uses your current location (Apple Maps only).")
             }
-
-            ResetPageSection(detail: "The home address is cleared; drives start from your current location (Apple Maps only).") {
-                settings.resetToDefaults(SettingsPages.home)
+            DriveTimeSection(settings: $settings)
+            LeaveReminderSection(settings: $settings)
+            ResetPageSection(detail: "Only this page's settings go back to their defaults, the home address included. API keys stay (Settings → Reset clears them).") {
+                settings.resetToDefaults(SettingsPages.driveTime)
             }
         }
     }
@@ -327,12 +319,7 @@ struct TutorialSettingsPage: View {
         case .remoteDays: RemoteDaysSettings(settings: $store.settings)
         case .vacations: LeaveSettings(settings: $store.settings)
         case .calendars: CalendarsPage(settings: $store.settings)
-        case .home: HomeSettings(settings: $store.settings)
-        case .driveTime:
-            SettingsPage(title: "Drive time") {
-                DriveTimeSection(settings: $store.settings)
-                LeaveReminderSection(settings: $store.settings)
-            }
+        case .home, .driveTime: DriveTimePage(settings: $store.settings)
         case .homeAssistant: SettingsPage(title: "Home Assistant") { HomeAssistantSection(settings: $store.settings) }
         }
     }

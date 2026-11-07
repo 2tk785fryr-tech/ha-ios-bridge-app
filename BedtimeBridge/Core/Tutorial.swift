@@ -16,7 +16,7 @@ enum Tutorial {
             case .remoteDays: "Remote days"
             case .vacations: "Vacations"
             case .calendars: "Calendars"
-            case .home: "Home"
+            case .home: "Home address"
             case .driveTime: "Drive time"
             case .homeAssistant: "Home Assistant"
             }
@@ -105,7 +105,7 @@ enum Tutorial {
                 "Home: your address, so drives start from home and not wherever the phone is.",
                 "Drive time: Apple Maps, or Google for a second opinion on traffic.",
              ],
-             graphic: .calendars, links: [.calendars, .home, .driveTime]),
+             graphic: .calendars, links: [.calendars, .driveTime]),
         Page(id: 9, title: "Each evening",
              text: "Tonight shows what tomorrow will be.",
              bullets: [

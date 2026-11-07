@@ -138,7 +138,7 @@ enum SettingsPages {
     static let nap = ["napEnabled", "napAlarmCount", "napSpacingMinutes", "napReadyWithAddressMinutes", "napReadyNoAddressMinutes", "napLengths"]
     static let windDown = ["windDownEnabled", "sleepGoalMinutes", "windDownMinutes", "freeAfterHomeMinutes", "minimumWindDownMinutes", "windDownWarningMinutes", "windDownLaterMinutes", "notInBedReminders", "reminderFirstMinutes", "reminderEveryMinutes", "reminderStopMinutes", "planCheckBeforeMinutes", "planCheckFallback", "windDownOwnAlarm", "startWindDownHours"]
     static let appointments = ["appointmentKeyword", "askAboutMissingLocations"]
-    static let driveTime = ["driveTimeSource", "googlePessimisticTraffic", "worstCaseArrival", "fallbackTravelMinutes", "driveFromHereWhenAway", "leaveReminderEnabled", "leaveReminderOffsets", "widgetLeaveByMinutes"]
+    static let driveTime = ["homeAddress", "driveTimeSource", "googlePessimisticTraffic", "worstCaseArrival", "fallbackTravelMinutes", "driveFromHereWhenAway", "leaveReminderEnabled", "leaveReminderOffsets", "widgetLeaveByMinutes"]
     static let homeAssistant = ["homeAssistantURL", "snoozeHelper", "stopHelper", "shiftOverrideEntity", "shiftSensorEntity", "nextAlarmSensor", "bedtimeHelper", "presenceEntity", "homeOnly", "bedSensor", "exitLatch"]
     static let weather = ["weatherSource", "weatherEntity", "weatherExtraMinutes", "badWeatherConditions", "weatherConditionMinutes", "addTimeWhenFreezing"]
     static let calendars = ["shiftCalendarIDs", "appointmentCalendarIDs", "newEventsCalendarID"]
@@ -148,5 +148,5 @@ enum SettingsPages {
     static let weekly = ["weeklySummaryEnabled", "weeklySummaryWeekday", "weeklySummaryTime"]
     static let clock = ["clockStyle"]
 
-    static let all = [main, remoteDays, mornings, home, alarms, appointmentAlarms, ownAlarms, clock, optionWindows, morningChange, nap, windDown, appointments, driveTime, homeAssistant, weather, calendars, leave, weekly, shortcuts, notifications]
+    static let all = [main, remoteDays, mornings, alarms, appointmentAlarms, ownAlarms, clock, optionWindows, morningChange, nap, windDown, appointments, driveTime, homeAssistant, weather, calendars, leave, weekly, shortcuts, notifications]
 }
