@@ -42,10 +42,9 @@ enum SiriPhrases {
         ]),
         Group(title: "Wind-down", entries: [
             Entry(phrases: ["Start wind-down in Bedtime Bridge", "Cancel wind-down in Bedtime Bridge",
-                            "Stop wind-down in Bedtime Bridge", "Start winding down with Bedtime Bridge"],
-                  does: "Starts tonight's wind-down now, or cancels it (after you confirm)."),
-            Entry(phrases: ["Go to bed later with Bedtime Bridge"],
-                  does: "Moves tonight's bedtime 15 minutes later, with its reminders. The alarms don't move."),
+                            "Stop wind-down in Bedtime Bridge", "Start winding down with Bedtime Bridge",
+                            "Go to bed later with Bedtime Bridge"],
+                  does: "Starts tonight's wind-down now, or cancels it (after you confirm). \u{201C}Go to bed later with Bedtime Bridge\u{201D} moves tonight's bedtime 15 minutes later, with its reminders; the alarms don't move."),
         ]),
         Group(title: "Calendar", entries: [
             Entry(phrases: ["Add a vacation in Bedtime Bridge", "Add leave in Bedtime Bridge"],
