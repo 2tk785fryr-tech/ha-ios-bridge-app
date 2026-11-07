@@ -844,7 +844,7 @@ private struct OwnAlarmSettings: View {
     var body: some View {
         SettingsPage(title: "Your own alarms") {
             Section {
-                DefaultStepper(value: $settings.newAlarmHoursAhead, in: 1...12, defaultValue: d.newAlarmHoursAhead, note: { "\($0) h" }) { "Start new alarms this far from now: \($0) h" }
+                DefaultStepper(value: $settings.newAlarmHoursAhead, in: 1...12, defaultValue: d.newAlarmHoursAhead, note: { "\($0) h" }) { "The time picker starts at: now + \($0) h" }
                 Picker(selection: $settings.ownAlarmRoundingMinutes) {
                     Text("Exact").tag(0)
                     ForEach([5, 10, 15, 30], id: \.self) { Text("\($0) min").tag($0) }
@@ -857,7 +857,7 @@ private struct OwnAlarmSettings: View {
             } header: {
                 Text("Time")
             } footer: {
-                Text("The time starts \(settings.newAlarmHoursAhead) h from now, rounded up (15 min: 6:54 → 7:00, 7:02 → 7:15). Exact: the picker allows any minute.")
+                Text("Used when you set alarms yourself: a day off with no events, skipping to your own time, or picking a new wake-up in the morning. The time is rounded up (15 min: 6:54 → 7:00).")
             }
             Section {
                 DefaultStepper(value: $settings.ownAlarmCount, in: 1...10, defaultValue: d.ownAlarmCount) { "\($0) alarms" }
@@ -880,15 +880,12 @@ private struct OwnAlarmSettings: View {
                     Text("Early must come before deadline, and deadline before late; until then Home Assistant uses 15, 30 and 45.")
                         .font(.footnote).foregroundStyle(Theme.danger)
                 }
-                DefaultToggle(title: "Use the full backstop actions", isOn: $settings.ownBackstopsFull, defaultValue: d.ownBackstopsFull)
+                DefaultToggle(title: "Full backstops (off: gentle)", isOn: $settings.ownBackstopsFull, defaultValue: d.ownBackstopsFull)
+                    .info("Gentle: a push and the early light ramp; no critical sound, no speakers.")
             } header: {
                 Text("Backstops")
             } footer: {
-                Text("Where you set the alarm there's a switch for that morning. Off: no backstops. Gentle (full off): a push and the early light ramp; no critical sound, no speakers.")
-            }
-            Section {
-            } footer: {
-                Text("Used when you set alarms yourself: a day off with no events, skipping to your own time, or picking a new wake-up in the morning.")
+                Text("Where you set the alarm there's a switch for that morning's backstops.")
             }
             ResetPageSection {
                 settings.resetToDefaults(SettingsPages.ownAlarms)
