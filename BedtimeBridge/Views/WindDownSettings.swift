@@ -8,21 +8,25 @@ struct WindDownSettings: View {
     var body: some View {
         SettingsPage(title: "Wind-down") {
             Section {
-                DefaultToggle(title: "Wind-down", isOn: $settings.windDownEnabled, defaultValue: d.windDownEnabled)
+                // v0.4.11 item 58: set up the phone side first.
                 NavigationLink("Set up the phone side") { WindDownPhoneGuide() }
+                DefaultToggle(title: "Wind-down", isOn: $settings.windDownEnabled, defaultValue: d.windDownEnabled)
             } footer: {
-                Text("Tonight's times come from tomorrow's first alarm. Home Assistant sends the warning, starts wind-down, says when it's time for bed and reminds you if you're still up. Turn it on once the phone side is set up.")
+                Text("Home Assistant winds the evening down from tomorrow's first alarm. Turn it on once the phone side is set up.")
             }
 
             Section {
                 DefaultStepper(title: "Sleep goal", value: $settings.sleepGoalMinutes, range: 240...600, step: 15,
                                defaultValue: d.sleepGoalMinutes, format: sleepGoal)
-                DefaultStepper(title: "Wind-down", value: $settings.windDownMinutes, range: 30...120, step: 5,
+                    .info("Go to bed = first alarm − this. On a morning with no alarms, I'm awake shows from bedtime + this − 1 hour.")
+                DefaultStepper(title: "Wind-down length", value: $settings.windDownMinutes, range: 30...120, step: 5,
                                defaultValue: d.windDownMinutes, format: DurationText.minutes)
                 DefaultStepper(title: "Free time after getting home", value: $settings.freeAfterHomeMinutes, range: 0...90, step: 5,
                                defaultValue: d.freeAfterHomeMinutes, format: DurationText.minutes)
+                    .info("Home late, wind-down waits this long after you get in.")
                 DefaultStepper(title: "Minimum wind-down", value: $settings.minimumWindDownMinutes, range: 15...60, step: 5,
                                defaultValue: d.minimumWindDownMinutes, format: DurationText.minutes)
+                    .info("Home late, bedtime moves later rather than cutting wind-down below this.")
             } header: {
                 Text("Times")
             } footer: {
@@ -32,7 +36,7 @@ struct WindDownSettings: View {
             Section {
                 DefaultStepper(title: "Warning before", value: $settings.windDownWarningMinutes, range: 0...30,
                                defaultValue: d.windDownWarningMinutes, format: { $0 == 0 ? "Off" : "\($0) min" })
-                DefaultStepper(title: "\"Later\" button", value: $settings.windDownLaterMinutes, range: 5...60, step: 5,
+                DefaultStepper(title: "Warning's Later moves wind-down by", value: $settings.windDownLaterMinutes, range: 5...60, step: 5,
                                defaultValue: d.windDownLaterMinutes, format: DurationText.minutes)
             } header: {
                 Text("Warning")
@@ -59,11 +63,12 @@ struct WindDownSettings: View {
             Section {
                 DefaultStepper(title: "Evening plan check", value: $settings.planCheckBeforeMinutes, range: 30...240, step: 15,
                                defaultValue: d.planCheckBeforeMinutes, format: { "\(DurationText.hours($0)) before" })
+                    .info("Home Assistant asks the phone for tomorrow's plan this long before wind-down. It's also when the bar's evening starts.")
                 LabeledContent {
                     DatePicker("", selection: fallbackTime, displayedComponents: .hourAndMinute).labelsHidden()
                 } label: {
                     VStack(alignment: .leading, spacing: 1) {
-                        Text("Without a shift, check at")
+                        Text("Plan check with no shift")
                         if settings.planCheckFallback != d.planCheckFallback { DefaultNote(text: "6:00 PM") }
                     }
                 }
@@ -89,7 +94,7 @@ struct WindDownSettings: View {
     private var example: String {
         let first = Calendar.current.date(bySettingHour: 4, minute: 20, second: 0, of: Calendar.current.nextDay(after: .now))!
         let times = WindDownTimes.compute(firstAlarm: first, settings: settings)
-        return "First alarm 4:20 AM → wind-down \(WakePlanner.format(times.windDown)), go to bed \(WakePlanner.format(times.goToBed)). Home late, wind-down waits for the free time and bedtime moves later rather than cutting wind-down below the minimum."
+        return "First alarm 4:20 AM → wind-down \(WakePlanner.format(times.windDown)), go to bed \(WakePlanner.format(times.goToBed))."
     }
 
     private var fallbackTime: Binding<Date> {
