@@ -579,7 +579,9 @@ struct ContentView: View {
             i.windDown = coordinator.windDown
             i.startWindDownHours = store.settings.startWindDownHours
         }
-        i.evening = ScreenClock.isEvening(now)
+        // v0.4.11 item 43: the bar's evening starts at the evening plan check, not at 17:00.
+        i.evening = i.eveningCheckPassed || Calendar.current.component(.hour, from: now) < 4
+        i.day = barDay
         i.awakeOffered = NoAlarmMorning.offered
         i.nothingFound = plan.map { !$0.hasAlarm } ?? (nothingAhead && set.isEmpty)
         i.previewedNothing = plan.map { !$0.hasAlarm } ?? false

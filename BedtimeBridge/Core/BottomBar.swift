@@ -210,6 +210,8 @@ struct BottomBar: Equatable {
         /// v0.4.11 item 35: the sleeping-in morning after a no-alarm bedtime; its day.
         var sleepingIn = false
         var sleepingInDay = ""
+        /// v0.4.11 item 43: the morning the bar names ("Nothing set for Saturday").
+        var day = ""
     }
 
     /// v0.4.10 item 18: when the evening starts for the bar, the wind-down settings' evening plan
@@ -268,12 +270,14 @@ struct BottomBar: Equatable {
                 return BottomBar(top: .main(.replan, changed), buttons: [.changeMorning] + temporary,
                                  hold: i.notReadyWindow ? .notReadyForBed : nil)
             }
-            return BottomBar(top: .main(.replan, changed), buttons: [.previewPlan, .editAlarms])
+            // v0.4.11 item 43: with no alarms, your own time instead of Edit alarms.
+            return BottomBar(top: .main(.replan, changed), buttons: [.previewPlan, i.alarmsSet > 0 ? .editAlarms : .setAlarmsForTime])
         }
         // v0.4.8 item 5: alarms set, bedtime still to come: Good night, Change plan, Temporary
         // (wind-down's actions stay in ⋯).
         if i.goodNight, i.alarmsSet > 0, !i.upEarlyWindow, !i.backToBedWindow, !i.notReadyWindow {
-            let count = i.alarmsSet == 1 ? "1 alarm set" : "\(i.alarmsSet) alarms set"
+            // v0.4.11 item 43: one pattern, "✓ 3 alarms · first 4:38".
+            let count = i.alarmsSet == 1 ? "1 alarm" : "\(i.alarmsSet) alarms"
             let first = i.firstAlarm.flatMap { $0 > i.now ? " · first \(format($0))" : nil } ?? ""
             return BottomBar(top: .status("✓ " + count + first, .good),
                              buttons: [.changePlan] + (i.alarmStyleApp ? [.addTemporary] : []),
@@ -291,24 +295,26 @@ struct BottomBar: Equatable {
             return BottomBar(top: .status("Alarms off" + leave, .muted), buttons: [.previewPlan] + temporary, hold: .backToBed)
         }
         if i.alarmsSet > 0 {
-            let count = i.alarmsSet == 1 ? "1 alarm set" : "\(i.alarmsSet) alarms set"
+            // v0.4.11 item 43: "✓ 3 alarms · first 4:38", "✓ 3 alarms · next 4:53".
+            var count = "✓ " + (i.alarmsSet == 1 ? "1 alarm" : "\(i.alarmsSet) alarms")
             if i.upEarlyWindow, let first = i.firstAlarm {
                 if first > i.now {
-                    return BottomBar(top: .status("\(count) · first at \(format(first))", .good),
+                    return BottomBar(top: .status("\(count) · first \(format(first))", .good),
                                      buttons: [.sleepLater] + temporary, hold: .upEarly)
                 }
-                let next = i.nextAlarm.map { " · next at \(format($0))" } ?? ""
+                let next = i.nextAlarm.map { " · next \(format($0))" } ?? ""
                 return BottomBar(top: .status(count + next, .good), buttons: [.wakeLater] + temporary, hold: .endAlarms)
             }
+            if let first = i.firstAlarm, first > i.now { count += " · first \(format(first))" }
             if i.notReadyWindow {
                 // v0.4.8 item 14: after bedtime, what the check found, in one line.
-                let top: Top = i.healthIssue.map { .status("⚠ " + $0, .snoozing) } ?? .status("✓ " + count, .good)
+                let top: Top = i.healthIssue.map { .status("⚠ " + $0, .snoozing) } ?? .status(count, .good)
                 return BottomBar(top: top, buttons: [.sleepLater] + temporary, hold: .notReadyForBed)
             }
             // v0.4.11 item 38: the middle of the night: Wake up later and Temporary; No alarms is in
             // ⋯, so turning the night's alarms off isn't one half-asleep tap.
             let night: [BarAction] = temporary.isEmpty ? [.noAlarmsTomorrow] : temporary
-            return BottomBar(top: .status("✓ " + count, .good), buttons: i.sleepLaterWindow ? [.sleepLater] + night : [.editAlarms] + night)
+            return BottomBar(top: .status(count, .good), buttons: i.sleepLaterWindow ? [.sleepLater] + night : [.editAlarms] + night)
         }
         // v0.4.11 items 35 and 36: a no-alarm morning (from bedtime + sleep goal − 1 h, or Home
         // Assistant's offer from 4:00): I'm awake as the purple slide-and-hold, your own time,
@@ -324,7 +330,7 @@ struct BottomBar: Equatable {
                 return BottomBar(top: .status("In bed · no alarms \(i.inBedDay)", .accent), buttons: temporary + [.previewPlan],
                                  actionRow: [.setAlarmsForTime], hold: .notReadyForBed)
             }
-            return BottomBar(top: .status("Nothing set for tonight", .muted), buttons: temporary + [.previewPlan], actionRow: [.setAlarmsForTime])
+            return BottomBar(top: .status("In bed · no alarms \(i.inBedDay)", .muted), buttons: temporary + [.previewPlan], actionRow: [.setAlarmsForTime])
         }
         let nap: [BarAction] = i.napEnabled ? [.nap] : []
         // v0.4.7 item 8: nothing set and nothing coming (on opening, or a preview found nothing):
@@ -334,7 +340,7 @@ struct BottomBar: Equatable {
             // (Temporary alarm stays in ⋯).
             let buttons: [BarAction] = i.previewedNothing ? [.noAlarmsTomorrow, .previewPlan]
                 : (i.alarmStyleApp ? [.addTemporary] : []) + [.previewPlan]
-            return BottomBar(top: .status("Nothing set for tonight", .muted), buttons: buttons, actionRow: [.setAlarmsForTime] + nap)
+            return BottomBar(top: .status(nothingSet(i), .muted), buttons: buttons, actionRow: [.setAlarmsForTime] + nap)
         }
         if i.evening {
             // v0.4.10 items 16 and 17: the status on top, both ways to set alarms in the first row,
@@ -343,15 +349,20 @@ struct BottomBar: Equatable {
             if let plan = i.planReady, plan.count > 0 {
                 title = "Set \(plan.count)" + (plan.up.map { " · up \(format($0))" } ?? "")
             }
-            let status = i.tomorrowLabel.map { "\($0) · no alarms set" } ?? "No alarms set"
+            let status = i.tomorrowLabel.map { "\($0) · no alarms set" } ?? (i.day.isEmpty ? "No alarms set" : "No alarms · \(i.day)")
             // v0.4.10 item 18: from the evening plan check, No alarms instead of Nap (Nap in ⋯).
             let somethingTomorrow = i.tomorrowLabel != nil || i.planReady != nil
             let second: [BarAction] = i.eveningCheckPassed && somethingTomorrow ? [.noAlarmsTomorrow] : nap
             return BottomBar(top: .status(status, .muted), buttons: [.previewPlan] + second,
                              actionRow: [.setAlarms, .setAlarmsForTime], setTitle: title)
         }
-        let status = i.tomorrow.map { "Tomorrow \(format($0)) · not set yet" } ?? "Nothing set for tonight"
+        let status = i.tomorrow.map { "Tomorrow \(format($0)) · not set yet" } ?? nothingSet(i)
         return BottomBar(top: .status(status, .muted), buttons: nap + [.previewPlan])
+    }
+
+    /// v0.4.11 item 43: "Nothing set for Saturday" (the day's name, not "tonight").
+    private static func nothingSet(_ i: Inputs) -> String {
+        i.day.isEmpty ? "Nothing set for tonight" : "Nothing set for \(i.day)"
     }
 
     /// Change plan's list (v0.4.8 item 5), in order, hiding what doesn't apply.

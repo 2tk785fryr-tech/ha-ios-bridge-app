@@ -44,7 +44,7 @@ final class V048Tests: XCTestCase {
         i.firstAlarm = first
         i.upEarlyWindow = true
         i.plansChanged = "Plan changed · re-plan"
-        XCTAssertEqual(BottomBar.make(i), BottomBar(top: .status("1 alarm set · first at \(f(first))", .good), buttons: [.sleepLater, .addTemporary], hold: .upEarly))
+        XCTAssertEqual(BottomBar.make(i), BottomBar(top: .status("✓ 1 alarm · first \(f(first))", .good), buttons: [.sleepLater, .addTemporary], hold: .upEarly))
     }
 
     // MARK: Item 5, Good night bar and Change plan
@@ -55,7 +55,7 @@ final class V048Tests: XCTestCase {
         i.firstAlarm = first
         i.goodNight = true
         var bar = BottomBar.make(i)
-        XCTAssertEqual(bar.top, .status("✓ 3 alarms set · first \(f(first))", .good))
+        XCTAssertEqual(bar.top, .status("✓ 3 alarms · first \(f(first))", .good))
         XCTAssertEqual(bar.hold, .goodNight)
         XCTAssertEqual(bar.buttons, [.changePlan, .addTemporary])
         XCTAssertFalse(bar.undoOffered)

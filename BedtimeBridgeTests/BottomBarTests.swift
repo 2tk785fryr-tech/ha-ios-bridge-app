@@ -37,7 +37,7 @@ final class BottomBarTests: XCTestCase {
         i.sleepLaterWindow = true
         i.napEnabled = true
         i.notReadyWindow = true
-        XCTAssertEqual(BottomBar.make(i), BottomBar(top: .status("✓ 3 alarms set", .good), buttons: [.sleepLater, .addTemporary], hold: .notReadyForBed), "v0.4.10 item 9: the window's slider in its own row")
+        XCTAssertEqual(BottomBar.make(i), BottomBar(top: .status("✓ 3 alarms · first \(f(first))", .good), buttons: [.sleepLater, .addTemporary], hold: .notReadyForBed), "v0.4.10 item 9: the window's slider in its own row")
         i.notReadyWindow = false
         XCTAssertEqual(BottomBar.make(i).buttons, [.sleepLater, .addTemporary], "Nap hidden once the bedtime alarms are set; v0.4.11 item 38: Temporary, No alarms in ⋯")
     }
@@ -57,7 +57,7 @@ final class BottomBarTests: XCTestCase {
         i.alarmsSet = 3
         i.firstAlarm = first
         i.upEarlyWindow = true
-        XCTAssertEqual(BottomBar.make(i), BottomBar(top: .status("3 alarms set · first at \(f(first))", .good), buttons: [.sleepLater, .addTemporary], hold: .upEarly))
+        XCTAssertEqual(BottomBar.make(i), BottomBar(top: .status("✓ 3 alarms · first \(f(first))", .good), buttons: [.sleepLater, .addTemporary], hold: .upEarly))
 
         var snooze = BottomBar.Inputs(now: first.addingTimeInterval(60))
         snooze.snoozing = true

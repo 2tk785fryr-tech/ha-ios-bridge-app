@@ -105,4 +105,30 @@ final class V0411BarReviewTests: XCTestCase {
         XCTAssertFalse(BarAction.goToBedLater.isProtected, "a plain choice of minutes")
         XCTAssertEqual(BarAction.goToBedLater.title(day: ""), "Go to bed later…")
     }
+
+    // MARK: Item 43
+
+    func testItem43Wording() {
+        var i = BottomBar.Inputs(now: date(7, 10))
+        i.day = "Saturday"
+        XCTAssertEqual(BottomBar.make(i).top, .status("Nothing set for Saturday", .muted))
+        i.evening = true
+        i.tomorrow = nil
+        i.nothingFound = false
+        var evening = BottomBar.Inputs(now: date(6, 19))
+        evening.evening = true
+        evening.day = "Saturday"
+        evening.tomorrow = date(7, 6)
+        XCTAssertEqual(BottomBar.make(evening).top, .status("No alarms · Saturday", .muted))
+
+        var set = BottomBar.Inputs(now: date(7, 1))
+        set.alarmsSet = 3
+        set.firstAlarm = date(7, 4, 38)
+        set.sleepLaterWindow = true
+        XCTAssertEqual(BottomBar.make(set).top, .status("✓ 3 alarms · first \(WakePlanner.format(date(7, 4, 38)))", .good))
+
+        var changed = BottomBar.Inputs(now: date(7, 10))
+        changed.plansChanged = "Calendar changed · re-plan"
+        XCTAssertEqual(BottomBar.make(changed).buttons, [.previewPlan, .setAlarmsForTime], "no alarms: nothing to edit")
+    }
 }
