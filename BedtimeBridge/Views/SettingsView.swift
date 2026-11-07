@@ -180,12 +180,15 @@ private struct RemoteDaysSettings: View {
     var body: some View {
         SettingsPage(title: "Remote days") {
             Section {
-                DefaultToggle(title: "Location is Home, Remote or my address", isOn: $settings.remoteByLocation,
+                DefaultToggle(title: "Location says I'm home", isOn: $settings.remoteByLocation,
                               defaultValue: BridgeSettings().remoteByLocation)
+                    .info("The shift's location is Home, Remote, or your home address.")
                 DefaultToggle(title: "No location means remote", isOn: $settings.remoteWhenNoLocation,
                               defaultValue: BridgeSettings().remoteWhenNoLocation)
+                    .info("A shift with an empty location is worked from home. Off: it plans the drive to work as usual.")
                 DefaultToggle(title: "Title has a remote word", isOn: $settings.remoteByKeyword,
                               defaultValue: BridgeSettings().remoteByKeyword)
+                    .info("The shift's own word still has to match, so \"Days WFH\" is a Days shift worked from home.")
                 if settings.remoteByKeyword {
                     TextField("Remote words", text: Binding(
                         get: { settings.remoteKeywords.joined(separator: ", ") },
@@ -196,7 +199,7 @@ private struct RemoteDaysSettings: View {
             } header: {
                 Text("A remote day")
             } footer: {
-                Text("The shift's own word still has to match, so \"Days WFH\" is a Days shift worked from home. Office days keep their drive.")
+                Text("How a shift is recognised as worked from home. Office days keep their drive.")
             }
             Section {
                 DefaultStepper(value: $settings.remoteGetReadyMinutes, in: 0...180, step: 5,
@@ -212,6 +215,7 @@ private struct RemoteDaysSettings: View {
                 } label: {
                     WithDefault(text: "Backstops", defaultText: settings.remoteBackstops == BridgeSettings().remoteBackstops ? nil : BridgeSettings().remoteBackstops.displayName.lowercased())
                 }
+                .info("Spread: at a quarter, half and three quarters of the time between the last alarm and the start (last alarm 6:00, start 6:30: 6:07, 6:15, 6:22). Never past the start.")
                 if settings.remoteBackstops == .afterLastAlarm {
                     DefaultStepper(value: $settings.remoteEarlyMinutes, in: 1...120, defaultValue: BridgeSettings().remoteEarlyMinutes, note: { "\($0) min" }) { "Early: \($0) min after" }
                     DefaultStepper(value: $settings.remoteDeadlineMinutes, in: 1...120, defaultValue: BridgeSettings().remoteDeadlineMinutes, note: { "\($0) min" }) { "Deadline: \($0) min after" }
@@ -220,7 +224,7 @@ private struct RemoteDaysSettings: View {
             } header: {
                 Text("Backstops")
             } footer: {
-                Text("After the last alarm and before the shift starts. Spread: at a quarter, half and three quarters of the time between them (last alarm 6:00, start 6:30: 6:07, 6:15, 6:22). Never past the start.")
+                Text("A remote day's backstops come after the last alarm and before the shift starts.")
             }
             ResetPageSection(detail: "Only this page's settings go back to their defaults.") {
                 settings.resetToDefaults(SettingsPages.remoteDays)
