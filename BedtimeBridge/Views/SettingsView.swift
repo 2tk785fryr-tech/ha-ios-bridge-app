@@ -128,6 +128,10 @@ struct SettingsView: View {
 
             // v0.4.8 items 9 and 12.
             Section("About") {
+                // v0.4.11 item 31.
+                SettingsLink(title: "How to use Bedtime Bridge", icon: "book", value: "") {
+                    TutorialView()
+                }
                 SettingsLink(title: "Testing reports", icon: "ladybug", value: TestingReports.enabled ? "On" : "Off") {
                     TestingReportsPage(settings: store.settings)
                 }
@@ -290,6 +294,31 @@ private struct HomeSettings: View {
 }
 
 /// A settings screen in the Nightfall style.
+/// v0.4.11 item 31: the Settings page a tutorial page's Take me there opens.
+struct TutorialSettingsPage: View {
+    @Environment(SettingsStore.self) private var store
+    let link: Tutorial.Link
+
+    var body: some View {
+        @Bindable var store = store
+        switch link {
+        case .shifts: SettingsView()
+        case .alarms: SettingsPage(title: "Alarms") { AlarmSettingsSection(settings: $store.settings) }
+        case .appointments: SettingsPage(title: "Appointments") { AppointmentsSection(settings: $store.settings) }
+        case .remoteDays: RemoteDaysSettings(settings: $store.settings)
+        case .vacations: LeaveSettings(settings: $store.settings)
+        case .calendars: CalendarsPage(settings: $store.settings)
+        case .home: HomeSettings(settings: $store.settings)
+        case .driveTime:
+            SettingsPage(title: "Drive time") {
+                DriveTimeSection(settings: $store.settings)
+                LeaveReminderSection(settings: $store.settings)
+            }
+        case .homeAssistant: SettingsPage(title: "Home Assistant") { HomeAssistantSection(settings: $store.settings) }
+        }
+    }
+}
+
 struct SettingsPage<Content: View>: View {
     let title: String
     @ViewBuilder let content: Content

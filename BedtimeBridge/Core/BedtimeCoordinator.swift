@@ -765,6 +765,16 @@ final class BedtimeCoordinator {
             ?? Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: now))!
     }
 
+    /// v0.4.11 item 31's checklist: a shift in your calendars in the next week; nil without access.
+    func shiftThisWeek(settings phoneSettings: BridgeSettings, now: Date = .now) -> Bool? {
+        let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
+        guard EKEventStore.authorizationStatus(for: .event) == .fullAccess else { return nil }
+        let end = now.addingTimeInterval(7 * 86400)
+        return calendar.events(from: now, to: end, calendarIDs: settings.shiftCalendarIDs).contains {
+            WakePlanner.matchingRule(forTitle: $0.title ?? "", rules: settings.shiftRules) != nil
+        }
+    }
+
     /// The shift still on the calendar that morning, for the confirm ("Days at 6:30 is still
     /// on your calendar, so the backstops stay on").
     func shiftOnCalendar(morning: Date, settings phoneSettings: BridgeSettings) -> (cause: String, start: Date)? {

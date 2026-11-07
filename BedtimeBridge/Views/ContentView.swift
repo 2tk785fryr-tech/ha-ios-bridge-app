@@ -15,6 +15,7 @@ struct ContentView: View {
     @State private var pairingMessage: String?
     @State private var needsALookCount: Int?
     @State private var skippedMorning: Date?
+    @State private var showTutorial = Tutorial.showsOnLaunch(freshInstall: SettingsStore.shared.freshInstall, seen: Tutorial.seen)
     @State private var stoppingAlarm: SnoozedAlarm?
     @State private var skipReplacement: SkipReplacement?
     @State private var temporaryAlarms: [TemporaryAlarm] = []
@@ -392,6 +393,13 @@ struct ContentView: View {
                 }
             }
             .navigationDestination(isPresented: $showSettings) { SettingsView() }
+            // v0.4.11 item 31: once on a fresh install, before Tonight.
+            .fullScreenCover(isPresented: $showTutorial) {
+                NavigationStack { TutorialView() }
+                    .environment(store)
+                    .preferredColorScheme(.dark)
+                    .tint(Theme.accentIcon)
+            }
             .fullScreenCover(item: $stoppingAlarm) { alarm in
                 let description = coordinator.stopDescription(for: alarm.id)
                 SlideToStopView(description: description, canEndAll: description.canEndAll,

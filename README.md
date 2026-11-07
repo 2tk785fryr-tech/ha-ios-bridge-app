@@ -439,6 +439,16 @@ Home Assistant side is in `docs/ha-handoffs-v*.md`.
 - **Plan changed (0.4.11):** the prompt shows only when a quiet re-plan would move your alarms
   (*Plan changed · first 4:50 → 4:40 · re-plan*). After bedtime it comes with *Not going to sleep
   yet*, *Change this morning* and *Temporary alarm*.
+- **Your morning (0.4.11):** a *Sleep · 6.7 h* row between Go to bed and Wake up; Leave by's
+  comparison leaves out Google worst case when *Leave by · worst case* has its own row; a red
+  *Fired* tag on a backstop that went off (needs Wake Deadline Backstop v1-40).
+- **Widgets (0.4.11):** once bedtime runs or you're in bed, they drop the wind-down countdown and
+  show the next alarm.
+- **Siri (0.4.11):** *"Take a 20 minute nap with Bedtime Bridge"* (any length), Cancel asks first,
+  Plan says what it set, Wake up later understands *"1 hour"* and *"half an hour"*, and Add a
+  wake-up event asks where.
+- **How to use Bedtime Bridge (0.4.11):** a step-by-step tutorial in Settings → About, starting
+  with your schedule in Apple Calendar. It opens once by itself on a fresh install.
 - **Wake at a different time** (day off, skip) shows a preview where you can add alarms and edit
   the backstops.
 - **Add a wake-up event** (the round button at the top) and **Add <vacation>**, straight into your
