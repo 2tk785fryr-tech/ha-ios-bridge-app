@@ -162,3 +162,18 @@ red *fired* tag until the next plan (it also adds 1 to this week's summary).
 **Marketplace → Bedtime Bridge → Update** to 0.4.11.3, then restart Home Assistant. It adds Sleep
 In to what the app reads, so the in-bed card can say *Sleep In is on*. Nothing to change in your
 automations or blueprints. Until it's installed the card leaves the Sleep In line out.
+
+## 6. Install 0.4.11.4 (items 35, 41 and 48)
+
+**Marketplace → Bedtime Bridge → Update** to 0.4.11.4, then restart Home Assistant. Nothing to
+change in your automations or blueprints. It adds:
+- **Awake For Day** to what the app reads, so the app's sleeping-in bar (*I'm awake*) ends when
+  Awake For Day is turned on in Home Assistant, not only when you use I'm awake on the phone.
+- **Go to bed later** (`bed_later`): moves tonight's go to bed, its reminders and a wind-down still
+  to come later by 15 min, 30 min or 1 h. The alarms don't move. At Time for bed, wind-down
+  carries on until the new time (the winding-down helper goes back on if you're home). Bus event
+  `bedtime_bridge_wind_down_bed_later`.
+- **Cancel wind-down at Time for bed** stops the Still up reminders.
+
+Until it's installed, Go to bed later does nothing, and the sleeping-in bar ends only from the
+phone.

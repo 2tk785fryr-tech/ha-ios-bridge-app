@@ -450,6 +450,15 @@ Home Assistant side is in `docs/ha-handoffs-v*.md`.
 - **In bed with no alarms (0.4.11):** after a bedtime that set no alarms, the card reads *In bed ·
   no alarms Saturday* (when bedtime ran, why, Sleep In), the bar offers *Not ready for bed* with Nap
   in ⋯, and Morning weather shows the forecast at *Good morning from*.
+- **Sleeping in (0.4.11):** on a no-alarm morning, *I'm awake · good morning* is a purple
+  slide-and-hold in the bar from bedtime + your sleep goal − 1 hour, until you use it (or turn
+  Awake For Day on).
+- **Fewer, clearer buttons (0.4.11):** *Go to bed later* moves bedtime (never the alarms);
+  *Wake up later* moves the alarms, *Back to bed* once you're up; one *End this morning's alarms*,
+  one *Change alarms* list; ⋯ doesn't repeat the bar; the status line says *On vacation*, *Away
+  from home* or *Calendar access off* when it applies.
+- **Settings in groups (0.4.11):** Your schedule, Mornings, Evenings, Home Assistant, The app and
+  About, with a circled *i* on a setting for a short explanation.
 - **How to use Bedtime Bridge (0.4.11):** a step-by-step tutorial in Settings → About, starting
   with your schedule in Apple Calendar. It opens once by itself on a fresh install.
 - **Wake at a different time** (day off, skip) shows a preview where you can add alarms and edit
