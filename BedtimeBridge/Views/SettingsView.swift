@@ -787,7 +787,7 @@ private struct OptionWindowsSettings: View {
     var body: some View {
         SettingsPage(title: "When options show") {
             Section {
-                DefaultStepper(value: $settings.endAlarmsEarlyHours, in: 1...12, defaultValue: BridgeSettings().endAlarmsEarlyHours, note: { "\($0) h" }) { "I'm up early / End this morning's alarms: from \($0) h before the first alarm" }
+                DefaultStepper(value: $settings.endAlarmsEarlyHours, in: 1...12, defaultValue: BridgeSettings().endAlarmsEarlyHours, note: { "\($0) h" }) { "End this morning's alarms: from \($0) h before the first alarm" }
                 DefaultStepper(value: $settings.notReadyForBedHours, in: 1...12, defaultValue: BridgeSettings().notReadyForBedHours, note: { "\($0) h" }) { "Not ready for bed: for \($0) h after bedtime ran" }
                 DefaultStepper(value: $settings.backToBedHours, in: 1...12, defaultValue: BridgeSettings().backToBedHours, note: { "\($0) h" }) { "Back to bed: until \($0) h after the wake-up or the last stop, whichever is later" }
                 LabeledContent("Wake up later", value: "until the first alarm")

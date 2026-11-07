@@ -77,8 +77,9 @@ enum BarAction: String, CaseIterable, Identifiable {
         case .notReadyForBed: "Not ready for bed"
         case .sleepLater: "Wake up later…"
         case .editAlarms: "Edit alarms"
-        case .upEarly: "I'm up early"
-        case .endAlarms: "End alarms"
+        // v0.4.11 item 46: one name to end the morning's alarms, before or after the first.
+        case .upEarly: "End this morning's alarms"
+        case .endAlarms: "End this morning's alarms"
         case .wakeLater: "Wake later…"
         case .backToBed: "Back to bed"
         case .endNap: "End nap"

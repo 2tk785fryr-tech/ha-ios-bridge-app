@@ -158,3 +158,11 @@ final class V0411BarReviewTests: XCTestCase {
         XCTAssertNotEqual(BottomBar.make(set).top, .status("On vacation · back Monday", .accent), "alarms keep their own line")
     }
 }
+
+/// v0.4.11 items 46–48: merged actions.
+final class V0411MergedActionsTests: XCTestCase {
+    func testItem46OneNameToEndTheMorning() {
+        XCTAssertEqual(BarAction.upEarly.title(day: ""), "End this morning's alarms")
+        XCTAssertEqual(BarAction.endAlarms.title(day: ""), "End this morning's alarms")
+    }
+}
