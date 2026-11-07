@@ -127,7 +127,7 @@ enum SettingsPages {
     /// v0.4.11 item 11.
     static let remoteDays = ["remoteByLocation", "remoteWhenNoLocation", "remoteByKeyword", "remoteKeywords", "remoteGetReadyMinutes",
                              "remoteBackstops", "remoteEarlyMinutes", "remoteDeadlineMinutes", "remoteLateMinutes"]
-    static let mornings = ["getReadyMinutes", "workArrivalBufferMinutes", "wakeEarlyToGetReady", "noAlarmMorningEnabled", "noAlarmEarliest", "noAlarmUpMinutes", "noAlarmWaitMinutes"]
+    static let mornings = ["getReadyMinutes", "workArrivalBufferMinutes", "arrivalBufferMinutes", "wakeEarlyToGetReady", "noAlarmMorningEnabled", "noAlarmEarliest", "noAlarmUpMinutes", "noAlarmWaitMinutes"]
     static let home = ["homeAddress"]
     static let alarms = ["chargeWarningEnabled", "chargeWarningThreshold", "alarmStyle", "snoozeMinutes", "alarmSound", "lookAheadHours"]
     /// v0.4.7 item 7.
@@ -137,7 +137,7 @@ enum SettingsPages {
     static let morningChange = ["morningReasons", "earlyBackstopGapMinutes"]
     static let nap = ["napEnabled", "napAlarmCount", "napSpacingMinutes", "napReadyWithAddressMinutes", "napReadyNoAddressMinutes", "napLengths"]
     static let windDown = ["windDownEnabled", "sleepGoalMinutes", "windDownMinutes", "freeAfterHomeMinutes", "minimumWindDownMinutes", "windDownWarningMinutes", "windDownLaterMinutes", "notInBedReminders", "reminderFirstMinutes", "reminderEveryMinutes", "reminderStopMinutes", "planCheckBeforeMinutes", "planCheckFallback", "windDownOwnAlarm", "startWindDownHours"]
-    static let appointments = ["appointmentKeyword", "arrivalBufferMinutes", "askAboutMissingLocations"]
+    static let appointments = ["appointmentKeyword", "askAboutMissingLocations"]
     static let driveTime = ["driveTimeSource", "googlePessimisticTraffic", "worstCaseArrival", "fallbackTravelMinutes", "driveFromHereWhenAway", "leaveReminderEnabled", "leaveReminderOffsets", "widgetLeaveByMinutes"]
     static let homeAssistant = ["homeAssistantURL", "snoozeHelper", "stopHelper", "shiftOverrideEntity", "shiftSensorEntity", "nextAlarmSensor", "bedtimeHelper", "presenceEntity", "homeOnly", "bedSensor", "exitLatch"]
     static let weather = ["weatherSource", "weatherEntity", "weatherExtraMinutes", "badWeatherConditions", "weatherConditionMinutes", "addTimeWhenFreezing"]

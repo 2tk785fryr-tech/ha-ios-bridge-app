@@ -240,30 +240,40 @@ private struct MorningsSettings: View {
         SettingsPage(title: "Mornings") {
             Section {
                 DefaultStepper(value: $settings.getReadyMinutes, in: 0...240, step: 5, defaultValue: BridgeSettings().getReadyMinutes, note: { "\($0) min" }) { "Get ready: \($0) min" }
-                DefaultStepper(value: $settings.workArrivalBufferMinutes, in: 0...60, step: 5, defaultValue: BridgeSettings().workArrivalBufferMinutes, note: { "\($0) min" }) { "Arrive at work early: \($0) min" }
-                DefaultToggle(title: "Wake early enough to get ready", isOn: $settings.wakeEarlyToGetReady, defaultValue: BridgeSettings().wakeEarlyToGetReady)
+                    .info("How long you need between waking and leaving.")
+                // v0.4.11 item 53: both arrive-early times on one page.
+                DefaultStepper(value: $settings.workArrivalBufferMinutes, in: 0...60, step: 5, defaultValue: BridgeSettings().workArrivalBufferMinutes, note: { "\($0) min" }) { "Arrive early · shifts: \($0) min" }
+                    .info("When a shift has a location, Tonight shows when to leave to get there this early.")
+                DefaultStepper(value: $settings.arrivalBufferMinutes, in: 0...60, step: 5, defaultValue: BridgeSettings().arrivalBufferMinutes, note: { "\($0) min" }) { "Arrive early · appointments: \($0) min" }
+                    .info("Wake time = start − this − drive time − get-ready time.")
+                DefaultToggle(title: "Move alarms earlier when time is short", isOn: $settings.wakeEarlyToGetReady, defaultValue: BridgeSettings().wakeEarlyToGetReady)
+                    .info("If the drive or bad weather leaves less than the get-ready time, you're warned and can wake earlier that night. On: shift alarms move earlier by themselves. Appointments always plan the get-ready time.")
             } header: {
                 Text("Mornings")
             } footer: {
-                Text("When a shift's event has a location, Tonight shows when to leave to arrive this early. If the drive or bad weather leaves less than the get-ready time, you're warned and can wake earlier for that night; with the switch on, shift alarms move earlier by themselves. Appointments always plan the get-ready time.")
+                Text("How long you need in the morning and how early you like to arrive.")
             }
 
             // v0.4.6 item 2.
             Section {
-                DefaultToggle(title: "Disarm, re-arm and good morning", isOn: $settings.noAlarmMorningEnabled, defaultValue: BridgeSettings().noAlarmMorningEnabled)
+                DefaultToggle(title: "Sleeping-in mornings", isOn: $settings.noAlarmMorningEnabled, defaultValue: BridgeSettings().noAlarmMorningEnabled)
+                    .info("At home, on a morning with no alarms: out of bed and down the hall disarms the house (nothing else changes), and it re-arms once you're back in bed. I'm awake in the bar, Siri or a control runs good morning straight away.")
                 if settings.noAlarmMorningEnabled {
                     LabeledContent {
                         DatePicker("", selection: earliest, displayedComponents: .hourAndMinute).labelsHidden()
                     } label: {
                         WithDefault(text: "Good morning from", defaultText: settings.noAlarmEarliest == BridgeSettings().noAlarmEarliest ? nil : "8:00 AM")
                     }
+                    .info("The earliest Home Assistant asks Up for the day?. Also the time of the Morning weather row with no alarms, and when the in-bed bar ends.")
                     DefaultStepper(value: $settings.noAlarmUpMinutes, in: 5...60, step: 5, defaultValue: BridgeSettings().noAlarmUpMinutes, note: { "\($0) min" }) { "Up for: \($0) min" }
+                        .info("Once you've been up this long (or the phone comes off the charger), Home Assistant asks Up for the day?.")
                     DefaultStepper(value: $settings.noAlarmWaitMinutes, in: 1...30, defaultValue: BridgeSettings().noAlarmWaitMinutes, note: { "\($0) min" }) { "Ask first, then go ahead after: \($0) min" }
+                        .info("If you don't answer Up for the day?, good morning runs after this long: Sleep In off, Awake For Day on, Good Morning.")
                 }
             } header: {
                 Text("Mornings with no alarms")
             } footer: {
-                Text("At home, on a morning with no alarms: out of bed, through the bedroom door and down the hall disarms the house (nothing else changes), and it re-arms once you're back in bed. From the time above, once you've been up this long or the phone comes off the charger, Home Assistant asks Up for the day?, and runs good morning (Sleep In off, Awake For Day on, Good Morning) if you don't answer. I'm awake in the bar, Siri or a control does it straight away.")
+                Text("On a morning with no alarms, Home Assistant handles the house while you sleep in.")
             }
 
             ResetPageSection { settings.resetToDefaults(SettingsPages.mornings) }
@@ -376,6 +386,7 @@ private struct AppointmentsSection: View {
                     .multilineTextAlignment(.trailing)
                     .textInputAutocapitalization(.never)
             }
+            .info("It matches anywhere in the notes, in any case. Example: \"Notes: wake up · bring insurance card\". Shifts don't need it: they're found by their title.")
             if settings.appointmentKeyword.trimmingCharacters(in: .whitespaces).isEmpty {
                 Label("With no keyword, no appointment gets an alarm; only shifts do.", systemImage: "exclamationmark.triangle")
                     .font(.footnote).foregroundStyle(Theme.warning.text)
@@ -388,15 +399,15 @@ private struct AppointmentsSection: View {
         } header: {
             Text("Wake-up keyword")
         } footer: {
-            Text("Put this word or phrase in an event's notes and the app will wake you for that event. Events without it are ignored for alarms. Work shifts don't need it: they're found by their title (Days, Swings). Example: \"Notes: wake up · bring insurance card\". It matches anywhere in the notes, in any case. You can also set it for each event from Upcoming events.")
+            Text("Put this word in an event's notes and the app wakes you for it. Events without it get no alarm.")
         }
         Section {
-            DefaultStepper(value: $settings.arrivalBufferMinutes, in: 0...60, step: 5, defaultValue: BridgeSettings().arrivalBufferMinutes, note: { "\($0) min" }) { "Arrive early: \($0) min" }
             DefaultToggle(title: "Ask about missing locations", isOn: $settings.askAboutMissingLocations, defaultValue: BridgeSettings().askAboutMissingLocations)
+                .info("A marked appointment without a location is planned with the fallback drive until you answer the notification about it.")
         } header: {
             Text("Appointments")
         } footer: {
-            Text("Wake time = start − arrive-early buffer − drive time − get-ready time (on the main Settings page). On a work morning, a marked appointment that starts before your shift ends is used instead of the shift (you're going in late); one after the shift ends isn't. A marked appointment without a location is planned with the fallback drive until you answer the notification about it.")
+            Text("On a work morning, a marked appointment before your shift ends is used instead of the shift (you're going in late). Arrive-early time is in Settings → Mornings.")
         }
         .task(id: settings.appointmentKeyword) { markedCount = BedtimeCoordinator.shared.markedUpcomingCount(settings: settings) }
     }
