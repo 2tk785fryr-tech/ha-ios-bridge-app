@@ -71,8 +71,8 @@ struct SettingsView: View {
                 SettingsLink(title: "Drive time", icon: "car", value: settings.driveTimeSource.displayName) {
                     DriveTimePage(settings: $store.settings)
                 }
-                SettingsLink(title: "Bad weather", icon: "cloud.rain", value: settings.checksWeather ? "Default +\(settings.weatherExtraMinutes) min" : "Off") {
-                    SettingsPage(title: "Bad weather") {
+                SettingsLink(title: "Weather", icon: "cloud.sun", value: settings.checksWeather ? "Default +\(settings.weatherExtraMinutes) min" : "Off") {
+                    SettingsPage(title: "Weather") {
                         WeatherSection(settings: $store.settings)
                         ResetPageSection {
                             store.settings.resetToDefaults(SettingsPages.weather)
@@ -1140,12 +1140,15 @@ private struct WeatherSection: View {
 
     var body: some View {
         Section {
-            DefaultStepper(value: $settings.weatherExtraMinutes, in: 0...60, step: 5, defaultValue: BridgeSettings().weatherExtraMinutes, note: { "\($0) min" }) { "Default extra time: \($0) min" }
+            // v0.4.11 item 62: the source first.
             Picker(selection: $settings.weatherSource) {
                 ForEach(WeatherSource.allCases) { Text($0.displayName).tag($0) }
             } label: {
                 WithDefault(text: "Forecast from", defaultText: settings.weatherSource == BridgeSettings().weatherSource ? nil : BridgeSettings().weatherSource.displayName)
             }
+            .info(sourceFooter)
+            DefaultStepper(value: $settings.weatherExtraMinutes, in: 0...60, step: 5, defaultValue: BridgeSettings().weatherExtraMinutes, note: { "\($0) min" }) { "Default extra time: \($0) min" }
+                .info("How much earlier the alarm and leave-by move for a bad-weather condition set to Default below.")
             if settings.weatherSource == .apple {
                 AppleWeatherAttribution()
             }
@@ -1157,9 +1160,9 @@ private struct WeatherSection: View {
                 }
             }
         } header: {
-            Text("Bad weather")
+            Text("Weather")
         } footer: {
-            Text(sourceFooter + " The forecast covers your first alarm until you need to be there; a matching condition moves the alarm and your leave-by earlier.")
+            Text("The forecast from your first alarm until you need to be there. Bad weather moves the alarm and leave-by earlier.")
         }
 
         Section {
