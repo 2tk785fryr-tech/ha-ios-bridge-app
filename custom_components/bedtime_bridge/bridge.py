@@ -714,7 +714,7 @@ class BedtimeBridge:
         return {}
 
     async def _wind_down_action(self, data: dict[str, Any]) -> dict[str, Any]:
-        """From the app, a control or Siri: start, cancel, later or stop_reminders."""
+        """From the app, a control or Siri: start, cancel, later, stop_reminders or bed_later."""
         action = data.get("action")
         if action == "start":
             return {"started": await self.wind_down.start_now()}
@@ -724,6 +724,8 @@ class BedtimeBridge:
             await self.wind_down.later()
         elif action == "stop_reminders":
             self.wind_down.stop_reminders()
+        elif action == "bed_later":
+            return await self.wind_down.bed_later(int(data.get("minutes") or 15))
         return {}
 
     async def _context(self, data: dict[str, Any]) -> dict[str, Any]:

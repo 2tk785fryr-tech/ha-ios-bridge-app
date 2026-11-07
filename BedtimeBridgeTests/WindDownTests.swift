@@ -28,7 +28,7 @@ final class WindDownTests: XCTestCase {
         var i = BottomBar.Inputs(now: at(-500))
         i.windDown = state(.scheduled)
         i.alarmsSet = 3
-        XCTAssertEqual(BottomBar.make(i), BottomBar(top: .status("Wind-down \(f(at(-450))) · bed \(f(at(-390)))", .accent), buttons: [.startWindDown, .sleepLater]))
+        XCTAssertEqual(BottomBar.make(i), BottomBar(top: .status("Wind-down \(f(at(-450))) · bed \(f(at(-390)))", .accent), buttons: [.startWindDown, .goToBedLater]))
         i.now = at(-600)
         XCTAssertNotEqual(BottomBar.make(i).buttons.first, .startWindDown, "only within 2 h of go to bed")
     }
@@ -36,7 +36,10 @@ final class WindDownTests: XCTestCase {
     func testBarState10WindingDown() {
         var i = BottomBar.Inputs(now: at(-420))
         i.windDown = state(.windingDown)
-        XCTAssertEqual(BottomBar.make(i), BottomBar(top: .status("Winding down · bed \(f(at(-390)))", .accent), buttons: [.cancelWindDown, .sleepLater]))
+        // v0.4.11 item 42: no alarms set, Go to bed later and Set alarms.
+        XCTAssertEqual(BottomBar.make(i), BottomBar(top: .status("Winding down · bed \(f(at(-390)))", .accent), buttons: [.goToBedLater, .setAlarms]))
+        i.alarmsSet = 3
+        XCTAssertEqual(BottomBar.make(i).buttons, [.cancelWindDown, .goToBedLater])
         XCTAssertTrue(BottomBar.menu(i, alarmStyleApp: true, morningKnown: true).contains(.cancelWindDown))
         XCTAssertFalse(BarAction.cancelWindDown.isProtected, "a plain confirm, not the slider")
     }
@@ -44,7 +47,9 @@ final class WindDownTests: XCTestCase {
     func testBarState11AfterGoToBedNotInBed() {
         var i = BottomBar.Inputs(now: at(-380))
         i.windDown = state(.bedtime)
-        XCTAssertEqual(BottomBar.make(i), BottomBar(top: .status("Time for bed · first alarm \(f(first))", .accent), buttons: [.stopReminders, .notReadyForBed]))
+        i.alarmsSet = 3
+        // v0.4.11 item 42: Go to bed later, not Not ready for bed (nothing to undo yet).
+        XCTAssertEqual(BottomBar.make(i), BottomBar(top: .status("Time for bed · first alarm \(f(first))", .accent), buttons: [.stopReminders, .goToBedLater]))
         i.windDown?.inBed = true
         XCTAssertNotEqual(BottomBar.make(i).buttons.first, .stopReminders, "in bed: nothing to stop")
     }

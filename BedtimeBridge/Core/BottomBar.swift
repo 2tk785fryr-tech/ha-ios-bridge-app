@@ -22,6 +22,8 @@ enum BarAction: String, CaseIterable, Identifiable {
     /// v0.4.10 item 9: the snoozing bar's plain slide, which ends only the snoozing alarm (the
     /// hold is End alarms).
     case endThisAlarm
+    /// v0.4.11 item 41: tonight's bedtime later (the alarms don't move).
+    case goToBedLater
 
     var id: String { rawValue }
 
@@ -100,6 +102,7 @@ enum BarAction: String, CaseIterable, Identifiable {
         case .changePlan: "Change plan"
         case .report: "Report something"
         case .endThisAlarm: "End this alarm"
+        case .goToBedLater: "Go to bed later…"
         }
     }
 
@@ -222,21 +225,23 @@ struct BottomBar: Equatable {
         guard let w = i.windDown else { return nil }
         let format = WakePlanner.format
         let first = w.firstAlarm.map { " · first alarm \(format($0))" } ?? ""
+        // v0.4.11 item 42: Go to bed later (bedtime later); with no alarms set, Set alarms beside it.
+        let noAlarms: [BarAction] = [.goToBedLater, .setAlarms]
         if w.status == .bedtime, !w.bedtimeRan, !w.inBed, !w.remindersStopped, let bed = w.goToBed, i.now >= bed {
-            return BottomBar(top: .status("Time for bed" + first, .accent), buttons: [.stopReminders, .notReadyForBed])
+            return BottomBar(top: .status("Time for bed" + first, .accent), buttons: i.alarmsSet > 0 ? [.stopReminders, .goToBedLater] : noAlarms)
         }
         if w.status == .windingDown, let bed = w.goToBed {
-            return BottomBar(top: .status("Winding down · bed \(format(bed))", .accent), buttons: [.cancelWindDown, .sleepLater])
+            return BottomBar(top: .status("Winding down · bed \(format(bed))", .accent), buttons: i.alarmsSet > 0 ? [.cancelWindDown, .goToBedLater] : noAlarms)
         }
         // v0.4.11 item 21: with no alarms set the evening bar wins (Set alarms / Pick a time);
         // Start and Cancel wind-down are in ⋯.
         guard i.alarmsSet > 0 else { return nil }
         if w.status == .cancelled, w.canStartNow(hours: i.startWindDownHours, now: i.now), let bed = w.goToBed {
             // v0.4.11 item 13: cancelled, it can start again until go to bed.
-            return BottomBar(top: .status("Wind-down off tonight · bed \(format(bed))", .muted), buttons: [.startWindDown, .sleepLater])
+            return BottomBar(top: .status("Wind-down off tonight · bed \(format(bed))", .muted), buttons: [.startWindDown, .goToBedLater])
         }
         if w.canStartNow(hours: i.startWindDownHours, now: i.now), let wind = w.windDown, let bed = w.goToBed {
-            return BottomBar(top: .status("Wind-down \(format(wind)) · bed \(format(bed))", .accent), buttons: [.startWindDown, .sleepLater])
+            return BottomBar(top: .status("Wind-down \(format(wind)) · bed \(format(bed))", .accent), buttons: [.startWindDown, .goToBedLater])
         }
         return nil
     }

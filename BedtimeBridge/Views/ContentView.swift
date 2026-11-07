@@ -50,6 +50,7 @@ struct ContentView: View {
     @State private var sheet: Sheet?
     /// Cancel wind-down: a plain confirm (v0.4.3 item 5).
     @State private var confirmCancelWindDown = false
+    @State private var askGoToBedLater = false
     /// v0.4.11 item 2: a set waiting on "Set alarms only" or "and start bedtime".
     @State private var askBedtime: PendingSet?
 
@@ -423,6 +424,15 @@ struct ContentView: View {
             } message: { _ in
                 Text("It's wind-down. Bedtime can start now, as Good night does, or later when you get into bed.")
             }
+            // v0.4.11 item 41: Go to bed later moves bedtime, not the alarms.
+            .confirmationDialog("Go to bed later", isPresented: $askGoToBedLater, titleVisibility: .visible) {
+                ForEach([15, 30, 60], id: \.self) { minutes in
+                    Button(minutes == 60 ? "1 hour later" : "\(minutes) min later") { windDown("bed_later", minutes: minutes) }
+                }
+                Button("Keep bedtime", role: .cancel) {}
+            } message: {
+                Text("Bedtime and its reminders move later. Your alarms stay where they are.")
+            }
             .confirmationDialog("Cancel tonight's wind-down?", isPresented: $confirmCancelWindDown, titleVisibility: .visible) {
                 Button("Cancel wind-down", role: .destructive) { windDown("cancel") }
                 Button("Keep it", role: .cancel) {}
@@ -660,6 +670,7 @@ struct ContentView: View {
         case .noAlarmsTomorrow: sheet = .noAlarms(coordinator.noAlarmsMorning(plan: plan))
         case .startWindDown: windDown("start")
         case .cancelWindDown: confirmCancelWindDown = true
+        case .goToBedLater: askGoToBedLater = true
         case .stopReminders: windDown("stop_reminders")
         case .addLeave: sheet = .addLeave(nil)
         case .addWakeUpEvent: sheet = .addWakeUp
@@ -863,13 +874,13 @@ struct ContentView: View {
     }
 
     /// Wind-down actions run in Home Assistant (v0.4.3 item 5).
-    private func windDown(_ action: String) {
+    private func windDown(_ action: String, minutes: Int? = nil) {
         isWorking = true
         errorMessage = nil
         Task {
             defer { isWorking = false }
             do {
-                try await coordinator.windDownAction(action, settings: store.settings)
+                try await coordinator.windDownAction(action, minutes: minutes, settings: store.settings)
             } catch {
                 errorMessage = error.localizedDescription
             }

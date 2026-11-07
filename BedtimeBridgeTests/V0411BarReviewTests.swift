@@ -92,4 +92,17 @@ final class V0411BarReviewTests: XCTestCase {
         morning.backToBedWindow = true
         XCTAssertTrue(BottomBar.menu(morning, alarmStyleApp: true, morningKnown: true).contains(.nap), "alarms over")
     }
+
+    // MARK: Items 41 and 42
+
+    func testItem42WindDownButtons() {
+        let w = WindDownState(status: .windingDown, windDown: date(6, 21), goToBed: date(6, 22), firstAlarm: date(7, 4, 30))
+        var i = BottomBar.Inputs(now: date(6, 21, 30))
+        i.windDown = w
+        XCTAssertEqual(BottomBar.make(i).buttons, [.goToBedLater, .setAlarms], "no alarms: Go to bed later and Set alarms")
+        i.alarmsSet = 3
+        XCTAssertEqual(BottomBar.make(i).buttons, [.cancelWindDown, .goToBedLater])
+        XCTAssertFalse(BarAction.goToBedLater.isProtected, "a plain choice of minutes")
+        XCTAssertEqual(BarAction.goToBedLater.title(day: ""), "Go to bed later…")
+    }
 }

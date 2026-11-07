@@ -367,3 +367,45 @@ async def test_item33_the_context_says_whether_sleep_in_is_on(hass, ladder, hass
 async def test_item33_no_sleep_in_helper_is_none(hass, ladder, hass_client_no_auth):  # noqa: F811
     await ladder()
     assert (await send(hass_client_no_auth, {"type": "context", "data": {}}))["sleep_in"] is None
+
+
+# MARK: Item 41, Go to bed later
+
+
+def _bed(hass):
+    return winddown.short(dt_util.parse_datetime(hass.states.get("sensor.bedtime_bridge_go_to_bed").state))
+
+
+async def test_item41_go_to_bed_later_moves_bedtime_not_the_alarms(hass, ladder, hass_client_no_auth, freezer):  # noqa: F811
+    notes = await wind_setup(hass, ladder)
+    await send(hass_client_no_auth, days_plan())
+    assert _bed(hass) == "9:50"
+    reply = await send(hass_client_no_auth, {"type": "wind_down", "data": {"action": "bed_later", "minutes": 30}})
+    assert reply["moved"] is True
+    assert _bed(hass) == "10:20"
+    assert winddown.short(dt_util.parse_datetime(hass.states.get("sensor.bedtime_bridge_wind_down").state)) == "9:20"
+    # A new plan for the same morning keeps it; the first alarm doesn't move.
+    await send(hass_client_no_auth, days_plan())
+    assert _bed(hass) == "10:20"
+    await at(hass, freezer, local("21:55", day=27))
+    assert not any((m or "").startswith("Time for bed") for m in messages(notes))
+    await at(hass, freezer, local("22:21", day=27))
+    assert any((m or "").startswith("Time for bed") for m in messages(notes))
+
+
+async def test_item41_at_time_for_bed_wind_down_carries_on(hass, ladder, hass_client_no_auth, freezer):  # noqa: F811
+    await wind_setup(hass, ladder)
+    await send(hass_client_no_auth, days_plan())
+    await at(hass, freezer, local("21:51", day=27))
+    assert status_of(hass) == "bedtime"
+    await send(hass_client_no_auth, {"type": "wind_down", "data": {"action": "bed_later", "minutes": 15}})
+    assert status_of(hass) == "winding_down"
+    assert _bed(hass) == "10:06"
+
+
+async def test_item41_nothing_to_move_after_bedtime_ran(hass, ladder, hass_client_no_auth, freezer):  # noqa: F811
+    await wind_setup(hass, ladder)
+    await send(hass_client_no_auth, days_plan())
+    await send(hass_client_no_auth, {"type": "bedtime", "data": {}})
+    reply = await send(hass_client_no_auth, {"type": "wind_down", "data": {"action": "bed_later", "minutes": 15}})
+    assert reply["moved"] is False

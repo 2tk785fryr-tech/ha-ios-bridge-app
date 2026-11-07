@@ -44,6 +44,8 @@ enum SiriPhrases {
             Entry(phrases: ["Start wind-down in Bedtime Bridge", "Cancel wind-down in Bedtime Bridge",
                             "Stop wind-down in Bedtime Bridge", "Start winding down with Bedtime Bridge"],
                   does: "Starts tonight's wind-down now, or cancels it (after you confirm)."),
+            Entry(phrases: ["Go to bed later with Bedtime Bridge"],
+                  does: "Moves tonight's bedtime 15 minutes later, with its reminders. The alarms don't move."),
         ]),
         Group(title: "Calendar", entries: [
             Entry(phrases: ["Add a vacation in Bedtime Bridge", "Add leave in Bedtime Bridge"],

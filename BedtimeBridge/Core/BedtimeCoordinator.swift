@@ -989,13 +989,27 @@ final class BedtimeCoordinator {
         return first < usual ? "earlier, to get ready" : "changed"
     }
 
+    private static let isoFractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
     /// Start wind-down now, Cancel wind-down, Stop bedtime reminders: Home Assistant runs them.
     @discardableResult
-    func windDownAction(_ action: String, settings: BridgeSettings) async throws -> WindDownState {
+    func windDownAction(_ action: String, minutes: Int? = nil, settings: BridgeSettings) async throws -> WindDownState {
         guard let link = HomeAssistantLinks.current(settings) as? IntegrationLink else {
             throw BridgeError.homeAssistant(0, "Wind-down needs the Bedtime Bridge integration.")
         }
-        _ = try await link.reply(.windDown, data: ["action": action])
+        var data: [String: Any] = ["action": action]
+        if let minutes { data["minutes"] = minutes }
+        let reply = try await link.reply(.windDown, data: data)
+        // v0.4.11 item 41: Go to bed later's new time, straight away.
+        if let bed = reply["go_to_bed"] as? String, let date = ISO8601DateFormatter().date(from: bed) ?? Self.isoFractional.date(from: bed) {
+            var cached = WindDownState.cached
+            cached.goToBed = date
+            WindDownState.cached = cached
+        }
         let state = windDown
         await BedtimeActivities.syncWindDown(state)
         return state

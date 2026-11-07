@@ -17,12 +17,15 @@ struct GoodNightIntent: AppIntent {
 enum WindDownChoice: String, AppEnum {
     case start
     case cancel
+    /// v0.4.11 item 41: Go to bed later (15 min; bedtime, not the alarms).
+    case later
 
     static var typeDisplayRepresentation: TypeDisplayRepresentation = "Wind-Down"
     // v0.4.11 item 30f: Stop is another way to say Cancel.
     static var caseDisplayRepresentations: [WindDownChoice: DisplayRepresentation] = [
         .start: DisplayRepresentation(title: "Start", synonyms: ["Begin"]),
         .cancel: DisplayRepresentation(title: "Cancel", synonyms: ["Stop", "End"]),
+        .later: DisplayRepresentation(title: "Later", synonyms: ["Go to bed later", "Bedtime later"]),
     ]
 }
 
@@ -51,6 +54,10 @@ struct WindDownIntent: AppIntent {
             try await requestConfirmation(dialog: "Cancel tonight's wind-down?")
             try await BedtimeCoordinator.shared.windDownAction("cancel", settings: settings)
             return .result(dialog: "Tonight's wind-down is cancelled.")
+        case .later:
+            let state = try await BedtimeCoordinator.shared.windDownAction("bed_later", minutes: 15, settings: settings)
+            guard let bed = state.goToBed else { return .result(dialog: "There's no bedtime to move tonight.") }
+            return .result(dialog: "Bedtime is now \(WakePlanner.format(bed)). Your alarms didn't move.")
         }
     }
 }

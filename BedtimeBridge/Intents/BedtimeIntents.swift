@@ -448,7 +448,9 @@ struct BedtimeBridgeShortcuts: AppShortcutsProvider {
             intent: WindDownIntent(),
             phrases: ["\(\.$choice) wind-down in \(.applicationName)", "\(\.$choice) winding down with \(.applicationName)",
                       // v0.4.11 item 30f: as Siri writes it, without the hyphen.
-                      "\(\.$choice) wind down in \(.applicationName)"],
+                      "\(\.$choice) wind down in \(.applicationName)",
+                      // v0.4.11 item 41: "Go to bed later with Bedtime Bridge".
+                      "Go to bed \(\.$choice) with \(.applicationName)"],
             shortTitle: "Wind-Down",
             systemImageName: "moon.zzz"
         )

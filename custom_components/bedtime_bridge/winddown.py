@@ -271,6 +271,11 @@ class WindDown:
         # push it later, not stack on top.
         wind = max(planned.wind_down + timedelta(minutes=int(s.get("later_minutes") or 0)), times.wind_down)
         wind = min(wind, times.go_to_bed - timedelta(minutes=int(cfg["minimum_minutes"])))
+        # v0.4.11 item 41: Go to bed later holds tonight's bedtime (and a scheduled wind-down) later.
+        bed_later = self._t("bed_later_to")
+        if bed_later is not None and bed_later > times.go_to_bed:
+            wind = wind + (bed_later - times.go_to_bed)
+            times = Times(times.wind_down, bed_later)
         old_bed = self._t("go_to_bed")
         status = s.get("status", "off")
         if status in ("off", "scheduled") and times.go_to_bed <= self._now():
@@ -558,6 +563,34 @@ class WindDown:
         self.bridge._changed()
         # The app shows the new time straight away.
         await self.bridge.live.silent("wind_down_changed")
+
+    async def bed_later(self, minutes: int) -> dict[str, Any]:
+        """v0.4.11 item 41: Go to bed later. Moves tonight's go to bed (and a wind-down still to
+        come) later by `minutes`, with the bedtime reminders. The alarms don't move. At Time for
+        bed, wind-down carries on until the new time."""
+        s = self.s
+        status = s.get("status")
+        bed = self._t("go_to_bed")
+        if status not in ("scheduled", "winding_down", "bedtime") or bed is None or s.get("bedtime_ran") or s.get("went_to_bed"):
+            return {"moved": False}
+        now = self._now()
+        new_bed = max(bed, now) + timedelta(minutes=minutes)
+        delta = new_bed - bed
+        s["bed_later_to"] = new_bed.isoformat()
+        s["go_to_bed"] = new_bed.isoformat()
+        if status == "scheduled" and (wind := self._t("wind_down")) is not None:
+            s["wind_down"] = (wind + delta).isoformat()
+        if status == "bedtime":
+            s["status"] = "winding_down"
+            if self.bridge.is_home():
+                await self._helper(True)
+        s.update(bed_notified=False, reminders_from=None, reminders_sent=0)
+        await self._clear("wind_down_bed")
+        self._reschedule()
+        self.bridge._changed()
+        self.bridge._event("wind_down_bed_later", go_to_bed=new_bed.isoformat(), minutes=minutes)
+        await self._live()
+        return {"moved": True, "go_to_bed": new_bed.isoformat()}
 
     async def cancel(self) -> None:
         """Tonight's wind-down off: helper off, no go to bed notification or reminders."""
