@@ -356,7 +356,8 @@ def test_item15_summary_text():
     now = dt_util.utcnow()
     history = []
     for day, snoozes in ((1, 2), (2, 1), (3, 0)):
-        weekly.record(history, "morning", now - timedelta(days=day), snoozes=snoozes, backstops_fired=1 if day == 1 else 0)
+        weekly.record(history, "morning", now - timedelta(days=day), snoozes=snoozes)
+    weekly.record(history, "backstop", now - timedelta(days=1), rung="deadline", level="soft")
     weekly.record(history, "change", now - timedelta(days=2), reason="Snow delay")
     weekly.record(history, "change", now - timedelta(days=9), reason="Too old")
     weekly.record(history, "nap", now - timedelta(days=1), minutes=30)

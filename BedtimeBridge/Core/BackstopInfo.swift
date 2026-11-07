@@ -5,6 +5,8 @@ struct BackstopInfo: Equatable {
     struct Rung: Equatable {
         var name: String
         var time: Date
+        /// Went off this morning (v0.4.11 item 26): Wake Deadline Backstop's event.
+        var fired = false
     }
 
     var rungs: [Rung]
@@ -40,9 +42,10 @@ struct BackstopInfo: Equatable {
             return BackstopInfo(rungs: [], status: otherMorning(shown: morning, ladder: ladder, armed: context.ladderArmed, calendar: calendar))
         }
         let useHouse = context.houseUsesOldTimes && !context.houseTimes.isEmpty
-        let times = useHouse ? context.houseTimes : (context.ladderArmed ? context.backstops : [:])
+        // v0.4.11 item 26: a backstop that fired stays on the morning, even once the ladder is done.
+        let times = useHouse ? context.houseTimes : (context.ladderArmed || !context.firedRungs.isEmpty ? context.backstops : [:])
         let rungs = [("early", "Early backstop"), ("deadline", "Deadline backstop"), ("late", "Late backstop")]
-            .compactMap { key, name in times[key].map { Rung(name: name, time: $0) } }
+            .compactMap { key, name in times[key].map { Rung(name: name, time: $0, fired: context.firedRungs.contains(key)) } }
         let status: String
         var fault = false
         switch context.ladderStatus {

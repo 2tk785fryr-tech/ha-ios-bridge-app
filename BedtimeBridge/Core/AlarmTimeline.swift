@@ -9,6 +9,8 @@ enum AlarmTimeline {
         var title: String
         var time: Date
         var detail: String?
+        /// A backstop that went off this morning (v0.4.11 item 26).
+        var fired = false
     }
 
     /// Temporary alarms more than this far from the morning's alarms aren't that morning's.
@@ -25,7 +27,7 @@ enum AlarmTimeline {
             Step(kind: .temporary, title: "Temporary alarm", time: $0.time,
                  detail: $0.disarmHouse ? "Disarms the house" : "House stays armed")
         }
-        steps += rungs.map { Step(kind: .backstop, title: $0.name, time: $0.time) }
+        steps += rungs.map { Step(kind: .backstop, title: $0.name, time: $0.time, fired: $0.fired) }
         return steps.sorted { $0.time < $1.time }
     }
 }

@@ -15,7 +15,7 @@ EARLIER_WEEKS = 8
 
 
 def record(history: list[dict[str, Any]], kind: str, when: datetime, **data: Any) -> None:
-    """Adds an entry (morning, change, nap) and drops what's older than KEEP_DAYS."""
+    """Adds an entry (morning, change, nap, backstop) and drops what's older than KEEP_DAYS."""
     history.append({"kind": kind, "time": when.isoformat(), **data})
     cutoff = when - timedelta(days=KEEP_DAYS)
     history[:] = [h for h in history if (t := dt_util.parse_datetime(h.get("time") or "")) and t >= cutoff]
@@ -35,6 +35,7 @@ def summarize(history: list[dict[str, Any]], nights: list[dict[str, Any]], now: 
         return [h for h in history if h.get("kind") == kind and within(dt_util.parse_datetime(h.get("time") or ""))]
 
     mornings = recent("morning")
+    fired = recent("backstop")
     changes = recent("change")
     naps = recent("nap")
     week_nights = [n for n in nights if within(dt_util.parse_datetime(n.get("go_to_bed") or ""))]
@@ -47,7 +48,9 @@ def summarize(history: list[dict[str, Any]], nights: list[dict[str, Any]], now: 
         "bed_minutes_off_average": round(sum(offs) / len(offs)) if offs else None,
         "mornings": len(mornings),
         "snoozes_per_morning": round(sum(snoozes) / len(snoozes), 1) if snoozes else None,
-        "backstops_fired": sum(int(m.get("backstops_fired") or 0) for m in mornings),
+        # v0.4.11 item 26: the backstops that escalated (blueprint v1-40's event), not the rung
+        # times that passed.
+        "backstops_fired": len(fired),
         "mornings_changed": len(changes),
         "change_reasons": [c.get("reason") or "no reason" for c in changes],
         "naps": len(naps),

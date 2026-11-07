@@ -64,6 +64,9 @@ struct MorningContext {
     /// Why (v0.4.11 item 23: the app checks once per reason whether the alarms would change).
     var outdatedReason: String? = nil
 
+    /// This morning's backstops that went off: "early", "deadline", "late" (v0.4.11 item 26).
+    var firedRungs: Set<String> = []
+
     /// The reason while the plan is out of date ("" when Home Assistant gave none).
     var outdatedKey: String? { planOutdated ? (outdatedReason ?? "") : nil }
 
@@ -221,7 +224,8 @@ struct IntegrationLink: HomeAssistantLink {
             houseSource: house["source"] as? String ?? "old",
             houseTimes: (house["times"] as? [String: String] ?? [:]).compactMapValues(Self.parseDate),
             planOutdated: reply["plan_outdated"] as? Bool ?? false,
-            outdatedReason: reply["outdated_reason"] as? String
+            outdatedReason: reply["outdated_reason"] as? String,
+            firedRungs: Set((reply["backstops_fired"] as? [[String: Any]] ?? []).compactMap { $0["rung"] as? String })
         )
     }
 

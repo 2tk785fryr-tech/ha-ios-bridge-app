@@ -19,6 +19,8 @@ enum MorningSteps {
         var next = false
         /// Get ready flagged short of the goal.
         var short = false
+        /// A backstop that went off this morning (v0.4.11 item 26).
+        var fired = false
     }
 
     /// One alarm of the morning and what happened to it (v0.4.11 item 3).
@@ -179,7 +181,7 @@ enum MorningSteps {
             steps.append(Step(kind: .beReady, title: "Be ready", value: WakePlanner.format(arrive), detail: input.noDriveDetail, time: arrive))
         }
         steps += input.rungs.map { Step(kind: .backstop, title: $0.name, value: WakePlanner.format($0.time),
-                                        detail: input.rungsEstimate ? "estimate" : nil, time: $0.time) }
+                                        detail: input.rungsEstimate ? "estimate" : nil, time: $0.time, fired: $0.fired) }
         steps.append(Step(kind: .event, title: input.eventTitle, value: WakePlanner.format(input.start),
                           detail: input.eventDetail ?? input.location, time: input.start))
         steps = steps.enumerated().sorted { a, b in

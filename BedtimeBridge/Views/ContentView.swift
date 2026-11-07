@@ -1530,6 +1530,7 @@ private struct MorningTimeline: View {
         row.isLast = isLast
         row.dimmed = step.dimmed
         row.next = step.next
+        row.fired = step.fired
         return row
     }
 }
@@ -1563,7 +1564,8 @@ private struct AlarmsTimeline: View {
                     TimelineStep(title: step.title, value: WakePlanner.format(step.time), detail: step.detail, dot: .ring(Theme.amber), isLast: last)
                 case .backstop:
                     TimelineStep(title: step.title, value: WakePlanner.format(step.time),
-                                 detail: backstops?.estimate == true ? "estimate" : nil, dot: .shield(Theme.textMuted), isLast: last, small: true)
+                                 detail: backstops?.estimate == true ? "estimate" : nil, dot: .shield(Theme.textMuted), isLast: last, small: true,
+                                 fired: step.fired)
                 }
             }
             if let backstops {
@@ -1601,6 +1603,8 @@ private struct TimelineStep: View {
     var dimmed = false
     /// The next step still to come.
     var next = false
+    /// A backstop that went off this morning (v0.4.11 item 26): a red tag where Next goes.
+    var fired = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
@@ -1630,6 +1634,14 @@ private struct TimelineStep: View {
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
                             .overlay(Capsule().stroke(Theme.accentText.opacity(0.6), lineWidth: 1))
+                    }
+                    if fired {
+                        Text("Fired")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(Theme.danger)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .overlay(Capsule().stroke(Theme.danger.opacity(0.7), lineWidth: 1))
                     }
                     Spacer()
                     Text(value).foregroundStyle(highlight ?? (bold ? Theme.textSoft : Theme.textMuted))

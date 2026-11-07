@@ -75,3 +75,81 @@ nothing to edit in your automations or blueprints. What's different:
   the start puts *Leave in* / *Past leave time* back. Only the integration's **Presence** option is
   used; nothing new to set up.
 
+
+## 4. Install 0.4.11.2 and Wake Deadline Backstop v1-40 (item 26)
+
+**Marketplace → Bedtime Bridge → Update** to 0.4.11.2, then restart Home Assistant. It listens for
+a new event, `bedtime_bridge_backstop_fired`, keeps this morning's fired backstops until the next
+plan (the app shows a red *fired* tag on them), and the weekly summary's *backstops fired* counts
+these instead of the rung times that passed. Until the blueprint below is updated nothing fires
+the event, so no tag shows and the weekly count reads 0.
+
+### Blueprint: `blueprints/automation/wake_deadline_backstop_v1-30.yaml` → v1-40
+
+Copy the file to `wake_deadline_backstop_v1-40.yaml` (keep v1-30 until the new one has run a
+morning), then make these edits in the copy. Each escalating branch fires the event as its first
+step. Nothing else changes: the triggers, conditions, `mode: parallel` and every choose option's
+index stay the same. Inside options 1–5 each step's index moves up by one, as the event is
+step 0.
+
+1. **Name:** `name: Wake Deadline Backstop (v1-40)`.
+2. **Revision history**, after the v1-30 entry:
+
+   ```yaml
+       - v1-40: Each escalating branch (options 1-5) first fires
+         `bedtime_bridge_backstop_fired` with `rung` (early, deadline, late) and `level`
+         (soft, full, gentle), so Bedtime Bridge 0.4.11.2 can show which backstops went off
+         and count them for the weekly summary. Option indexes unchanged; inside options 1-5
+         every step index moves up by one. Options 0 and the default fire nothing.
+   ```
+
+3. **Option 1 (EARLY, still in bed):** as the first line of its `sequence:`
+
+   ```yaml
+          - event: bedtime_bridge_backstop_fired
+            event_data:
+              rung: early
+              level: soft
+   ```
+
+4. **Option 2 (DEADLINE, still in bed):** first in its `sequence:`
+
+   ```yaml
+          - event: bedtime_bridge_backstop_fired
+            event_data:
+              rung: deadline
+              level: full
+   ```
+
+5. **Option 3 (DEADLINE, bed empty, room never left):** first in its `sequence:`
+
+   ```yaml
+          - event: bedtime_bridge_backstop_fired
+            event_data:
+              rung: deadline
+              level: soft
+   ```
+
+6. **Option 4 (LATE, room never left):** first in its `sequence:`
+
+   ```yaml
+          - event: bedtime_bridge_backstop_fired
+            event_data:
+              rung: late
+              level: full
+   ```
+
+7. **Option 5 (gentle, own alarm):** first in its `sequence:`
+
+   ```yaml
+          - event: bedtime_bridge_backstop_fired
+            event_data:
+              rung: "{{ rung }}"
+              level: gentle
+   ```
+
+Then in **Settings → Automations & scenes → Blueprints**, reload, and point the Wake Deadline
+Backstop automation at v1-40 (its inputs carry over: same names). To check without waiting for a
+morning: **Developer tools → Events**, fire `bedtime_bridge_backstop_fired` with
+`{"rung": "deadline", "level": "soft"}`. Open the app: Your morning's Deadline backstop shows a
+red *fired* tag until the next plan (it also adds 1 to this week's summary).

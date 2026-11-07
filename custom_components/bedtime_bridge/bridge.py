@@ -99,6 +99,7 @@ from .const import (
     EVENT_CHANGE_REFUSED,
     EVENT_COMMAND_INCOMPLETE,
     EVENT_REARMED,
+    EVENT_BACKSTOP_FIRED,
     EVENT_RERUN,
     HOME_STATES,
     MSG_BEDTIME,
@@ -188,6 +189,8 @@ def empty_state() -> dict[str, Any]:
         "skipped_away": False,
         "plan_outdated": False,
         "outdated_reason": None,
+        # v0.4.11 item 26: this morning's backstops that escalated: rung, level and time.
+        "backstops_fired": [],
     }
 
 
@@ -309,6 +312,7 @@ class BedtimeBridge:
         self.entry.async_on_unload(self._cancel_morning_updates)
         self._schedule_weekly()
         self.entry.async_on_unload(lambda: self._weekly_unsub() if self._weekly_unsub else None)
+        self.entry.async_on_unload(self.hass.bus.async_listen(EVENT_BACKSTOP_FIRED, self._backstop_fired))
     def _save(self) -> None:
         self._store.async_delay_save(lambda: {"state": self.state, "settings": self.settings}, 1)
 
@@ -737,6 +741,8 @@ class BedtimeBridge:
             # The override or HA's next shift changed after the plan (v0.4.1 item 10).
             "plan_outdated": bool(self.state.get("plan_outdated")),
             "outdated_reason": self.state.get("outdated_reason"),
+            # v0.4.11 item 26: the backstops that went off this morning (the app tags them).
+            "backstops_fired": list(self.state.get("backstops_fired") or []),
             "wind_down": self.wind_down.summary(),
             "weekly_summary": self.state.get("weekly_summary"),
             # This week so far and up to 8 earlier weeks, newest first (v0.4.6 item 5).
@@ -1404,16 +1410,27 @@ class BedtimeBridge:
         """The wake-up is over (every alarm stopped, ended all, or changed): this morning's
         snoozes become Snoozes last morning and the count starts again at 0."""
         self.state["snoozes_last_morning"] = int(self.state.get("snooze_count") or 0)
-        # For the weekly summary (v0.4.3 item 15): snoozes, and the backstops whose time came
-        # while the ladder was armed before the morning ended.
+        # For the weekly summary (v0.4.3 item 15): snoozes. Backstops are counted as they fire
+        # (v0.4.11 item 26, _backstop_fired).
         now = dt_util.utcnow()
-        ladder = self.state.get("ladder") or {}
-        fired = 0
-        if ladder.get("status") == "armed":
-            fired = sum(1 for v in (ladder.get("times") or {}).values() if (t := _time(v)) and now - timedelta(hours=6) < t <= now)
-        weekly.record(self.state.setdefault("history", []), "morning", now,
-                      snoozes=self.state["snoozes_last_morning"], backstops_fired=fired)
+        weekly.record(self.state.setdefault("history", []), "morning", now, snoozes=self.state["snoozes_last_morning"])
         self.state["snooze_count"] = 0
+
+    @callback
+    def _backstop_fired(self, event: Event) -> None:
+        """Wake Deadline Backstop escalated a rung (v0.4.11 item 26): kept for the app's red
+        *fired* tag until the next plan, and counted for the weekly summary."""
+        rung = str(event.data.get("rung") or "").lower()
+        if rung not in ("early", "deadline", "late"):
+            _LOGGER.debug("Bedtime Bridge: backstop fired with an unknown rung %r", rung)
+            return
+        now = dt_util.utcnow()
+        level = event.data.get("level")
+        fired = list(self.state.get("backstops_fired") or [])
+        fired.append({"rung": rung, "level": level, "time": now.isoformat()})
+        self.state["backstops_fired"] = fired
+        weekly.record(self.state.setdefault("history", []), "backstop", now, rung=rung, level=level)
+        self._changed()
 
     # MARK: Temporary alarms
 

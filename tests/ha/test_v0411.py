@@ -1,5 +1,6 @@
 """v0.4.11 integration tests, by spec item."""
 
+from datetime import timedelta
 from unittest.mock import AsyncMock, patch
 
 from homeassistant.util import dt as dt_util
@@ -315,3 +316,36 @@ async def test_item20_back_home_before_the_start(hass, ladder, hass_client_no_au
         body = sent.call_args.args[1]
         assert body["aps"]["event"] in ("start", "update")
         assert "departed" not in body["aps"]["content-state"], "Leave in again"
+
+
+# MARK: Item 26, a red fired tag on backstops that went off
+
+
+async def test_item26_a_fired_backstop_is_in_the_morning_context_until_the_next_plan(hass, ladder, hass_client_no_auth, freezer):  # noqa: F811
+    await ladder()
+    await send(hass_client_no_auth, days_plan())
+    reply = await send(hass_client_no_auth, {"type": "context", "data": {}})
+    assert reply["backstops_fired"] == []
+    await at(hass, freezer, local("05:10"))
+    hass.bus.async_fire("bedtime_bridge_backstop_fired", {"rung": "deadline", "level": "soft"})
+    await hass.async_block_till_done()
+    reply = await send(hass_client_no_auth, {"type": "context", "data": {}})
+    assert [(f["rung"], f["level"]) for f in reply["backstops_fired"]] == [("deadline", "soft")]
+    assert reply["weekly_summaries"][0]["backstops_fired"] == 1
+    # An unknown rung is ignored.
+    hass.bus.async_fire("bedtime_bridge_backstop_fired", {"rung": "nonsense"})
+    await hass.async_block_till_done()
+    assert len((await send(hass_client_no_auth, {"type": "context", "data": {}}))["backstops_fired"]) == 1
+    # The next plan clears it; the weekly count stays.
+    await send(hass_client_no_auth, days_plan())
+    reply = await send(hass_client_no_auth, {"type": "context", "data": {}})
+    assert reply["backstops_fired"] == []
+    assert reply["weekly_summaries"][0]["backstops_fired"] == 1
+
+
+def test_item26_rung_times_passing_no_longer_count():
+    from custom_components.bedtime_bridge import weekly
+    now = dt_util.utcnow()
+    history = []
+    weekly.record(history, "morning", now - timedelta(days=1), snoozes=1, backstops_fired=3)
+    assert weekly.summarize(history, [], now)["backstops_fired"] == 0

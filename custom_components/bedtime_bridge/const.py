@@ -2,6 +2,8 @@
 
 DOMAIN = "bedtime_bridge"
 EVENT = "bedtime_bridge"
+# v0.4.11 item 26: Wake Deadline Backstop (blueprint v1-40) fires this when a rung escalates.
+EVENT_BACKSTOP_FIRED = "bedtime_bridge_backstop_fired"
 
 CONF_WEBHOOK_ID = "webhook_id"
 CONF_WAKE_ACTION = "wake_action"
