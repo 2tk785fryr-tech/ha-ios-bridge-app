@@ -40,7 +40,7 @@ final class WindDownTests: XCTestCase {
         XCTAssertEqual(BottomBar.make(i), BottomBar(top: .status("Winding down · bed \(f(at(-390)))", .accent), buttons: [.goToBedLater, .setAlarms]))
         i.alarmsSet = 3
         XCTAssertEqual(BottomBar.make(i).buttons, [.cancelWindDown, .goToBedLater])
-        XCTAssertTrue(BottomBar.menu(i, alarmStyleApp: true, morningKnown: true).contains(.cancelWindDown))
+        XCTAssertFalse(BottomBar.menu(i, alarmStyleApp: true, morningKnown: true).contains(.cancelWindDown), "v0.4.11 item 45: on the bar")
         XCTAssertFalse(BarAction.cancelWindDown.isProtected, "a plain confirm, not the slider")
     }
 

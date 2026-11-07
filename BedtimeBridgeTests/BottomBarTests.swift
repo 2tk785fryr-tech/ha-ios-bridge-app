@@ -77,14 +77,14 @@ final class BottomBarTests: XCTestCase {
 
     func testMenuHidesWhatDoesntApplyAndProtectedActions() {
         var i = BottomBar.Inputs(now: first.addingTimeInterval(-6 * 3600))
-        XCTAssertEqual(BottomBar.menu(i, alarmStyleApp: true, morningKnown: false), [.previewPlan, .setAlarmsForTime, .addTemporary, .addWakeUpEvent, .addLeave, .settings], "v0.4.11 item 21: Pick a time with nothing set")
+        XCTAssertEqual(BottomBar.menu(i, alarmStyleApp: true, morningKnown: false), [.previewPlan, .addWakeUpEvent, .addLeave, .settings], "v0.4.11 item 45: Pick a time and Temporary are on the bar")
         i.alarmsSet = 3
         i.sleepLaterWindow = true
         i.notReadyWindow = true
         i.napEnabled = true
         // v0.4.10 item 10: after bedtime, Change this morning instead of Edit alarms; no Skip.
         XCTAssertEqual(BottomBar.menu(i, alarmStyleApp: true, morningKnown: true),
-                       [.previewPlan, .sleepLater, .changeMorning, .noAlarmsTomorrow, .notReadyForBed, .addTemporary, .addWakeUpEvent, .addLeave, .settings])
+                       [.previewPlan, .changeMorning, .noAlarmsTomorrow, .addWakeUpEvent, .addLeave, .settings], "item 45: the bar's own actions aren't repeated")
         XCTAssertTrue(BarAction.endAlarms.isProtected)
         XCTAssertFalse(BarAction.previewPlan.isProtected)
         XCTAssertEqual(BarAction.endNap.knob, .stop)

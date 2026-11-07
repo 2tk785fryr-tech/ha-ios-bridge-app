@@ -55,8 +55,8 @@ final class V0411BarReviewTests: XCTestCase {
         i.plansChanged = "Calendar changed · re-plan"
         XCTAssertEqual(BottomBar.make(i).hold, .notReadyForBed)
         let menu = BottomBar.menu(i, alarmStyleApp: true, morningKnown: true)
-        XCTAssertTrue(menu.contains(.notReadyForBed))
         XCTAssertFalse(menu.contains(.notGoingToSleep))
+        XCTAssertFalse(menu.contains(.notReadyForBed), "item 45: it's the bar's slider")
     }
 
     func testItem38MiddleOfTheNight() {

@@ -428,6 +428,10 @@ struct BottomBar: Equatable {
         if alarmStyleApp { items.append(.addTemporary) }
         items += [.addWakeUpEvent, .addLeave]
         items.append(.settings)
-        return items
+        // v0.4.11 item 45: ⋯ doesn't repeat what the bar shows now (Preview plan and Settings stay).
+        let bar = make(i)
+        var shown = Set(bar.buttons + bar.actionRow + [bar.hold, bar.slide].compactMap { $0 })
+        if case .main(let action, _) = bar.top { shown.insert(action) }
+        return items.filter { !shown.contains($0) || $0 == .previewPlan || $0 == .settings }
     }
 }

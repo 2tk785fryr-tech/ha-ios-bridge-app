@@ -462,7 +462,7 @@ final class V0411Tests: XCTestCase {
         let bar = BottomBar.make(inputs)
         XCTAssertEqual(bar.top, .status("Wind-down off tonight · bed \(WakePlanner.format(at(21, 50)))", .muted))
         XCTAssertEqual(bar.buttons.first, .startWindDown)
-        XCTAssertTrue(BottomBar.menu(inputs, alarmStyleApp: true, morningKnown: true).contains(.startWindDown))
+        XCTAssertFalse(BottomBar.menu(inputs, alarmStyleApp: true, morningKnown: true).contains(.startWindDown), "v0.4.11 item 45: on the bar, not repeated in ⋯")
     }
 
     // MARK: Item 15, Arrive's time on the right
@@ -557,7 +557,7 @@ final class V0411Tests: XCTestCase {
         let menu = BottomBar.menu(inputs, alarmStyleApp: true, morningKnown: true)
         XCTAssertTrue(menu.contains(.startWindDown))
         XCTAssertTrue(menu.contains(.cancelWindDown))
-        XCTAssertTrue(menu.contains(.setAlarmsForTime), "Pick a time in ⋯ with no card")
+        XCTAssertFalse(menu.contains(.setAlarmsForTime), "v0.4.11 item 45: Pick a time is on the bar, so not in ⋯")
         inputs.alarmsSet = 3
         XCTAssertEqual(BottomBar.make(inputs).buttons.first, .startWindDown, "alarms set: the wind-down bar as before")
     }
