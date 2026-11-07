@@ -86,8 +86,11 @@ the event, so no tag shows and the weekly count reads 0.
 
 ### Blueprint: `blueprints/automation/wake_deadline_backstop_v1-30.yaml` → v1-40
 
-Copy the file to `wake_deadline_backstop_v1-40.yaml` (keep v1-30 until the new one has run a
-morning), then make these edits in the copy. Each escalating branch fires the event as its first
+**The whole file is in the repo:** `blueprints/automation/wake_deadline_backstop_v1-40.yaml`. Put it
+in Home Assistant at `/config/blueprints/automation/wake_deadline_backstop_v1-40.yaml` (File editor
+or Studio Code Server: new file, paste it all in), next to v1-30. Keep v1-30 until the new one has
+run a morning. It's v1-30 exactly, plus the edits below, so you don't need to make them by hand;
+they're listed so you can see what changed. Each escalating branch fires the event as its first
 step. Nothing else changes: the triggers, conditions, `mode: parallel` and every choose option's
 index stay the same. Inside options 1–5 each step's index moves up by one, as the event is
 step 0.

@@ -1,0 +1,690 @@
+blueprint:
+  name: Wake Deadline Backstop (v1-40)
+  description: |
+    Escalates when the bed is still occupied, or the bedroom has never been left,
+    as a get-up deadline approaches and passes. Silent on every normal morning; it
+    only ever speaks once the morning has already failed.
+
+    <details>
+    <summary><b>Detailed Description</b></summary>
+
+    WHY THIS EXISTS. On 31 Aug 2026 the alarm was stopped rather than snoozed at
+    04:20. Lights came on as designed, were switched off twenty seconds later, and the
+    bed stayed occupied until 06:40 — a 90-minute overrun on a Days shift. The alarm-off
+    Shortcut cancels the remaining iPhone alarms, so stopping removes the phone's own
+    backstop. Nothing in the house had any concept that a 05:10 deadline existed. What
+    eventually woke Mike was the curtain opening on a sunrise schedule that has nothing
+    to do with his shift and drifts about three hours across the year.
+
+    THIS IS THE HARD LAYER. Wake Confirm is the soft one: it nudges early, only after
+    the alarm was stopped, and stays silent when anything is unreadable. This is
+    deliberately independent of the alarm having fired AT ALL, because the worst case is
+    a dead phone and no alarm ringing. It also escalates rather than staying quiet when
+    shift data is unreadable. Two layers that both fail silent would leave the
+    catastrophic case uncovered; two layers that both fail loud would double every false
+    alarm. The split is intentional.
+
+    RUNG LADDER. Times come from three timestamp sensors, so no time arithmetic happens
+    here. Since v1-20 they are published by Bedtime Bridge (integration v0.4+), anchored
+    to leave-by: by default early = leave-by − 50, deadline = leave-by − 35, late =
+    leave-by − 20, all 15 minutes earlier on the first shift after a day off. Before
+    v1-20 they came from current_shift.yaml (deadline − 15 / deadline / deadline + 15).
+
+    - EARLY — bed occupied: ramp the nightstand, send a push.
+    - DEADLINE — bed occupied: critical push, bedroom speakers, full lights, then
+      repeat on an interval until the bed clears or the ceiling is reached.
+    - DEADLINE — bed empty but the room was never left: a single push, nothing else.
+    - LATE — the room was still never left: critical push, whatever the bed says.
+
+    WHY BED AND LATCH ARE READ SEPARATELY. The early and deadline rungs key on the bed
+    alone; the late rung keys on the latch alone. They are independent evidence and
+    mixing them would let either one's failure mask the other. Bed-occupied is the
+    direct signal but drops out briefly (measured: 1s, 2s and 18.9s across seven
+    nights). Latch-off catches what the bed misses — a dropout, falling asleep sitting
+    on the edge of the bed, falling asleep in the bathroom. The en-suite sits inside the
+    closed bedroom door, confirmed by the 31 Aug 03:09-03:11 bathroom trip not moving
+    the door at all, so the latch genuinely means "has not started the day".
+
+    STAND-DOWN. The exit latch going ON. Getting up and staying up ends everything, with
+    no button to press and nothing to remember.
+
+    LADDER GATE (v1-20). The run only proceeds while the ladder status sensor reads
+    exactly `armed`. v1-00 to v1-10 gated on current_shift's `effective_shift` being in
+    an `applies_to_shifts` list. That premise — "the ladder exists only on Days
+    mornings" — stopped being true when the bridge started arming appointment mornings,
+    whose effective_shift is not Days, so the old gate would have silently blocked every
+    appointment rung. Do not "simplify" back to a shift-type gate: which mornings are
+    covered is now decided in the bridge (its ladder shift types option and the plan's
+    ladder type), and this blueprint only asks whether the ladder is armed. A status
+    that is unavailable, idle, done or fault blocks the run; the Watchdog and the Bedtime
+    Readout are what report those states, not this.
+
+    PRESENCE GATE (v1-20). Nothing fires while a presence entity reads anything other
+    than `home`, `unknown` or `unavailable` — so `not_home` and any named zone block it,
+    and an unreadable person counts as home (fail loud). Before v1-20 there was no
+    presence check at all: a late rung with the latch off would drive the bedroom lights,
+    a critical push and both HomePods into a house where only a partner was asleep.
+    person.michael_perschy tracks the iPhone only (MacBook removed 28 Oct 2026), so a
+    laptop left at home cannot fake presence. Being away stops the run silently here;
+    the integration's own firing (v0.5) adds a plain "ladder skipped, you are away"
+    push.
+
+    OWN-ALARM FIRING (v1-30). From Bedtime Bridge 0.4.1 a rung sensor carries a
+    `firing` attribute. `gentle` marks Mike's own alarm on a day off with backstops
+    switched on: at every rung the run does only what the early rung does — the
+    nightstand ramp and a plain push — with no critical sound, no speakers, no
+    alert lights and no repeat loop. The attribute is read from the sensor of the
+    rung being acted on (for a restart, the rung the catch-up chose). Missing,
+    unreadable or `full` means the normal ladder, so a bridge that never sets it
+    escalates as before. `idle_own_off` (own alarm with backstops off) is an idle
+    status, so the ladder gate already blocks it.
+
+    FIRED EVENT (v1-40). Each escalating branch (options 1-5) first fires
+    `bedtime_bridge_backstop_fired` with `rung` (early, deadline, late) and `level`
+    (soft, full, gentle). Bedtime Bridge 0.4.11.2 keeps the morning's fired rungs, so
+    the app tags them *Fired* on Your morning, and counts them for the weekly summary.
+    It is an event, so it cannot raise and cannot stop the escalation after it. A
+    quiet run (option 0, or the default "Nothing to escalate") fires nothing, which is
+    the point: `last_triggered` changes on every armed morning, this does not.
+
+    FAIL DIRECTIONS. A bed reading unavailable counts as OCCUPIED. Latch-off is already
+    the escalating state, so a broken latch manager cannot silence this. A rung sensor
+    that is unavailable simply never fires its trigger, which is the correct
+    nothing-scheduled behaviour. The ladder gate is the one place this fails quiet by
+    design, because an unarmed ladder has no times to act on; the Watchdog asserts on
+    the ladder and pushes a critical alert when it is unarmed for no stated reason.
+
+    WHAT IT DOES NOT DO. Does not read the calendar, compute deadlines, or know what a
+    shift is — it consumes the rung sensors and the ladder status. Does not own the
+    latch; Bedroom Exit Latch does. Does not speak directly: it fires
+    `mike_speaker_announcement` with `bypass_mute: true`, so a TTS decode fault kills
+    the announcement and not this run. Does not open the curtains — deliberately. The
+    curtain is what woke Mike on 31 Aug so it demonstrably works, but opening it before
+    dawn with a partner in the bed is a cost this ladder does not need to pay.
+
+    RESTART BEHAVIOUR. The three rung triggers are native time triggers against timestamp
+    sensors, so they survive a reload and are not templates that can evaluate silently
+    false. A time trigger does not fire for a moment already past when the sensor
+    changes, which is why the bridge publishes any rung that would land in the past as
+    now + 60 s. A restart still costs any rung whose moment passed while HA was down;
+    the `ha_start` path re-enters the ladder for whichever rung most recently passed,
+    bounded by its own window so a restart at breakfast cannot replay the morning.
+    Accepted limitation: the repeat loop at the deadline rung uses plain delays and is
+    abandoned by a restart. That is tolerable because the first critical push has
+    already been delivered by then — the loop is escalation, not the primary alert.
+    Bedtime Bridge's "restart when a morning changes" option turns this automation off
+    and on, which also ends a running loop deliberately.
+
+    RUN MODE — PARALLEL (v1-10). v1-00 ran in `single` mode with `max_exceeded:
+    silent`. The deadline-rung loop runs for up to max_repeats × repeat_interval
+    (24 minutes at the defaults) while the late rung fires 15 minutes after the
+    deadline — so on any morning where the bed stayed occupied through the deadline,
+    the late trigger arrived while the deadline run was still looping and was
+    discarded without a trace. That is exactly the morning the late rung exists for.
+    The only real overlap is these two rungs, and they are the two designed as
+    independent evidence (bed vs latch), so running them as independent runs is
+    the honest expression of the design. `restart` was rejected: it would let the
+    late rung kill the deadline loop and leave no escalation after it. The
+    `ha_start` path cannot overlap anything because a restart clears every run
+    first. The early rung and the deadline bed-empty branch each finish in
+    milliseconds. Known cosmetic consequence: both rungs share the `wake_backstop`
+    tag, so when the deadline loop sees the bed clear and clears the notification
+    it also removes the late rung's push from the screen — the critical sound has
+    already fired by then.
+
+    SIDE EFFECTS TO EXPECT WHEN IT FIRES. A critical push that bypasses Do Not Disturb
+    and rings at full volume regardless of the silent switch; speech on the bedroom
+    speakers loud enough to wake a second person in the bed; bedroom lights to full.
+    Mike has accepted the partner-audible speaker rung explicitly, on the grounds that it
+    only fires when he is still in the bed the alarm was meant to get him out of.
+
+    Revision history:
+    - v1-00: Initial version. Built after the 31 Aug 2026 oversleep, alongside
+      current_shift.yaml v1-10, Bedroom Exit Latch v1-00, Wake Confirm v1-00 and Shift
+      Calendar Health Watchdog v1-00. Rung times were moved OUT of this blueprint and
+      into the shift sensor before any of it was written: deriving them here would have
+      required template triggers, which evaluate as silently false on error and do not
+      fire when already true at HA start — meaning a restart at 05:12 would leave the
+      05:10 rung unfired. That reversal is recorded as constraint 0 in current_shift.yaml.
+    - v1-10: `mode: single` → `mode: parallel` so the late rung is evaluated even
+      while the deadline loop is still running (see RUN MODE above). No action,
+      condition or trigger changes; every trace path index is unchanged from v1-00.
+    - v1-20: Rungs now come from Bedtime Bridge. condition/1 changed from the
+      shift-type gate to "ladder status is armed" (new required input
+      `ladder_status_sensor`) so appointment mornings fire (see LADDER GATE).
+      condition/2 appended: presence gate (new optional input `presence_entities`).
+      `applies_to_shifts` removed. `shift_sensor` is no longer read and is kept
+      only so existing instances load; clear it. Actions and triggers unchanged;
+      every action trace path index is unchanged from v1-10.
+    - v1-30: Honours the bridge's per-rung `firing: gentle` (own alarm, Bridge
+      0.4.1): `gentle` and `firing` folded into action/2's variables, `not gentle`
+      appended to choose options 2 and 4, and a gentle branch appended as option 5
+      (ramp and plain push). Options 0, 1 and 3 and every existing index are
+      unchanged. See OWN-ALARM FIRING.
+    - v1-40: Each escalating branch (options 1-5) first fires
+      `bedtime_bridge_backstop_fired` with `rung` and `level`, for Bedtime Bridge
+      0.4.11.2's Fired tag and weekly count (see FIRED EVENT). Inputs, triggers,
+      conditions, mode and the choose option indexes are unchanged; inside options
+      1-5 every step index moves up by one, as the event is step 0. Option 0 and the
+      default fire nothing.
+    </details>
+  domain: automation
+  homeassistant:
+    min_version: "2024.10.0"
+  input:
+    rungs:
+      name: Rung sensors
+      icon: mdi:stairs-up
+      input:
+        rung_early_sensor:
+          name: Early rung
+          description: >
+            Timestamp sensor for the first rung. Expected:
+            sensor.bedtime_bridge_safety_net_early (Bedtime Bridge "Ladder early").
+          selector:
+            entity:
+              domain: sensor
+              device_class: timestamp
+        rung_deadline_sensor:
+          name: Deadline rung
+          description: >
+            Timestamp sensor for the deadline. Expected:
+            sensor.bedtime_bridge_safety_net_deadline (Bedtime Bridge "Ladder deadline").
+          selector:
+            entity:
+              domain: sensor
+              device_class: timestamp
+        rung_late_sensor:
+          name: Late rung
+          description: >
+            Timestamp sensor for the last-ditch rung. Expected:
+            sensor.bedtime_bridge_safety_net_late (Bedtime Bridge "Ladder late").
+          selector:
+            entity:
+              domain: sensor
+              device_class: timestamp
+
+    evidence:
+      name: Evidence
+      icon: mdi:bed
+      input:
+        bed_sensor:
+          name: Bed occupancy sensor
+          description: >
+            The sleeper's own side. Expected:
+            binary_sensor.master_bedroom_bed_presence_bed_occupied_left.
+            Anything other than `off` counts as occupied, so a dropout escalates
+            rather than going quiet.
+          selector:
+            entity:
+              domain: binary_sensor
+        latch_helper:
+          name: Exit latch helper
+          description: >
+            Set by Bedroom Exit Latch. Expected: input_boolean.bedroom_exited_today.
+            ON means the room has been left and not returned to; that stands the whole
+            ladder down.
+          selector:
+            entity:
+              domain: input_boolean
+        shift_sensor:
+          name: Shift sensor (unused since v1-20)
+          description: >
+            No longer read. Kept only so instances saved before v1-20 still load;
+            clear it. The ladder status sensor replaced the shift-type gate.
+          default: ""
+          selector:
+            entity:
+              domain: sensor
+        ladder_status_sensor:
+          name: Ladder status
+          description: >
+            Bedtime Bridge's ladder status. Expected:
+            sensor.master_bedroom_bedtime_bridge_ladder_status. The ladder fires only
+            while it reads exactly `armed`; idle, done, fault and unavailable all block.
+          selector:
+            entity:
+              domain: sensor
+        presence_entities:
+          name: Presence
+          description: >
+            Person entities for the sleeper. Expected: person.michael_perschy. Any
+            reading other than home, unknown or unavailable (away, or a named zone)
+            blocks the ladder; unreadable counts as home. Leave empty to fire
+            regardless of presence.
+          default: []
+          selector:
+            entity:
+              domain: person
+              multiple: true
+
+    escalation:
+      name: Escalation
+      icon: mdi:bullhorn
+      input:
+        notify_action:
+          name: Notification action
+          description: >
+            Full action name, e.g. notify.mobile_app_mikes_iphone. Must be the
+            mobile_app action — notify.send_message silently drops the nested iOS data
+            payload, which would strip the critical sound with no error.
+          selector:
+            text:
+        ramp_light:
+          name: Early-rung light
+          description: >
+            Turned on gently at the early rung. Expected:
+            light.master_bed_room_nightstand.
+          selector:
+            target:
+              entity:
+                domain: light
+        alert_lights:
+          name: Deadline lights
+          description: >
+            Driven to full at the deadline rung.
+          selector:
+            target:
+              entity:
+                domain: light
+        speakers:
+          name: Bedroom speakers
+          description: >
+            Music Assistant entities, not apple_tv ones — do not mix the two families.
+            Expected: media_player.master_bedroom_homepod and
+            media_player.master_bathroom_homepod.
+          selector:
+            entity:
+              domain: media_player
+              multiple: true
+
+    settings:
+      name: Settings
+      icon: mdi:cog
+      collapsed: true
+      input:
+        override_entities:
+          name: Override entities
+          description: >
+            Any ON suppresses the whole ladder. Leave empty for none. Note
+            input_boolean.sleep_in is NOT a sensible choice here — sleeping in is
+            precisely the failure this exists to catch.
+          default: []
+          selector:
+            entity:
+              multiple: true
+        ramp_brightness_pct:
+          name: Early-rung brightness
+          default: 40
+          selector:
+            number:
+              min: 1
+              max: 100
+              step: 1
+              unit_of_measurement: "%"
+              mode: slider
+        ramp_transition_seconds:
+          name: Early-rung fade
+          default: 60
+          selector:
+            number:
+              min: 0
+              max: 600
+              step: 10
+              unit_of_measurement: seconds
+              mode: slider
+        announce_volume:
+          name: Announcement volume
+          default: 0.6
+          selector:
+            number:
+              min: 0.05
+              max: 1.0
+              step: 0.05
+              mode: slider
+        repeat_interval_minutes:
+          name: Repeat interval
+          default: 3
+          selector:
+            number:
+              min: 1
+              max: 30
+              step: 1
+              unit_of_measurement: minutes
+              mode: slider
+        max_repeats:
+          name: Max repeats
+          description: >
+            Ceiling on the deadline-rung loop. Expiry sends a final notice and stops —
+            it never waits forever, and it never falls silent without saying so.
+          default: 8
+          selector:
+            number:
+              min: 1
+              max: 30
+              step: 1
+              mode: slider
+        startup_settle_seconds:
+          name: Startup settle
+          description: >
+            Pause before reading any state on the restart path; entities can still read
+            unavailable immediately after HA starts.
+          default: 90
+          selector:
+            number:
+              min: 0
+              max: 600
+              step: 10
+              unit_of_measurement: seconds
+              mode: slider
+        startup_window_minutes:
+          name: Startup catch-up window
+          description: >
+            After a restart, only re-enter a rung whose moment passed within this long.
+            Bounds the catch-up so a restart later in the day cannot replay the morning.
+          default: 60
+          selector:
+            number:
+              min: 0
+              max: 240
+              step: 15
+              unit_of_measurement: minutes
+              mode: slider
+
+# v1-10: parallel, so the late rung is not swallowed by a running deadline loop.
+mode: parallel
+
+variables:
+  bed_sensor: !input bed_sensor
+  latch_helper: !input latch_helper
+  ladder_status_sensor: !input ladder_status_sensor
+  presence_entities: !input presence_entities
+  rung_early_sensor: !input rung_early_sensor
+  rung_deadline_sensor: !input rung_deadline_sensor
+  rung_late_sensor: !input rung_late_sensor
+  override_entities: !input override_entities
+  speakers: !input speakers
+  announce_volume: !input announce_volume
+  max_repeats: !input max_repeats
+  startup_window_minutes: !input startup_window_minutes
+
+triggers:
+  - trigger: time
+    at: !input rung_early_sensor
+    id: early
+  - trigger: time
+    at: !input rung_deadline_sensor
+    id: deadline
+  - trigger: time
+    at: !input rung_late_sensor
+    id: late
+  - trigger: homeassistant
+    event: start
+    id: ha_start
+
+conditions:
+  # expand() silently drops entity IDs that no longer exist, so this counts
+  # matches rather than comparing list lengths — a vanished override entity must
+  # not be able to suppress the ladder by disappearing.
+  - alias: No override active
+    condition: template
+    value_template: >-
+      {{ expand(override_entities)
+         | selectattr('state', 'eq', 'on') | list | count == 0 }}
+
+  # v1-20: was the shift-type gate. Which mornings are covered is decided in
+  # Bedtime Bridge; this only asks whether the ladder is armed.
+  - alias: Ladder is armed
+    condition: state
+    entity_id: !input ladder_status_sensor
+    state: armed
+
+  # v1-20 (appended): away blocks the ladder; unknown/unavailable count as home.
+  # A template because "away" is not_home OR any named zone, which a state
+  # condition cannot enumerate, and the list is optional.
+  - alias: Not away (unreadable counts as home)
+    condition: template
+    value_template: >-
+      {{ expand(presence_entities)
+         | rejectattr('state', 'in', ['home', 'unknown', 'unavailable'])
+         | list | count == 0 }}
+
+actions:
+  # Only the restart path needs to settle; delaying the real rungs would shift
+  # every escalation time.
+  - if:
+      - condition: trigger
+        id: ha_start
+    then:
+      - delay:
+          seconds: !input startup_settle_seconds
+
+  - variables:
+      # Which rung this run is acting on. For the three time triggers it is just
+      # the trigger id. For a restart it is the most recent rung whose moment has
+      # passed inside the catch-up window — latest first, so a restart at 05:30
+      # re-enters at LATE rather than replaying EARLY.
+      rung: >-
+        {%- if trigger.id in ['early', 'deadline', 'late'] -%}
+        {{- trigger.id -}}
+        {%- else -%}
+        {%- set w = startup_window_minutes * 60 -%}
+        {%- set ns = namespace(hit='none') -%}
+        {%- for name, ent in [('late', rung_late_sensor),
+                              ('deadline', rung_deadline_sensor),
+                              ('early', rung_early_sensor)] -%}
+        {%- if ns.hit == 'none' -%}
+        {%- set d = as_datetime(states(ent)) -%}
+        {%- if d is not none and d.tzinfo is not none -%}
+        {%- set age = (now() - d).total_seconds() -%}
+        {%- if age >= 0 and age <= w -%}{%- set ns.hit = name -%}{%- endif -%}
+        {%- endif -%}
+        {%- endif -%}
+        {%- endfor -%}
+        {{- ns.hit -}}
+        {%- endif -%}
+
+  - variables:
+      # Fail direction: anything other than a definite 'off' counts as occupied,
+      # so a sensor dropout escalates rather than going quiet.
+      bed_occupied: "{{ states(bed_sensor) != 'off' }}"
+      # Fail direction: anything other than a definite 'on' counts as not-exited.
+      never_exited: "{{ states(latch_helper) != 'on' }}"
+      # v1-30: the bridge's per-rung firing style, read from the sensor of the rung
+      # being acted on. Anything but an explicit 'gentle' is the full ladder.
+      firing: >-
+        {{ state_attr({'early': rung_early_sensor, 'deadline': rung_deadline_sensor,
+                       'late': rung_late_sensor}.get(rung, ''), 'firing')
+           | default('full', true) }}
+      gentle: >-
+        {{ state_attr({'early': rung_early_sensor, 'deadline': rung_deadline_sensor,
+                       'late': rung_late_sensor}.get(rung, ''), 'firing') == 'gentle' }}
+
+  - choose:
+      # 0 — restart landed outside every window, or no rung resolved.
+      - conditions:
+          - "{{ rung == 'none' }}"
+        sequence:
+          - stop: No rung in scope
+
+      # 1 — EARLY, still in bed. Gentle: light and a plain push.
+      - conditions:
+          - "{{ rung == 'early' and bed_occupied }}"
+        sequence:
+          # v1-40: tell Bedtime Bridge this rung fired (the app's Fired tag).
+          - event: bedtime_bridge_backstop_fired
+            event_data:
+              rung: early
+              level: soft
+          - action: light.turn_on
+            target: !input ramp_light
+            data:
+              brightness_pct: !input ramp_brightness_pct
+              transition: !input ramp_transition_seconds
+          - action: !input notify_action
+            data:
+              title: Time to get up
+              message: >-
+                Still in bed. Deadline is
+                {{ as_datetime(states(rung_deadline_sensor)) | as_local
+                   | as_timestamp | timestamp_custom('%H:%M', true) }}.
+              data:
+                tag: wake_backstop
+
+      # 2 — DEADLINE, still in bed. Everything, then repeat until the bed clears.
+      - conditions:
+          - "{{ rung == 'deadline' and bed_occupied }}"
+          # v1-30, appended: own-alarm mornings take option 5 instead.
+          - "{{ not gentle }}"
+        sequence:
+          # v1-40: tell Bedtime Bridge this rung fired (the app's Fired tag).
+          - event: bedtime_bridge_backstop_fired
+            event_data:
+              rung: deadline
+              level: full
+          - action: light.turn_on
+            target: !input alert_lights
+            data:
+              brightness_pct: 100
+          - action: !input notify_action
+            data:
+              title: You are going to be late
+              message: Deadline reached and you are still in bed.
+              data:
+                push:
+                  sound:
+                    name: default
+                    critical: 1
+                    volume: 1.0
+                tag: wake_backstop
+          # bypass_mute so a manual do-not-disturb cannot swallow this. The event
+          # cannot raise, so a TTS decode fault kills the announcement, not this run.
+          - event: mike_speaker_announcement
+            event_data:
+              source: wake_deadline_backstop
+              speakers: "{{ speakers }}"
+              volume: "{{ announce_volume }}"
+              bypass_mute: true
+              message: >-
+                Sir, it is past the hour you needed to be up. You are going to be late.
+          - repeat:
+              count: !input max_repeats
+              sequence:
+                - delay:
+                    minutes: !input repeat_interval_minutes
+                - if:
+                    - "{{ states(bed_sensor) != 'off' }}"
+                  then:
+                    - action: !input notify_action
+                      data:
+                        title: Still in bed
+                        message: >-
+                          Reminder {{ repeat.index }} of {{ max_repeats }}.
+                        data:
+                          push:
+                            sound:
+                              name: default
+                              critical: 1
+                              volume: 1.0
+                          tag: wake_backstop
+                  else:
+                    - action: !input notify_action
+                      data:
+                        message: clear_notification
+                        data:
+                          tag: wake_backstop
+                    - stop: Bed cleared
+          # Ceiling reached with the bed still occupied. Says so rather than
+          # simply falling silent.
+          - action: !input notify_action
+            data:
+              title: No further reminders
+              message: >-
+                {{ max_repeats }} reminders sent and you are still in bed.
+                Stopping now.
+              data:
+                tag: wake_backstop
+
+      # 3 — DEADLINE, bed reads empty but the room was never left. Softest rung:
+      # this is the case that is most likely to be a sensor artefact, so it gets a
+      # plain push and nothing that would wake a second person.
+      - conditions:
+          - "{{ rung == 'deadline' and not bed_occupied and never_exited }}"
+        sequence:
+          # v1-40: tell Bedtime Bridge this rung fired (the app's Fired tag).
+          - event: bedtime_bridge_backstop_fired
+            event_data:
+              rung: deadline
+              level: soft
+          - action: !input notify_action
+            data:
+              title: Have you started your day?
+              message: >-
+                The bed reads empty but the bedroom door has not opened.
+              data:
+                tag: wake_backstop
+
+      # 4 — LATE, still never left the room. Last ditch, regardless of the bed.
+      - conditions:
+          - "{{ rung == 'late' and never_exited }}"
+          # v1-30, appended: own-alarm mornings take option 5 instead.
+          - "{{ not gentle }}"
+        sequence:
+          # v1-40: tell Bedtime Bridge this rung fired (the app's Fired tag).
+          - event: bedtime_bridge_backstop_fired
+            event_data:
+              rung: late
+              level: full
+          - action: light.turn_on
+            target: !input alert_lights
+            data:
+              brightness_pct: 100
+          - action: !input notify_action
+            data:
+              title: You have not left the bedroom
+              message: >-
+                Past deadline and the bedroom door has not opened today.
+              data:
+                push:
+                  sound:
+                    name: default
+                    critical: 1
+                    volume: 1.0
+                tag: wake_backstop
+          - event: mike_speaker_announcement
+            event_data:
+              source: wake_deadline_backstop_late
+              speakers: "{{ speakers }}"
+              volume: "{{ announce_volume }}"
+              bypass_mute: true
+              message: >-
+                Sir, you have not left the bedroom and you are now late.
+
+      # 5 — APPENDED v1-30. Own alarm with backstops on (firing: gentle): the
+      # deadline and late rungs do only what the early rung does.
+      - conditions:
+          - "{{ gentle }}"
+          - >-
+            {{ (rung == 'deadline' and bed_occupied)
+               or (rung == 'late' and never_exited) }}
+        sequence:
+          # v1-40: tell Bedtime Bridge this rung fired (the app's Fired tag).
+          - event: bedtime_bridge_backstop_fired
+            event_data:
+              rung: "{{ rung }}"
+              level: gentle
+          - action: light.turn_on
+            target: !input ramp_light
+            data:
+              brightness_pct: !input ramp_brightness_pct
+              transition: !input ramp_transition_seconds
+          - action: !input notify_action
+            data:
+              title: Time to get up
+              message: Your own alarm has passed and you have not got up yet.
+              data:
+                tag: wake_backstop
+
+    # Every other combination is a normal morning: bed clear and the room left.
+    default:
+      - stop: Nothing to escalate
