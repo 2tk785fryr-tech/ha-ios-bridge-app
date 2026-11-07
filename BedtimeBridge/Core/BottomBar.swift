@@ -368,7 +368,9 @@ struct BottomBar: Equatable {
         let afterBedtime = (i.alarmsSet > 0 && !i.goodNight) || i.snoozing || i.upEarlyWindow || i.backToBedWindow
         if i.alarmsSet > 0 && !afterBedtime { items.append(.editAlarms) }
         if i.sleepLaterWindow { items.append(.sleepLater) }
-        if i.napEnabled && i.napUpAt == nil { items.append(.nap) }
+        // v0.4.11 item 40: no Nap from bedtime until the morning's alarms end.
+        let alarmsAhead = (i.alarmsSet > 0 && !i.goodNight) || i.snoozing || i.upEarlyWindow
+        if i.napEnabled && i.napUpAt == nil && !alarmsAhead { items.append(.nap) }
         if afterBedtime && (i.snoozing || i.alarmsSet > 0 || i.backToBedWindow) { items.append(.changeMorning) }
         // v0.4.8 item 7: up to the first alarm, the 2-hour window included.
         let beforeFirst = i.upEarlyWindow && (i.firstAlarm ?? i.now) > i.now

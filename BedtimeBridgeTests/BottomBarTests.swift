@@ -84,7 +84,7 @@ final class BottomBarTests: XCTestCase {
         i.napEnabled = true
         // v0.4.10 item 10: after bedtime, Change this morning instead of Edit alarms; no Skip.
         XCTAssertEqual(BottomBar.menu(i, alarmStyleApp: true, morningKnown: true),
-                       [.previewPlan, .sleepLater, .nap, .changeMorning, .noAlarmsTomorrow, .notReadyForBed, .addTemporary, .addWakeUpEvent, .addLeave, .settings])
+                       [.previewPlan, .sleepLater, .changeMorning, .noAlarmsTomorrow, .notReadyForBed, .addTemporary, .addWakeUpEvent, .addLeave, .settings])
         XCTAssertTrue(BarAction.endAlarms.isProtected)
         XCTAssertFalse(BarAction.previewPlan.isProtected)
         XCTAssertEqual(BarAction.endNap.knob, .stop)
