@@ -243,9 +243,13 @@ struct LeaveSettings: View {
                     }
                 }
             } header: {
-                WithDefault(text: "Vacation titles", defaultText: settings.leaveTitles == BridgeSettings().leaveTitles ? nil : "Leave")
+                // v0.4.11 item 59.
+                HStack {
+                    WithDefault(text: "Vacation titles", defaultText: settings.leaveTitles == BridgeSettings().leaveTitles ? nil : "Leave")
+                    InfoButton(text: "A vacation means no shift alarms, the backstops off, Sleep In on each morning, and a reminder the evening before you're back at work. Other events during a vacation work as usual.")
+                }
             } footer: {
-                Text("An all-day event with one of these titles (any case) is a vacation: no shift alarms, the backstops off, Sleep In on each morning, and a reminder the evening before you're back at work. Other events during a vacation work as usual. Home Assistant's current_shift.yaml has its own list until v0.6.")
+                Text("An all-day event with one of these titles is a vacation.")
             }
             Section {
                 ForEach(settings.leaveTitles.isEmpty ? ["Leave"] : settings.leaveTitles, id: \.self) { title in
