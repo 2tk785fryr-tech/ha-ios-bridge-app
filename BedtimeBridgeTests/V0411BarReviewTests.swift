@@ -165,4 +165,10 @@ final class V0411MergedActionsTests: XCTestCase {
         XCTAssertEqual(BarAction.upEarly.title(day: ""), "End this morning's alarms")
         XCTAssertEqual(BarAction.endAlarms.title(day: ""), "End this morning's alarms")
     }
+
+    func testItem47WakeUpLaterThenBackToBed() {
+        XCTAssertEqual(BarAction.sleepLater.title(day: ""), "Wake up later…")
+        XCTAssertEqual(BarAction.wakeLater.title(day: ""), "Wake up later…")
+        XCTAssertEqual(BarAction.backToBed.title(day: ""), "Back to bed", "once you're up")
+    }
 }
