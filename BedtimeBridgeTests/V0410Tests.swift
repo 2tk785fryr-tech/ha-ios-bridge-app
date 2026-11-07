@@ -202,7 +202,9 @@ final class V0410Tests: XCTestCase {
             XCTAssertFalse(menu.contains(.skip))
             XCTAssertFalse(menu.contains(.editAlarms) && menu.contains(.changeMorning), "\(menu)")
         }
-        XCTAssertTrue(BottomBar.menu(before, alarmStyleApp: true, morningKnown: true).contains(.editAlarms))
+        // v0.4.11 item 48: before bedtime, Change alarms (on the bar, so not repeated in ⋯).
+        XCTAssertTrue(BottomBar.make(before).buttons.contains(.changePlan))
+        XCTAssertFalse(BottomBar.menu(before, alarmStyleApp: true, morningKnown: true).contains(.editAlarms))
         XCTAssertTrue(BottomBar.menu(after, alarmStyleApp: true, morningKnown: true).contains(.changeMorning))
     }
 

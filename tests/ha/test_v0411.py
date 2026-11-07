@@ -409,3 +409,16 @@ async def test_item41_nothing_to_move_after_bedtime_ran(hass, ladder, hass_clien
     await send(hass_client_no_auth, {"type": "bedtime", "data": {}})
     reply = await send(hass_client_no_auth, {"type": "wind_down", "data": {"action": "bed_later", "minutes": 15}})
     assert reply["moved"] is False
+
+
+# MARK: Item 48, Cancel wind-down at Time for bed stops the reminders
+
+
+async def test_item48_cancel_at_time_for_bed_stops_reminders(hass, ladder, hass_client_no_auth, freezer):  # noqa: F811
+    notes = await wind_setup(hass, ladder)
+    await send(hass_client_no_auth, days_plan())
+    await at(hass, freezer, local("21:51", day=27))
+    assert status_of(hass) == "bedtime"
+    await send(hass_client_no_auth, {"type": "wind_down", "data": {"action": "cancel"}})
+    await at(hass, freezer, local("22:30", day=27))
+    assert not any((m or "").startswith("Still up") for m in messages(notes))

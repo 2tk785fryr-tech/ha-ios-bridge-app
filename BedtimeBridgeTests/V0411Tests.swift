@@ -583,7 +583,7 @@ final class V0411Tests: XCTestCase {
         inputs.alarmsSet = 3
         inputs.goodNight = true
         inputs.plansChanged = "Plan changed · re-plan"
-        XCTAssertEqual(BottomBar.make(inputs), BottomBar(top: .main(.replan, "Plan changed · re-plan"), buttons: [.previewPlan, .editAlarms]))
+        XCTAssertEqual(BottomBar.make(inputs), BottomBar(top: .main(.replan, "Plan changed · re-plan"), buttons: [.previewPlan, .changePlan]))
     }
 
     // MARK: Item 23, plan changed only when the alarms would

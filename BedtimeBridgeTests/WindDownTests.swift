@@ -49,9 +49,9 @@ final class WindDownTests: XCTestCase {
         i.windDown = state(.bedtime)
         i.alarmsSet = 3
         // v0.4.11 item 42: Go to bed later, not Not ready for bed (nothing to undo yet).
-        XCTAssertEqual(BottomBar.make(i), BottomBar(top: .status("Time for bed · first alarm \(f(first))", .accent), buttons: [.stopReminders, .goToBedLater]))
+        XCTAssertEqual(BottomBar.make(i), BottomBar(top: .status("Time for bed · first alarm \(f(first))", .accent), buttons: [.cancelWindDown, .goToBedLater]))
         i.windDown?.inBed = true
-        XCTAssertNotEqual(BottomBar.make(i).buttons.first, .stopReminders, "in bed: nothing to stop")
+        XCTAssertNotEqual(BottomBar.make(i).buttons.first, .cancelWindDown, "in bed: nothing to stop")
     }
 
     func testReplyFromHomeAssistant() {

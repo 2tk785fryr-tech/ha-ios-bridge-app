@@ -82,7 +82,7 @@ struct ChangePlanSheet: View {
             }
             .scrollContentBackground(.hidden)
             .background(Theme.ground.ignoresSafeArea())
-            .navigationTitle("Change plan")
+            .navigationTitle("Change alarms")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }

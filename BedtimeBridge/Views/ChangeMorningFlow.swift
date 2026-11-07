@@ -47,7 +47,7 @@ struct ChangeMorningFlow: View {
 
     var body: some View {
         NavigationStack {
-            SettingsPage(title: "Change this morning") {
+            SettingsPage(title: "Change alarms") {
                 // v0.4.10 item 10: single alarms are edited from here after bedtime (its save is
                 // the slide-and-hold).
                 if !BedtimeCoordinator.shared.scheduledAlarmTimes().isEmpty {

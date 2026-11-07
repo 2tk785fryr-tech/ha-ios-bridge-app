@@ -595,6 +595,10 @@ class WindDown:
     async def cancel(self) -> None:
         """Tonight's wind-down off: helper off, no go to bed notification or reminders."""
         s = self.s
+        if s.get("status") == "bedtime":
+            # v0.4.11 item 48: at Time for bed, Cancel wind-down stops the reminders.
+            self.stop_reminders()
+            return
         if s.get("status") not in ("scheduled", "winding_down"):
             return
         was_running = s.get("status") == "winding_down"

@@ -171,4 +171,17 @@ final class V0411MergedActionsTests: XCTestCase {
         XCTAssertEqual(BarAction.wakeLater.title(day: ""), "Wake up later…")
         XCTAssertEqual(BarAction.backToBed.title(day: ""), "Back to bed", "once you're up")
     }
+
+    func testItem48OneChangeAlarmsList() {
+        XCTAssertEqual(BarAction.changePlan.title(day: ""), "Change alarms")
+        XCTAssertEqual(BarAction.changeMorning.title(day: ""), "Change alarms")
+        XCTAssertEqual(BarAction.editAlarms.title(day: ""), "Edit single alarms")
+        let w = WindDownState(status: .bedtime, windDown: Date(timeIntervalSince1970: 0), goToBed: Date(timeIntervalSince1970: 3600),
+                              firstAlarm: Date(timeIntervalSince1970: 30_000))
+        var i = BottomBar.Inputs(now: Date(timeIntervalSince1970: 4000))
+        i.windDown = w
+        i.alarmsSet = 3
+        XCTAssertEqual(BottomBar.make(i).buttons, [.cancelWindDown, .goToBedLater], "Cancel wind-down stops the reminders")
+        XCTAssertFalse(BottomBar.menu(i, alarmStyleApp: true, morningKnown: true).contains(.stopReminders))
+    }
 }

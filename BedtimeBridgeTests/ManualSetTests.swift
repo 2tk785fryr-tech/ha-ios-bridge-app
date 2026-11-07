@@ -62,7 +62,7 @@ final class ManualSetTests: XCTestCase {
         var i = BottomBar.Inputs(now: now)
         i.alarmsSet = 3
         i.firstAlarm = at(400)
-        XCTAssertEqual(BottomBar.make(i).buttons, [.editAlarms, .addTemporary], "v0.4.11 item 38: No alarms in ⋯")
+        XCTAssertEqual(BottomBar.make(i).buttons, [.changeMorning, .addTemporary], "v0.4.11 items 38 and 48: Change alarms; No alarms in ⋯")
         XCTAssertTrue(BottomBar.menu(i, alarmStyleApp: true, morningKnown: true).contains(.noAlarmsTomorrow))
         i.snoozing = true
         XCTAssertFalse(BottomBar.menu(i, alarmStyleApp: true, morningKnown: true).contains(.noAlarmsTomorrow), "not during the morning")

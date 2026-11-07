@@ -49,7 +49,7 @@ final class BottomBarTests: XCTestCase {
         // v0.4.11 item 22: alarms set and Good night not offered is after bedtime.
         XCTAssertEqual(BottomBar.make(i), BottomBar(top: .main(.replan, "Calendar changed · re-plan"), buttons: [.changeMorning, .addTemporary]))
         i.goodNight = true
-        XCTAssertEqual(BottomBar.make(i), BottomBar(top: .main(.replan, "Calendar changed · re-plan"), buttons: [.previewPlan, .editAlarms]))
+        XCTAssertEqual(BottomBar.make(i), BottomBar(top: .main(.replan, "Calendar changed · re-plan"), buttons: [.previewPlan, .changePlan]))
     }
 
     func testUpEarlySnoozingUpAndNapping() {
