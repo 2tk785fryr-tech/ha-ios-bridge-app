@@ -26,6 +26,24 @@ enum OptionWindows {
         return now < min(morning(after: ran, goodMorningFrom: goodMorningFrom, calendar: calendar), ran.addingTimeInterval(16 * 3600))
     }
 
+    /// v0.4.11 item 35: a no-alarm night's morning, from bedtime + the sleep goal − 1 hour (and
+    /// not before 4:00), until I'm awake runs (here or Awake For Day in Home Assistant), an alarm
+    /// is stopped, or 18 hours after bedtime.
+    static func sleepingIn(bedtimeRanAt: Date?, lastStop: Date?, alarmsSet: Bool, napping: Bool, sleepGoalMinutes: Int,
+                           awakeAt: Date?, awakeForDay: Bool, now: Date = .now, calendar: Calendar = .current) -> Bool {
+        guard let ran = bedtimeRanAt, !alarmsSet, !napping, !awakeForDay, now >= ran else { return false }
+        if let lastStop, lastStop >= ran { return false }
+        if let awakeAt, awakeAt >= ran { return false }
+        return now >= awakeFrom(ran: ran, sleepGoalMinutes: sleepGoalMinutes, calendar: calendar) && now < ran.addingTimeInterval(18 * 3600)
+    }
+
+    /// When the sleeping-in morning starts: bedtime + sleep goal − 1 h, not before the next 4:00.
+    static func awakeFrom(ran: Date, sleepGoalMinutes: Int, calendar: Calendar = .current) -> Date {
+        guard var four = calendar.date(bySettingHour: 4, minute: 0, second: 0, of: ran) else { return ran }
+        if four <= ran { four = calendar.date(byAdding: .day, value: 1, to: four) ?? four }
+        return max(ran.addingTimeInterval(Double(sleepGoalMinutes - 60) * 60), four)
+    }
+
     /// The first Good morning from time after `ran`: the morning a night's bedtime is for (a
     /// bedtime at 1 AM is for that same morning).
     static func morning(after ran: Date, goodMorningFrom: String, calendar: Calendar = .current) -> Date {

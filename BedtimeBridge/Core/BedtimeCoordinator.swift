@@ -1559,6 +1559,13 @@ final class BedtimeCoordinator {
                                     napping: !napAlarms.isEmpty, goodMorningFrom: settings.noAlarmEarliest, now: now)
     }
 
+    /// v0.4.11 item 35: the sleeping-in morning after a no-alarm bedtime.
+    func sleepingIn(settings: BridgeSettings, now: Date = .now) -> Bool {
+        OptionWindows.sleepingIn(bedtimeRanAt: bedtimeRanAt, lastStop: lastStopAt, alarmsSet: !setAlarmTimes().filter { $0 > now }.isEmpty,
+                                 napping: !napAlarms.isEmpty, sleepGoalMinutes: settings.sleepGoalMinutes,
+                                 awakeAt: NoAlarmMorning.awakeAt, awakeForDay: NoAlarmMorning.awakeForDay, now: now)
+    }
+
     /// When bedtime ran, for Tonight's in-bed card (v0.4.11 item 33).
     var bedtimeRan: Date? { bedtimeRanAt }
 

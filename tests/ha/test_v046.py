@@ -218,6 +218,7 @@ async def test_item2_im_awake_by_hand(hass, freezer, hass_client_no_auth):
     notify = await _morning(hass, freezer, "06:45")
     reply = await send(hass_client_no_auth, {"type": "context", "data": {}})
     assert reply["no_alarm_morning"]["offered"] is True
+    assert reply["no_alarm_morning"]["awake_for_day"] is False
     reply = await send(hass_client_no_auth, {"type": "awake", "data": {}})
     assert reply["good_morning"] is True and reply["disarmed"] is True
     assert _messages(notify) == ["RUN_DISARM", "RUN_GOOD_MORNING"]
@@ -225,6 +226,8 @@ async def test_item2_im_awake_by_hand(hass, freezer, hass_client_no_auth):
     assert hass.states.get("input_boolean.awake_for_day").state == "on"
     reply = await send(hass_client_no_auth, {"type": "context", "data": {}})
     assert reply["no_alarm_morning"]["offered"] is False
+    # v0.4.11 item 35: the app ends its sleeping-in bar on Awake For Day.
+    assert reply["no_alarm_morning"]["awake_for_day"] is True
 
 
 async def test_item2_settings_from_the_app(hass, freezer, hass_client_no_auth):

@@ -204,6 +204,9 @@ struct BottomBar: Equatable {
         /// v0.4.11 item 32: bedtime ran tonight with no alarms, until the morning; the morning's day.
         var inBedNoAlarms = false
         var inBedDay = ""
+        /// v0.4.11 item 35: the sleeping-in morning after a no-alarm bedtime; its day.
+        var sleepingIn = false
+        var sleepingInDay = ""
     }
 
     /// v0.4.10 item 18: when the evening starts for the bar, the wind-down settings' evening plan
@@ -300,6 +303,13 @@ struct BottomBar: Equatable {
             // v0.4.3 item 3: No alarms tomorrow takes Edit alarms' place (Edit stays in ⋯).
             return BottomBar(top: .status("✓ " + count, .good), buttons: i.sleepLaterWindow ? [.sleepLater, .noAlarmsTomorrow] : [.noAlarmsTomorrow, .editAlarms])
         }
+        // v0.4.11 items 35 and 36: a no-alarm morning (from bedtime + sleep goal − 1 h, or Home
+        // Assistant's offer from 4:00): I'm awake as the purple slide-and-hold, your own time,
+        // Temporary and Preview; Nap is in ⋯.
+        if i.sleepingIn || NoAlarmMorning.barOffers(offered: i.awakeOffered, alarmsSet: i.alarmsSet, napping: false, evening: i.evening) {
+            return BottomBar(top: .status("Sleeping in · no alarms \(i.sleepingInDay)", .accent), buttons: temporary + [.previewPlan],
+                             actionRow: [.setAlarmsForTime], hold: .imAwake)
+        }
         // v0.4.11 item 32: in bed with no alarms: Not ready for bed to undo it, your own time,
         // Temporary and Preview; Nap is in ⋯.
         if i.inBedNoAlarms {
@@ -310,9 +320,6 @@ struct BottomBar: Equatable {
             return BottomBar(top: .status("Nothing set for tonight", .muted), buttons: temporary + [.previewPlan], actionRow: [.setAlarmsForTime])
         }
         let nap: [BarAction] = i.napEnabled ? [.nap] : []
-        if NoAlarmMorning.barOffers(offered: i.awakeOffered, alarmsSet: i.alarmsSet, napping: false, evening: i.evening) {
-            return BottomBar(top: .main(.imAwake, "I'm awake · good morning"), buttons: nap + [.previewPlan])
-        }
         // v0.4.7 item 8: nothing set and nothing coming (on opening, or a preview found nothing):
         // the two ways to set something yourself, in the bar.
         if i.nothingFound || (!i.evening && i.tomorrow == nil) {

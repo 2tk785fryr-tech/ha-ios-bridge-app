@@ -125,7 +125,8 @@ class NoAlarmMorning:
 
     def summary(self) -> dict[str, Any]:
         """For the app: whether I'm awake is offered now."""
-        return {"offered": self.morning_without_alarms(), "asked": self.s.get("asked_at") is not None}
+        return {"offered": self.morning_without_alarms(), "asked": self.s.get("asked_at") is not None,
+                "awake_for_day": self.bridge._state_of(CONF_AWAKE_HELPER) == "on"}
 
     # MARK: Watching
 

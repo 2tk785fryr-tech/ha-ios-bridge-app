@@ -12,9 +12,10 @@ final class NoAlarmMorningTests: XCTestCase {
         i.evening = ScreenClock.isEvening(i.now)
         i.awakeOffered = true
         let bar = BottomBar.make(i)
-        XCTAssertEqual(bar.top, .main(.imAwake, "I'm awake · good morning"))
+        // v0.4.11 item 36: the purple slide-and-hold, not a button that opens a slider.
+        XCTAssertEqual(bar.hold, .imAwake)
+        XCTAssertEqual(bar.top, .status("Sleeping in · no alarms ", .accent))
         XCTAssertTrue(BarAction.imAwake.isProtected, "slide-and-hold in the bar")
-        XCTAssertTrue(BottomBar.menu(i, alarmStyleApp: true, morningKnown: false).contains(.imAwake))
     }
 
     func testNotOfferedWithAlarmsANapOrInTheEvening() {
@@ -22,7 +23,7 @@ final class NoAlarmMorningTests: XCTestCase {
         i.awakeOffered = true
         i.alarmsSet = 2
         i.firstAlarm = at(8)
-        XCTAssertNotEqual(BottomBar.make(i).top, .main(.imAwake, "I'm awake · good morning"))
+        XCTAssertNotEqual(BottomBar.make(i).hold, .imAwake)
         XCTAssertFalse(BottomBar.menu(i, alarmStyleApp: true, morningKnown: false).contains(.imAwake))
         i.alarmsSet = 0
         i.napUpAt = at(8)

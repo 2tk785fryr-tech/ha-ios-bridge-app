@@ -327,6 +327,7 @@ struct IntegrationLink: HomeAssistantLink {
         }
         if let morning = reply["no_alarm_morning"] as? [String: Any] {
             NoAlarmMorning.offered = morning["offered"] as? Bool == true
+            if let awake = morning["awake_for_day"] as? Bool { NoAlarmMorning.awakeForDay = awake }
         }
         if let weeks = reply["weekly_summaries"] as? [[String: Any]] {
             WeeklySummary.cachedWeeks = weeks.map(WeeklySummary.init)

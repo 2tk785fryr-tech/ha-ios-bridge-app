@@ -11,6 +11,19 @@ enum NoAlarmMorning {
         set { UserDefaults.standard.set(newValue, forKey: offeredKey) }
     }
 
+    /// v0.4.11 item 35: when I'm awake last ran (the bar, Siri, the control), so the sleeping-in
+    /// bar ends for that morning.
+    static var awakeAt: Date? {
+        get { UserDefaults.standard.object(forKey: "noAlarmMorning.awakeAt") as? Date }
+        set { UserDefaults.standard.set(newValue, forKey: "noAlarmMorning.awakeAt") }
+    }
+
+    /// v0.4.11 item 35: Awake For Day is on in Home Assistant (from its latest reply).
+    static var awakeForDay: Bool {
+        get { UserDefaults.standard.bool(forKey: "noAlarmMorning.awakeForDay") }
+        set { UserDefaults.standard.set(newValue, forKey: "noAlarmMorning.awakeForDay") }
+    }
+
     /// The bar offers it on such a morning, from 4:00 AM until the evening, with no alarm or nap set.
     static func barOffers(offered: Bool, alarmsSet: Int, napping: Bool, evening: Bool) -> Bool {
         offered && alarmsSet == 0 && !napping && !evening
@@ -45,6 +58,7 @@ extension BedtimeCoordinator {
         if reply["away"] as? Bool == true { return .away }
         guard reply["good_morning"] as? Bool == true else { return .notSent }
         NoAlarmMorning.offered = false
+        NoAlarmMorning.awakeAt = .now
         TestingChecklist.tick(.imAwake)
         return .done
     }

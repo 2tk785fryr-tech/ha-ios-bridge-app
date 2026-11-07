@@ -579,6 +579,8 @@ struct ContentView: View {
         i.healthIssue = BedtimeHealth.current(now: now)
         i.inBedNoAlarms = set.isEmpty && coordinator.inBedNoAlarms(settings: store.settings, now: now)
         i.inBedDay = BarAction.dayName(morning: OptionWindows.morning(after: coordinator.bedtimeRan ?? now, goodMorningFrom: store.settings.noAlarmEarliest))
+        i.sleepingIn = set.isEmpty && coordinator.sleepingIn(settings: store.settings, now: now)
+        i.sleepingInDay = i.sleepingIn ? i.inBedDay : now.formatted(.dateTime.weekday(.wide))
         return i
     }
 
@@ -2081,10 +2083,10 @@ private struct BottomBarView: View {
                     top
                         .frame(maxWidth: .infinity, minHeight: Self.statusHeight, maxHeight: Self.statusHeight)
                     HoldSlider(
-                        label: "Slide and hold · \(hold.title(day: day))",
+                        label: hold == .imAwake ? "I'm awake · good morning" : "Slide and hold · \(hold.title(day: day))",
                         holdLabel: { "Hold \($0)…" },
                         knobSymbol: knobSymbol(hold),
-                        tint: knobTint(hold),
+                        tint: hold == .imAwake ? Theme.accent : knobTint(hold),
                         onHold: { perform(hold) },
                         accessibilityHint: hold.caption(day: day)
                     )
@@ -2284,7 +2286,8 @@ private struct BottomBarView: View {
     }
 
     private func knobSymbol(_ action: BarAction) -> String {
-        switch action.knob {
+        if action == .imAwake { return "sun.max.fill" }
+        return switch action.knob {
         case .stop: "stop.fill"
         case .moon: "moon.fill"
         case .clock: "clock.fill"
