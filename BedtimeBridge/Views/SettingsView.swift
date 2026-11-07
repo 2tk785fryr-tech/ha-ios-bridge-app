@@ -12,6 +12,7 @@ struct SettingsView: View {
         let settings = store.settings
 
         SettingsPage(title: "Settings") {
+            // v0.4.11 item 50: the main page in groups.
             Section {
                 ForEach($store.settings.shiftRules) { $rule in
                     NavigationLink {
@@ -29,40 +30,18 @@ struct SettingsView: View {
                 Button("Add shift type", systemImage: "plus") {
                     store.settings.shiftRules.append(ShiftRule(keyword: ""))
                 }
+                ResetRow(title: "Reset shifts to Days and Swings", detail: "Your shifts go back to the defaults (Days and Swings). Other settings keep theirs.") {
+                    store.settings.resetToDefaults(SettingsPages.main)
+                }
             } header: {
-                Text("Shifts")
+                Text("Your schedule")
             } footer: {
-                Text("A calendar event whose title contains the word counts as a shift. Each shift has its own timing and alarm series.")
+                Text("A calendar event whose title contains a shift's word counts as that shift.")
             }
 
-            // v0.4.11 items 5 and 11: remote and hybrid work, on a page of its own.
             Section {
                 SettingsLink(title: "Remote days", icon: "house.and.flag", value: RemoteDaysText.summary(settings)) {
                     RemoteDaysSettings(settings: $store.settings)
-                }
-            }
-
-            Section {
-                SettingsLink(title: "Mornings", icon: "sunrise", value: "Get ready \(settings.getReadyMinutes) min") {
-                    MorningsSettings(settings: $store.settings)
-                }
-                SettingsLink(title: "Home", icon: "house.fill", value: settings.homeAddress.isEmpty ? "Current location" : "Set") {
-                    HomeSettings(settings: $store.settings)
-                }
-                SettingsLink(title: "Alarms", icon: "alarm", value: AlarmSeriesText.alarmsRow(style: settings.alarmStyle, snooze: settings.snoozeMinutes)) {
-                    SettingsPage(title: "Alarms") { AlarmSettingsSection(settings: $store.settings) }
-                }
-                SettingsLink(title: "Nap", icon: "powersleep", value: settings.napEnabled ? "\(settings.napAlarmCount) alarms, \(settings.napSpacingMinutes) min apart" : "Off") {
-                    NapSettings(settings: $store.settings)
-                }
-                SettingsLink(title: "Wind-down", icon: "moon.zzz", value: settings.windDownEnabled ? "Sleep goal \(DurationText.hours(settings.sleepGoalMinutes))" : "Off") {
-                    WindDownSettings(settings: $store.settings)
-                }
-                SettingsLink(title: "Vacations", icon: "beach.umbrella", value: settings.leaveTitles.joined(separator: ", ")) {
-                    LeaveSettings(settings: $store.settings)
-                }
-                SettingsLink(title: "Weekly summary", icon: "calendar.day.timeline.left", value: settings.weeklySummaryEnabled ? "On" : "Off") {
-                    WeeklySummarySettings(settings: $store.settings)
                 }
                 SettingsLink(title: "Appointments", icon: "calendar.badge.clock",
                              value: settings.appointmentKeyword.isEmpty ? "Wake-up keyword: none" : "Wake-up keyword: \(settings.appointmentKeyword)") {
@@ -71,20 +50,33 @@ struct SettingsView: View {
                         ResetPageSection { store.settings.resetToDefaults(SettingsPages.appointments) }
                     }
                 }
+                SettingsLink(title: "Vacations", icon: "beach.umbrella", value: settings.leaveTitles.joined(separator: ", ")) {
+                    LeaveSettings(settings: $store.settings)
+                }
+                SettingsLink(title: "Calendars", icon: "calendar", value: calendarSummary(settings)) {
+                    CalendarsPage(settings: $store.settings)
+                }
+            }
+
+            Section("Mornings") {
+                SettingsLink(title: "Mornings", icon: "sunrise", value: "Get ready \(settings.getReadyMinutes) min") {
+                    MorningsSettings(settings: $store.settings)
+                }
+                SettingsLink(title: "Alarms", icon: "alarm", value: AlarmSeriesText.alarmsRow(style: settings.alarmStyle, snooze: settings.snoozeMinutes)) {
+                    SettingsPage(title: "Alarms") { AlarmSettingsSection(settings: $store.settings) }
+                }
+                SettingsLink(title: "Nap", icon: "powersleep", value: settings.napEnabled ? "\(settings.napAlarmCount) alarms, \(settings.napSpacingMinutes) min apart" : "Off") {
+                    NapSettings(settings: $store.settings)
+                }
+                SettingsLink(title: "Home", icon: "house.fill", value: settings.homeAddress.isEmpty ? "Current location" : "Set") {
+                    HomeSettings(settings: $store.settings)
+                }
                 SettingsLink(title: "Drive time", icon: "car", value: settings.driveTimeSource.displayName) {
                     SettingsPage(title: "Drive time") {
                         DriveTimeSection(settings: $store.settings)
                         LeaveReminderSection(settings: $store.settings)
                         ResetPageSection(detail: "Only this page's settings go back to their defaults. API keys stay (Settings → Reset clears them).") {
                             store.settings.resetToDefaults(SettingsPages.driveTime)
-                        }
-                    }
-                }
-                SettingsLink(title: "Home Assistant", icon: "house", value: homeAssistantSummary(settings)) {
-                    SettingsPage(title: "Home Assistant") {
-                        HomeAssistantSection(settings: $store.settings)
-                        ResetPageSection(detail: "Only this page's settings go back to their defaults. The pairing and token stay (Settings → Reset clears them).") {
-                            store.settings.resetToDefaults(SettingsPages.homeAssistant)
                         }
                     }
                 }
@@ -96,17 +88,34 @@ struct SettingsView: View {
                         }
                     }
                 }
-                SettingsLink(title: "Calendars", icon: "calendar", value: calendarSummary(settings)) {
-                    CalendarsPage(settings: $store.settings)
+            }
+
+            Section("Evenings") {
+                SettingsLink(title: "Wind-down", icon: "moon.zzz", value: settings.windDownEnabled ? "Sleep goal \(DurationText.hours(settings.sleepGoalMinutes))" : "Off") {
+                    WindDownSettings(settings: $store.settings)
+                }
+            }
+
+            Section("Home Assistant") {
+                SettingsLink(title: "Home Assistant", icon: "house", value: homeAssistantSummary(settings)) {
+                    SettingsPage(title: "Home Assistant") {
+                        HomeAssistantSection(settings: $store.settings)
+                        ResetPageSection(detail: "Only this page's settings go back to their defaults. The pairing and token stay (Settings → Reset clears them).") {
+                            store.settings.resetToDefaults(SettingsPages.homeAssistant)
+                        }
+                    }
                 }
                 SettingsLink(title: "Notifications", icon: "bell.badge", value: "") {
                     NotificationSettings(settings: $store.settings)
                 }
+            }
+
+            Section("The app") {
                 SettingsLink(title: "Shortcuts, controls and Siri", icon: "square.grid.2x2", value: "") {
                     ShortcutsSettings(settings: $store.settings)
                 }
-                SettingsLink(title: "App icon", icon: "app.badge", value: AppIconChoice.current.title) {
-                    SettingsPage(title: "App icon") { AppIconSection() }
+                SettingsLink(title: "Weekly summary", icon: "calendar.day.timeline.left", value: settings.weeklySummaryEnabled ? "On" : "Off") {
+                    WeeklySummarySettings(settings: $store.settings)
                 }
                 // v0.4.7 item 10.
                 SettingsLink(title: "Clock", icon: "clock", value: store.settings.clockStyle.displayName) {
@@ -124,6 +133,9 @@ struct SettingsView: View {
                         }
                     }
                 }
+                SettingsLink(title: "App icon", icon: "app.badge", value: AppIconChoice.current.title) {
+                    SettingsPage(title: "App icon") { AppIconSection() }
+                }
             }
 
             // v0.4.8 items 9 and 12.
@@ -138,16 +150,9 @@ struct SettingsView: View {
                 SettingsLink(title: "Testing checklist", icon: "checklist", value: "\(TestingChecklist.ticked.count) of \(TestingChecklist.Item.allCases.count)") {
                     TestingChecklistPage()
                 }
-            }
-
-            Section {
                 SettingsLink(title: "Reset", icon: "arrow.counterclockwise", value: "") {
                     ResetSettings(settings: $store.settings)
                 }
-            }
-
-            ResetPageSection(detail: "Your shifts go back to the defaults (Days and Swings). The pages above keep theirs.") {
-                store.settings.resetToDefaults(SettingsPages.main)
             }
         }
     }

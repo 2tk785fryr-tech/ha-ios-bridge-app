@@ -88,18 +88,27 @@ extension BridgeSettings {
 struct ResetPageSection: View {
     var detail = "Only this page's settings go back to their defaults."
     let reset: () -> Void
+
+    var body: some View {
+        Section { ResetRow(detail: detail, reset: reset) }
+    }
+}
+
+/// The reset button with its confirm, as a row (v0.4.11 item 50: Reset shifts under the list).
+struct ResetRow: View {
+    var title = "Reset this page to defaults"
+    var detail = "Only this page's settings go back to their defaults."
+    let reset: () -> Void
     @State private var confirming = false
 
     var body: some View {
-        Section {
-            Button("Reset this page to defaults", role: .destructive) { confirming = true }
-                .confirmationDialog("Reset this page to defaults?", isPresented: $confirming, titleVisibility: .visible) {
-                    Button("Reset", role: .destructive, action: reset)
-                    Button("Cancel", role: .cancel) {}
-                } message: {
-                    Text(detail)
-                }
-        }
+        Button(title, role: .destructive) { confirming = true }
+            .confirmationDialog(title + "?", isPresented: $confirming, titleVisibility: .visible) {
+                Button("Reset", role: .destructive, action: reset)
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(detail)
+            }
     }
 }
 
