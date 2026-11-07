@@ -44,4 +44,52 @@ final class V0411BarReviewTests: XCTestCase {
         i.firstAlarm = date(7, 8)
         XCTAssertNotEqual(BottomBar.make(i).hold, .imAwake, "alarms set: as now")
     }
+
+    // MARK: Items 37–40
+
+    func testItem37OneNameForUndoingBedtime() {
+        var i = BottomBar.Inputs(now: date(6, 23))
+        i.alarmsSet = 3
+        i.firstAlarm = date(7, 4, 38)
+        i.notReadyWindow = true
+        i.plansChanged = "Calendar changed · re-plan"
+        XCTAssertEqual(BottomBar.make(i).hold, .notReadyForBed)
+        let menu = BottomBar.menu(i, alarmStyleApp: true, morningKnown: true)
+        XCTAssertTrue(menu.contains(.notReadyForBed))
+        XCTAssertFalse(menu.contains(.notGoingToSleep))
+    }
+
+    func testItem38MiddleOfTheNight() {
+        var i = BottomBar.Inputs(now: date(7, 1))
+        i.alarmsSet = 3
+        i.firstAlarm = date(7, 4, 38)
+        i.sleepLaterWindow = true
+        XCTAssertEqual(BottomBar.make(i).buttons, [.sleepLater, .addTemporary])
+        XCTAssertTrue(BottomBar.menu(i, alarmStyleApp: true, morningKnown: true).contains(.noAlarmsTomorrow), "No alarms is in ⋯")
+    }
+
+    func testItem39AlarmsSetAfterANoAlarmBedtimeKeepGoodNight() {
+        var i = BottomBar.Inputs(now: date(6, 23, 30))
+        i.alarmsSet = 3
+        i.firstAlarm = date(7, 8)
+        i.goodNight = true
+        XCTAssertEqual(BottomBar.make(i).hold, .goodNight)
+    }
+
+    func testItem40NoNapFromBedtimeUntilTheAlarmsEnd() {
+        var i = BottomBar.Inputs(now: date(6, 23))
+        i.napEnabled = true
+        i.alarmsSet = 3
+        i.firstAlarm = date(7, 4, 38)
+        XCTAssertFalse(BottomBar.menu(i, alarmStyleApp: true, morningKnown: true).contains(.nap), "after bedtime")
+        i.goodNight = true
+        XCTAssertTrue(BottomBar.menu(i, alarmStyleApp: true, morningKnown: true).contains(.nap), "before bedtime")
+        var morning = BottomBar.Inputs(now: date(7, 4, 50))
+        morning.napEnabled = true
+        morning.snoozing = true
+        XCTAssertFalse(BottomBar.menu(morning, alarmStyleApp: true, morningKnown: true).contains(.nap))
+        morning.snoozing = false
+        morning.backToBedWindow = true
+        XCTAssertTrue(BottomBar.menu(morning, alarmStyleApp: true, morningKnown: true).contains(.nap), "alarms over")
+    }
 }

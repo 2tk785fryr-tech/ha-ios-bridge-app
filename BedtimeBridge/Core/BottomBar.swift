@@ -300,8 +300,10 @@ struct BottomBar: Equatable {
                 let top: Top = i.healthIssue.map { .status("⚠ " + $0, .snoozing) } ?? .status("✓ " + count, .good)
                 return BottomBar(top: top, buttons: [.sleepLater] + temporary, hold: .notReadyForBed)
             }
-            // v0.4.3 item 3: No alarms tomorrow takes Edit alarms' place (Edit stays in ⋯).
-            return BottomBar(top: .status("✓ " + count, .good), buttons: i.sleepLaterWindow ? [.sleepLater, .noAlarmsTomorrow] : [.noAlarmsTomorrow, .editAlarms])
+            // v0.4.11 item 38: the middle of the night: Wake up later and Temporary; No alarms is in
+            // ⋯, so turning the night's alarms off isn't one half-asleep tap.
+            let night: [BarAction] = temporary.isEmpty ? [.noAlarmsTomorrow] : temporary
+            return BottomBar(top: .status("✓ " + count, .good), buttons: i.sleepLaterWindow ? [.sleepLater] + night : [.editAlarms] + night)
         }
         // v0.4.11 items 35 and 36: a no-alarm morning (from bedtime + sleep goal − 1 h, or Home
         // Assistant's offer from 4:00): I'm awake as the purple slide-and-hold, your own time,

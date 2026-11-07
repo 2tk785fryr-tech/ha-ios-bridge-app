@@ -39,7 +39,7 @@ final class BottomBarTests: XCTestCase {
         i.notReadyWindow = true
         XCTAssertEqual(BottomBar.make(i), BottomBar(top: .status("✓ 3 alarms set", .good), buttons: [.sleepLater, .addTemporary], hold: .notReadyForBed), "v0.4.10 item 9: the window's slider in its own row")
         i.notReadyWindow = false
-        XCTAssertEqual(BottomBar.make(i).buttons, [.sleepLater, .noAlarmsTomorrow], "Nap hidden once the bedtime alarms are set; v0.4.3 item 3 takes Edit alarms' place")
+        XCTAssertEqual(BottomBar.make(i).buttons, [.sleepLater, .addTemporary], "Nap hidden once the bedtime alarms are set; v0.4.11 item 38: Temporary, No alarms in ⋯")
     }
 
     func testPlansChangedTakesTheTopRow() {
