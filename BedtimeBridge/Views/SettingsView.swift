@@ -538,11 +538,16 @@ private struct CalendarsPage: View {
 
     var body: some View {
         SettingsPage(title: "Calendars") {
-            Section("Shift calendars") {
+            Section("Shift calendars (none ticked = all)") {
                 CalendarPicker(calendars: calendars, selection: $settings.shiftCalendarIDs)
             }
-            Section("Appointment calendars") {
+            Section("Appointment calendars (none ticked = all)") {
                 CalendarPicker(calendars: calendars, selection: $settings.appointmentCalendarIDs)
+            }
+            // v0.4.11 item 60: moved from Alarms (Look ahead).
+            Section {
+                DefaultStepper(value: $settings.lookAheadHours, in: 6...72, defaultValue: BridgeSettings().lookAheadHours, note: { "\($0) h" }) { "Search this far ahead: \($0) h" }
+                    .info("How far ahead the calendar is searched for tomorrow's shift or wake-up event.")
             }
             Section {
                 Picker(selection: $settings.newEventsCalendarID) {
@@ -552,7 +557,7 @@ private struct CalendarsPage: View {
                     WithDefault(text: "Calendar for new events", defaultText: settings.newEventsCalendarID.isEmpty ? nil : "the shifts' calendar")
                 }
             } footer: {
-                Text("Where Add leave and Add a wake-up event save.")
+                Text("Where Add vacation and Add a wake-up event save.")
             }
             ResetPageSection(detail: "Shifts and appointments are searched in every calendar again.") { settings.resetToDefaults(SettingsPages.calendars) }
         }
@@ -714,7 +719,6 @@ private struct AlarmSettingsSection: View {
                     MorningChangeSettings(settings: $settings)
                 }
             }
-            DefaultStepper(value: $settings.lookAheadHours, in: 6...72, defaultValue: d.lookAheadHours, note: { "\($0) h" }) { "Look ahead \($0) h" }
         } header: {
             Text("Alarms")
         } footer: {
