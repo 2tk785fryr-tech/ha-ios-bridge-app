@@ -579,6 +579,7 @@ struct ShiftRuleEditor: View {
                         Text("Fixed time").tag(ShiftRule.Timing.fixedTime)
                     }
                     .pickerStyle(.segmented)
+                    .info("Before the shift: the alarms are worked out from when the shift starts. Fixed time: the same time whatever the start, e.g. a 14:30 shift you always get up at 8:00 for.")
                     switch rule.timing {
                     case .beforeShift:
                         Stepper("\(rule.wakeMinutesBefore) min before it starts", value: $rule.wakeMinutesBefore, in: 0...300, step: 5)
@@ -588,7 +589,8 @@ struct ShiftRuleEditor: View {
                 }
 
                 Section {
-                    Toggle("Same as appointment & event alarms", isOn: usesGeneralSeries)
+                    Toggle("Use the default alarm series", isOn: usesGeneralSeries)
+                        .info("The default series is in Settings → Alarms → Default alarm series. It's also used for wake-up appointments and events.")
                     if !usesGeneralSeries.wrappedValue {
                         Picker("Set time is the", selection: Binding(get: { rule.wakeIs ?? general.wakeTimeIs }, set: { rule.wakeIs = $0 })) {
                             ForEach(WakeTimeAlarm.allCases) { Text($0.displayName).tag($0) }
