@@ -50,7 +50,7 @@ struct ShortcutsSettings: View {
             } header: {
                 Text("Placing the controls")
             } footer: {
-                Text("Nap, Wind-down and Tonight.")
+                Text("Three controls: Nap, Wind-down and Tonight. Add them in Control Center or on the Lock Screen.")
             }
             Section {
                 Picker(selection: $settings.windDownControlOpensApp) {

@@ -129,7 +129,7 @@ enum SettingsPages {
                              "remoteBackstops", "remoteEarlyMinutes", "remoteDeadlineMinutes", "remoteLateMinutes"]
     static let mornings = ["getReadyMinutes", "workArrivalBufferMinutes", "arrivalBufferMinutes", "wakeEarlyToGetReady", "noAlarmMorningEnabled", "noAlarmEarliest", "noAlarmUpMinutes", "noAlarmWaitMinutes"]
     static let home = ["homeAddress"]
-    static let alarms = ["chargeWarningEnabled", "chargeWarningThreshold", "alarmStyle", "snoozeMinutes", "alarmSound"]
+    static let alarms = ["alarmStyle", "snoozeMinutes", "alarmSound"]
     /// v0.4.7 item 7.
     static let appointmentAlarms = ["alarmCount", "alarmSpacingMinutes", "wakeTimeIs"]
     static let ownAlarms = ["newAlarmHoursAhead", "ownAlarmRoundingMinutes", "ownAlarmPickerSnaps", "ownAlarmCount", "ownAlarmSpacingMinutes", "ownAlarmWakeIs", "ownBackstopsDayOff", "ownBackstopsLeave", "ownEarlyMinutes", "ownDeadlineMinutes", "ownLateMinutes", "ownBackstopsFull"]
@@ -143,7 +143,7 @@ enum SettingsPages {
     static let weather = ["weatherSource", "weatherEntity", "weatherExtraMinutes", "badWeatherConditions", "weatherConditionMinutes", "addTimeWhenFreezing"]
     static let calendars = ["shiftCalendarIDs", "appointmentCalendarIDs", "newEventsCalendarID", "lookAheadHours"]
     static let leave = ["leaveTitles"]
-    static let notifications = ["notificationLevels"]
+    static let notifications = ["notificationLevels", "chargeWarningEnabled", "chargeWarningThreshold"]
     static let shortcuts = ["quickActions", "windDownControlOpensApp", "napControlNapsNow", "widgetTapAlwaysTonight"]
     static let weekly = ["weeklySummaryEnabled", "weeklySummaryWeekday", "weeklySummaryTime"]
     static let clock = ["clockStyle"]

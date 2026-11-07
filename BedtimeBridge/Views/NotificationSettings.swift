@@ -20,6 +20,17 @@ struct NotificationSettings: View {
             } footer: {
                 Text("Critical isn't offered here: Apple only allows it for this app after a separate request.")
             }
+            // v0.4.11 item 63: moved from Alarms.
+            Section {
+                DefaultToggle(title: "Plug in your phone", isOn: $settings.chargeWarningEnabled, defaultValue: BridgeSettings().chargeWarningEnabled)
+                if settings.chargeWarningEnabled {
+                    DefaultStepper(value: $settings.chargeWarningThreshold, in: 5...80, step: 5, defaultValue: BridgeSettings().chargeWarningThreshold, note: { "\($0)%" }) { "Under \($0)% and not charging" }
+                }
+            } header: {
+                Text("Plug in your phone")
+            } footer: {
+                Text("At bedtime (and at go to bed with wind-down on), a reminder to plug in, and once more after 10 minutes if it's still not charging.")
+            }
             ResetPageSection { settings.resetToDefaults(SettingsPages.notifications) }
         }
     }
@@ -33,5 +44,6 @@ struct NotificationSettings: View {
         } label: {
             WithDefault(text: kind.title, defaultText: kind.level(settings) == kind.defaultLevel ? nil : kind.defaultLevel.title.lowercased())
         }
+        .info(kind.detail)
     }
 }

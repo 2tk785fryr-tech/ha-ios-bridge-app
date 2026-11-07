@@ -58,18 +58,39 @@ enum NotificationKind: String, CaseIterable, Identifiable {
         switch self {
         case .leaveReminder: "Leave-by reminders"
         case .planChanged: "Tomorrow changed"
-        case .napControl: "Nap won't fit (Nap control)"
+        // v0.4.11 item 63.
+        case .napControl: "Nap won't fit"
         case .missingLocation: "Appointment has no location"
         case .windDownWarning: "Wind-down soon"
-        case .tomorrow: "Tomorrow's first alarm (event or moved)"
+        case .tomorrow: "Alarm time moved"
         case .goToBed: "Time for bed"
         case .stillUp: "Still up"
         case .bedtimeMoved: "New bedtime"
         case .plugIn: "Plug in your phone"
-        case .appExpiry: "Reinstall the app"
+        case .appExpiry: "App expires soon"
         case .weekly: "Your week"
         case .leaveCheck: "Leave by (checked by Home Assistant)"
         case .upForDay: "Up for the day?"
+        }
+    }
+
+    /// v0.4.11 item 63: when it's sent, for the row's info pop-up.
+    var detail: String {
+        switch self {
+        case .leaveReminder: "Before you leave for a shift or appointment with a location, after re-checking traffic."
+        case .planChanged: "Your calendar changed after the alarms were set and tomorrow no longer matches, with a Re-plan button."
+        case .napControl: "The Nap control can't fit a nap before what's later today, and says why."
+        case .missingLocation: "A marked appointment has no location, so the drive can't be worked out."
+        case .windDownWarning: "A few minutes before wind-down starts, with Later and Cancel."
+        case .tomorrow: "At wind-down, when tomorrow is an appointment or the first alarm moved from its usual time."
+        case .goToBed: "At go to bed, if you're not in bed yet."
+        case .stillUp: "After go to bed, while you're still up, until you're in bed or the reminders stop."
+        case .bedtimeMoved: "During wind-down, when go to bed moves (home late, or a new plan)."
+        case .plugIn: "At bedtime, if the phone is low and not charging."
+        case .appExpiry: "A few days before the app's install expires and it has to be reinstalled from Xcode."
+        case .weekly: "At the end of each week, with the weekly summary."
+        case .leaveCheck: "Home Assistant re-checked the drive and tells you when to leave."
+        case .upForDay: "On a morning with no alarms, once you've been up a while."
         }
     }
 

@@ -735,14 +735,6 @@ private struct AlarmSettingsSection: View {
         } footer: {
             Text("How your alarms ring and how many there are.")
         }
-        Section {
-            DefaultToggle(title: "Plug in your phone", isOn: $settings.chargeWarningEnabled, defaultValue: d.chargeWarningEnabled)
-            if settings.chargeWarningEnabled {
-                DefaultStepper(value: $settings.chargeWarningThreshold, in: 5...80, step: 5, defaultValue: d.chargeWarningThreshold, note: { "\($0)%" }) { "Under \($0)% and not charging" }
-            }
-        } footer: {
-            Text("At bedtime (and at go to bed with wind-down on), a reminder to plug in, and once more after 10 minutes if it's still not charging.")
-        }
         if settings.alarmStyle == .app {
             Section {
                 TestAlarmButton(settings: settings)
@@ -1061,6 +1053,8 @@ private struct HomeAssistantSection: View {
                     KeychainStore.setSecret(value, account: HomeAssistantLinks.localWebhookAccount)
                 }
             if !usesIntegration {
+                // v0.4.11 item 63: almost nobody needs these.
+                DisclosureGroup("Without the integration (advanced)") {
                 TextField("URL, e.g. http://homeassistant.local:8123", text: $settings.homeAssistantURL)
                     .keyboardType(.URL)
                     .textInputAutocapitalization(.never)
@@ -1077,10 +1071,13 @@ private struct HomeAssistantSection: View {
                 EntityField(title: "Shift sensor", text: $settings.shiftSensorEntity, defaultValue: BridgeSettings().shiftSensorEntity)
                 EntityField(title: "Next-alarm sensor", text: $settings.nextAlarmSensor, defaultValue: BridgeSettings().nextAlarmSensor)
                 EntityField(title: "Bedtime routine", text: $settings.bedtimeHelper, defaultValue: BridgeSettings().bedtimeHelper)
-                EntityField(title: "You", text: $settings.presenceEntity, defaultValue: BridgeSettings().presenceEntity)
+                EntityField(title: "Your person entity", text: $settings.presenceEntity, defaultValue: BridgeSettings().presenceEntity)
+                    .info("Your person or device tracker, so routines only run when you're home.")
                 EntityField(title: "Bed sensor", text: $settings.bedSensor, defaultValue: BridgeSettings().bedSensor)
-                EntityField(title: "Left the bedroom", text: $settings.exitLatch, defaultValue: BridgeSettings().exitLatch)
+                EntityField(title: "Left-the-bedroom sensor", text: $settings.exitLatch, defaultValue: BridgeSettings().exitLatch)
+                    .info("Turns on once you've left the bedroom in the morning, so later alarms can be cancelled.")
                 DefaultToggle(title: "Only run routines when home", isOn: $settings.homeOnly, defaultValue: BridgeSettings().homeOnly)
+                }
             }
             Button("Test connection") { Task { await test() } }
             if let testResult {
@@ -1090,7 +1087,7 @@ private struct HomeAssistantSection: View {
             Text("Home Assistant")
         } footer: {
             if usesIntegration {
-                Text("Using the Bedtime Bridge integration. The anywhere address is tried first, then the home one. Tap the pairing link on the integration's setup screen (in the Home Assistant app) to fill both in. Helpers, events, \"only when home\", the shift override and weather entity are chosen in Home Assistant (Settings › Devices & services › Bedtime Bridge › Configure), and times you change there override these settings.")
+                Text("Tap the pairing link in Home Assistant to fill both addresses. Helpers and sensors are chosen in Home Assistant (Settings › Devices & services › Bedtime Bridge › Configure).")
             } else {
                 Text("Recommended: install the Bedtime Bridge integration in Home Assistant and paste the address it shows above. Without it, the app uses a long-lived token (profile › Security) and writes a sensor that reads unavailable after an HA restart until the next update.")
             }
