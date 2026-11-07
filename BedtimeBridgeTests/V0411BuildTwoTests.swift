@@ -244,7 +244,7 @@ final class V0411BuildTwoTests: XCTestCase {
                                       actionRow: [.setAlarmsForTime], hold: .notReadyForBed))
         XCTAssertFalse(bar.buttons.contains(.nap) || bar.actionRow.contains(.nap))
         XCTAssertTrue(BottomBar.menu(i, alarmStyleApp: true, morningKnown: false).contains(.nap))
-        XCTAssertTrue(BottomBar.menu(i, alarmStyleApp: true, morningKnown: false).contains(.notGoingToSleep))
+        XCTAssertTrue(BottomBar.menu(i, alarmStyleApp: true, morningKnown: false).contains(.notReadyForBed))
         // Once the window closes: Nothing set, still no Nap in the bar.
         i.notReadyWindow = false
         XCTAssertEqual(BottomBar.make(i), BottomBar(top: .status("Nothing set for tonight", .muted), buttons: [.addTemporary, .previewPlan],

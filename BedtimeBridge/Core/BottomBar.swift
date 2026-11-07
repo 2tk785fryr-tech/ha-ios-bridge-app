@@ -261,7 +261,7 @@ struct BottomBar: Equatable {
             // inside Change this morning).
             if i.alarmsSet > 0, !i.goodNight, !i.backToBedWindow {
                 return BottomBar(top: .main(.replan, changed), buttons: [.changeMorning] + temporary,
-                                 hold: i.notReadyWindow ? .notGoingToSleep : nil)
+                                 hold: i.notReadyWindow ? .notReadyForBed : nil)
             }
             return BottomBar(top: .main(.replan, changed), buttons: [.previewPlan, .editAlarms])
         }
@@ -375,7 +375,8 @@ struct BottomBar: Equatable {
         // v0.4.11 item 21: with no card, Pick a time is in ⋯ whenever nothing is set.
         if i.alarmsSet == 0 && !morning && i.napUpAt == nil { items.append(.setAlarmsForTime) }
         // v0.4.10 item 10: Skip is merged into No alarms.
-        if i.notReadyWindow { items.append(.notGoingToSleep) }
+        // v0.4.11 item 37: one name for undoing bedtime.
+        if i.notReadyWindow { items.append(.notReadyForBed) }
         if let w = i.windDown {
             if w.canStartNow(hours: i.startWindDownHours, now: i.now) { items.append(.startWindDown) }
             if w.status == .scheduled || w.status == .windingDown { items.append(.cancelWindDown) }

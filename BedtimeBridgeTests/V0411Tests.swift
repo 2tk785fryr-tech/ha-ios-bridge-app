@@ -572,7 +572,7 @@ final class V0411Tests: XCTestCase {
         inputs.plansChanged = "Plan changed · re-plan"
         let bar = BottomBar.make(inputs)
         XCTAssertEqual(bar.top, .main(.replan, "Plan changed · re-plan"))
-        XCTAssertEqual(bar.hold, .notGoingToSleep)
+        XCTAssertEqual(bar.hold, .notReadyForBed)
         XCTAssertEqual(bar.buttons, [.changeMorning, .addTemporary])
         XCTAssertFalse(bar.buttons.contains(.previewPlan))
         XCTAssertFalse(bar.buttons.contains(.editAlarms))
