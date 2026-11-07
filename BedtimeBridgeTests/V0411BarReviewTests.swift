@@ -131,4 +131,30 @@ final class V0411BarReviewTests: XCTestCase {
         changed.plansChanged = "Calendar changed · re-plan"
         XCTAssertEqual(BottomBar.make(changed).buttons, [.previewPlan, .setAlarmsForTime], "no alarms: nothing to edit")
     }
+
+    // MARK: Item 44
+
+    func testItem44NewStatusLines() {
+        var i = BottomBar.Inputs(now: date(7, 10))
+        i.day = "Saturday"
+        i.vacationBack = "Monday"
+        XCTAssertEqual(BottomBar.make(i).top, .status("On vacation · back Monday", .accent))
+        i.vacationBack = nil
+        i.away = true
+        XCTAssertEqual(BottomBar.make(i).top, .status("Away from home", .muted))
+        i.calendarOff = true
+        XCTAssertEqual(BottomBar.make(i).top, .status("⚠ Calendar access off · Settings → Calendars", .snoozing))
+
+        var bed = BottomBar.Inputs(now: date(6, 23))
+        bed.inBedNoAlarms = true
+        bed.inBedDay = "Saturday"
+        bed.healthIssue = "Home Assistant not reachable"
+        XCTAssertEqual(BottomBar.make(bed).top, .status("⚠ Home Assistant not reachable", .snoozing), "also on a no-alarm night")
+
+        var set = BottomBar.Inputs(now: date(6, 23))
+        set.alarmsSet = 3
+        set.firstAlarm = date(7, 4, 38)
+        set.vacationBack = "Monday"
+        XCTAssertNotEqual(BottomBar.make(set).top, .status("On vacation · back Monday", .accent), "alarms keep their own line")
+    }
 }

@@ -212,6 +212,11 @@ struct BottomBar: Equatable {
         var sleepingInDay = ""
         /// v0.4.11 item 43: the morning the bar names ("Nothing set for Saturday").
         var day = ""
+        /// v0.4.11 item 44: a vacation covers tomorrow (the day you're back); Home Assistant says
+        /// you're away; calendar access is off.
+        var vacationBack: String?
+        var away = false
+        var calendarOff = false
     }
 
     /// v0.4.10 item 18: when the evening starts for the bar, the wind-down settings' evening plan
@@ -249,6 +254,23 @@ struct BottomBar: Equatable {
     }
 
     static func make(_ i: Inputs) -> BottomBar {
+        var bar = state(i)
+        // v0.4.11 item 44: states the bar didn't have, on the status line of the state underneath
+        // (only with nothing set: alarms, a nap and snoozing keep their own line).
+        guard i.alarmsSet == 0, i.napUpAt == nil, !i.snoozing, case .status(_, let tone) = bar.top else { return bar }
+        if i.calendarOff {
+            bar.top = .status("⚠ Calendar access off · Settings → Calendars", .snoozing)
+        } else if let issue = i.healthIssue, i.inBedNoAlarms || i.sleepingIn {
+            bar.top = .status("⚠ " + issue, .snoozing)
+        } else if tone == .muted, let back = i.vacationBack {
+            bar.top = .status("On vacation · back \(back)", .accent)
+        } else if tone == .muted, i.away {
+            bar.top = .status("Away from home", .muted)
+        }
+        return bar
+    }
+
+    private static func state(_ i: Inputs) -> BottomBar {
         let format = WakePlanner.format
         if let up = i.napUpAt {
             return BottomBar(top: .status("Napping · up at \(format(up))", .accent), buttons: [.endNap, .changeNap])

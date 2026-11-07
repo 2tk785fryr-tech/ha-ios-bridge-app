@@ -582,6 +582,10 @@ struct ContentView: View {
         // v0.4.11 item 43: the bar's evening starts at the evening plan check, not at 17:00.
         i.evening = i.eveningCheckPassed || Calendar.current.component(.hour, from: now) < 4
         i.day = barDay
+        // v0.4.11 item 44.
+        i.calendarOff = EKEventStore.authorizationStatus(for: .event) != .fullAccess
+        i.away = (plan ?? coordinator.lastAppliedPlan)?.atHome == false
+        i.vacationBack = vacationBack(now: now)
         i.awakeOffered = NoAlarmMorning.offered
         i.nothingFound = plan.map { !$0.hasAlarm } ?? (nothingAhead && set.isEmpty)
         i.previewedNothing = plan.map { !$0.hasAlarm } ?? false
@@ -620,6 +624,14 @@ struct ContentView: View {
         return InBedCard.content(bedtimeRan: ran, day: BarAction.dayName(morning: morning), plan: plan ?? coordinator.lastAppliedPlan,
                                  skipped: skippedMorning.map { Calendar.current.isDate($0, inSameDayAs: morning) } ?? false,
                                  sleepIn: morningContext?.sleepIn, ladderStatus: morningContext?.ladderStatus, ladderReason: morningContext?.ladderReason)
+    }
+
+    /// v0.4.11 item 44: a vacation covers tomorrow: the day after its last day.
+    private func vacationBack(now: Date) -> String? {
+        let tomorrow = Calendar.current.nextDay(after: now)
+        guard let vacation = coordinator.calendar.vacations(from: now, to: tomorrow.addingTimeInterval(86_400), settings: store.settings)
+            .first(where: { $0.first <= tomorrow && tomorrow <= $0.last }) else { return nil }
+        return Calendar.current.nextDay(after: vacation.last).formatted(.dateTime.weekday(.wide))
     }
 
     private var barMorning: Date? { scheduled.first ?? plan?.firstAlarm }
