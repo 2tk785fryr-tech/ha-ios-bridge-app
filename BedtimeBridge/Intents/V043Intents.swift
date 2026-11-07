@@ -10,14 +10,23 @@ struct NapLengthEntity: AppEntity {
     static var defaultQuery = NapLengthQuery()
     let minutes: Int
     var id: Int { minutes }
-    var displayRepresentation: DisplayRepresentation { DisplayRepresentation(title: "\(NapPlanner.lengthName(minutes))") }
+    /// v0.4.11 item 29: named as it's said ("20 minutes", "an hour"), with other ways to say it.
+    var displayRepresentation: DisplayRepresentation {
+        let names = SiriReplies.napNames(minutes)
+        return DisplayRepresentation(title: "\(names[0])", synonyms: names.dropFirst().map { "\($0)" })
+    }
 }
 
-struct NapLengthQuery: EntityQuery {
+struct NapLengthQuery: EntityStringQuery {
     func entities(for identifiers: [Int]) async throws -> [NapLengthEntity] { identifiers.map(NapLengthEntity.init) }
 
     @MainActor
     func suggestedEntities() async throws -> [NapLengthEntity] { SettingsStore.shared.settings.napLengths.map(NapLengthEntity.init) }
+
+    /// v0.4.11 item 29: a length that isn't in Settings → Nap (25 minutes) is taken as said.
+    func entities(matching string: String) async throws -> [NapLengthEntity] {
+        SiriReplies.napMinutes(spoken: string).map { [NapLengthEntity(minutes: $0)] } ?? []
+    }
 }
 
 struct NapIntent: AppIntent {
@@ -69,8 +78,12 @@ enum SleepLaterAmount: String, AppEnum {
     case thirty, hour, twoHours, eightHours
 
     static var typeDisplayRepresentation: TypeDisplayRepresentation = "Wake Up Later"
+    // v0.4.11 item 30c: other ways to say each amount.
     static var caseDisplayRepresentations: [SleepLaterAmount: DisplayRepresentation] = [
-        .thirty: "30 minutes", .hour: "an hour", .twoHours: "2 hours", .eightHours: "8 hours from now",
+        .thirty: DisplayRepresentation(title: "30 minutes", synonyms: ["half an hour", "thirty minutes", "30 minute", "30 min"]),
+        .hour: DisplayRepresentation(title: "an hour", synonyms: ["1 hour", "one hour", "60 minutes"]),
+        .twoHours: DisplayRepresentation(title: "2 hours", synonyms: ["two hours", "120 minutes"]),
+        .eightHours: DisplayRepresentation(title: "8 hours from now", synonyms: ["8 hours", "eight hours", "eight hours from now"]),
     ]
 
     var choice: MorningChangeChoice {
@@ -97,7 +110,7 @@ struct SleepLaterIntent: AppIntent {
         let coordinator = BedtimeCoordinator.shared
         let settings = SettingsStore.shared.settings
         guard coordinator.sleepLaterAvailable(settings: settings), let wake = coordinator.currentWake(settings: settings) else {
-            return .result(dialog: "There are no alarms to move tonight.")
+            return .result(dialog: "\(SiriReplies.nothingToMove)")
         }
         var change = MorningChange.make(amount.choice, currentWake: wake, pattern: coordinator.seriesPattern(settings: settings))
         change.scope = .alarms
@@ -216,7 +229,12 @@ struct AddWakeUpEventIntent: AppIntent {
         let settings = SettingsStore.shared.settings
         let coordinator = BedtimeCoordinator.shared
         try await coordinator.calendar.ensureAccess()
-        let event = NewWakeUpEvent(title: title, day: start, start: start, lengthMinutes: minutes, location: location ?? "")
+        // v0.4.11 item 30d: Siri skips an optional location, so ask; "none" or "skip" leaves it empty.
+        var place = location ?? ""
+        if location == nil, let answer = try? await $location.requestValue("Where is it? Say none if there's no drive.") {
+            place = SiriReplies.isNoLocation(answer) ? "" : answer
+        }
+        let event = NewWakeUpEvent(title: title, day: start, start: start, lengthMinutes: minutes, location: place)
         _ = try coordinator.calendar.addWakeUpEvent(event, mapItem: nil, settings: settings)
         let plan = try? await coordinator.buildPlan(settings: settings)
         let wake = plan?.firstAlarm.map { " The plan's first alarm would be \(WakePlanner.format($0)); open the app to set it." } ?? ""

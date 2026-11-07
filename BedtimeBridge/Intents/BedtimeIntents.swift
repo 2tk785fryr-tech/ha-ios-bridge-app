@@ -25,16 +25,25 @@ struct PlanWakeAlarmsIntent: AppIntent {
     /// (like a "wake up" appointment with no location) arrive as notifications instead. The one
     /// exception (v0.4.8 item 2): your own alarms are set and you ran the shortcut yourself.
     @MainActor
-    func perform() async throws -> some IntentResult & ReturnsValue<WakePlanEntity> {
+    func perform() async throws -> some IntentResult & ReturnsValue<WakePlanEntity> & ProvidesDialog {
         let settings = SettingsStore.shared.settings
         let coordinator = BedtimeCoordinator.shared
         if setAlarms, coordinator.ownAlarmsSet {
-            return .result(value: WakePlanEntity(plan: try await keepOwnAlarms(coordinator, settings: settings)))
+            let kept = try await keepOwnAlarms(coordinator, settings: settings)
+            return .result(value: WakePlanEntity(plan: kept), dialog: await reply(kept, coordinator: coordinator, settings: settings))
         }
         let plan = setAlarms
             ? try await coordinator.planAndSchedule(settings: settings)
             : try await coordinator.buildPlan(settings: settings)
-        return .result(value: WakePlanEntity(plan: plan))
+        return .result(value: WakePlanEntity(plan: plan), dialog: await reply(plan, coordinator: coordinator, settings: settings))
+    }
+
+    /// v0.4.11 item 30b: what was set, by voice. Nothing when Home Assistant's bedtime push ran it.
+    @MainActor
+    private func reply(_ plan: WakePlan, coordinator: BedtimeCoordinator, settings: BridgeSettings) async -> IntentDialog {
+        if setAlarms, await coordinator.bedtimeByPush(settings: settings) { return "" }
+        let day = BarAction.dayName(morning: plan.firstAlarm)
+        return IntentDialog(stringLiteral: SiriReplies.planReply(alarms: plan.alarmTimes, cause: plan.cause, set: setAlarms, day: day))
     }
 
     /// Your own alarms stay (v0.4.8 item 2). Run by the push: kept without asking. By hand:
@@ -199,10 +208,17 @@ struct CancelWakeAlarmsIntent: AppIntent {
     static var title: LocalizedStringResource = "Cancel Wake-Up Alarms"
     static var description = IntentDescription("Removes every alarm Bedtime Bridge has set and the leave-by reminder.")
 
+    /// v0.4.11 item 30a: asks first, like every other way to turn alarms off.
     @MainActor
-    func perform() async throws -> some IntentResult {
-        try await BedtimeCoordinator.shared.cancelAlarms(settings: SettingsStore.shared.settings)
-        return .result()
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        let coordinator = BedtimeCoordinator.shared
+        let now = Date.now
+        guard let question = SiriReplies.cancelQuestion(coordinator.setAlarmTimes().filter { $0 > now }) else {
+            return .result(dialog: "\(SiriReplies.nothingToCancel)")
+        }
+        try await requestConfirmation(dialog: IntentDialog(stringLiteral: question))
+        try await coordinator.cancelAlarms(settings: SettingsStore.shared.settings)
+        return .result(dialog: "Alarms off.")
     }
 }
 
@@ -406,7 +422,10 @@ struct BedtimeBridgeShortcuts: AppShortcutsProvider {
         // v0.4.3 item 11
         AppShortcut(
             intent: NapIntent(),
-            phrases: ["Nap \(\.$length) with \(.applicationName)", "Start a \(.applicationName) nap", "Nap with \(.applicationName)"],
+            // v0.4.11 item 29: "Take a 20 minute nap", "Nap for an hour".
+            phrases: ["Nap \(\.$length) with \(.applicationName)", "Start a \(.applicationName) nap", "Nap with \(.applicationName)",
+                      "Take a \(\.$length) nap with \(.applicationName)", "Take a nap with \(.applicationName)",
+                      "Nap for \(\.$length) with \(.applicationName)"],
             shortTitle: "Nap",
             systemImageName: "powersleep"
         )
@@ -427,7 +446,9 @@ struct BedtimeBridgeShortcuts: AppShortcutsProvider {
         // v0.4.8 item 13: Start and Cancel wind-down share one, so Good night has a slot.
         AppShortcut(
             intent: WindDownIntent(),
-            phrases: ["\(\.$choice) wind-down in \(.applicationName)", "\(\.$choice) winding down with \(.applicationName)"],
+            phrases: ["\(\.$choice) wind-down in \(.applicationName)", "\(\.$choice) winding down with \(.applicationName)",
+                      // v0.4.11 item 30f: as Siri writes it, without the hyphen.
+                      "\(\.$choice) wind down in \(.applicationName)"],
             shortTitle: "Wind-Down",
             systemImageName: "moon.zzz"
         )

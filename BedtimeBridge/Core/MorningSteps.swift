@@ -5,7 +5,7 @@ import Foundation
 /// Leave by and its worst case, Arrive, and the event, in time order. Pure, so it can be tested;
 /// the view only draws it.
 enum MorningSteps {
-    enum Kind: Equatable { case windDown, goToBed, wake, alarm, getReady, backstop, leaveBy, leaveByWorst, arrive, beReady, event }
+    enum Kind: Equatable { case windDown, goToBed, sleep, wake, alarm, getReady, backstop, leaveBy, leaveByWorst, arrive, beReady, event }
 
     struct Step: Equatable {
         var kind: Kind
@@ -133,6 +133,10 @@ enum MorningSteps {
         if let windDown = input.windDown, let bed = input.goToBed {
             steps.append(Step(kind: .windDown, title: "Wind-down", value: WakePlanner.format(windDown), time: windDown))
             steps.append(Step(kind: .goToBed, title: "Go to bed", value: WakePlanner.format(bed), time: bed))
+            // v0.4.11 item 25: the night's length, Go to bed to Wake up.
+            if input.wake > bed {
+                steps.append(Step(kind: .sleep, title: "Sleep", value: sleepLength(from: bed, to: input.wake), time: bed))
+            }
         }
         if input.alarms.isEmpty {
             steps.append(Step(kind: .wake, title: "Wake up", value: WakePlanner.format(input.wake), time: input.wake))
@@ -163,7 +167,7 @@ enum MorningSteps {
             steps.append(Step(kind: .getReady, title: "Get ready", value: ready >= 0 ? "\(ready) min" : "\(-ready) min short",
                               time: input.wake, short: ready < input.getReadyGoal))
             steps.append(Step(kind: .leaveBy, title: "Leave by", value: WakePlanner.format(leaveBy),
-                              detail: driveDetail(drive), time: leaveBy))
+                              detail: driveDetail(drive, withoutGoogleWorst: input.worstCase != nil), time: leaveBy))
             if let worst = input.worstCase {
                 steps.append(Step(kind: .leaveByWorst, title: "Leave by · worst case", value: WakePlanner.format(worst.time),
                                   detail: worst.note + "\n" + worst.drive, time: worst.time))
@@ -195,7 +199,7 @@ enum MorningSteps {
             let ends = step.kind == .getReady ? readyBy : step.time
             if ends <= now && !snoozing { steps[index].dimmed = true }
         }
-        if let next = steps.firstIndex(where: { $0.kind != .getReady && $0.kind != .windDown && $0.kind != .goToBed && !$0.dimmed && $0.time > now }) {
+        if let next = steps.firstIndex(where: { $0.kind != .getReady && $0.kind != .windDown && $0.kind != .goToBed && $0.kind != .sleep && !$0.dimmed && $0.time > now }) {
             steps[next].next = true
         }
         return steps
@@ -206,6 +210,7 @@ enum MorningSteps {
         switch kind {
         case .windDown: 0
         case .goToBed: 1
+        case .sleep: 1
         case .alarm: 2
         case .wake: 3
         case .getReady: 4
@@ -218,8 +223,15 @@ enum MorningSteps {
         }
     }
 
-    /// "32 min drive with expected traffic + 30 min for snowy at 5:00 AM\nApple 28 · TomTom 30 · Google 29 · Google worst case 41 min"
-    static func driveDetail(_ drive: Drive) -> String {
+    /// "6.7 h": Go to bed to Wake up, to the tenth of an hour (v0.4.11 item 25).
+    static func sleepLength(from bed: Date, to wake: Date) -> String {
+        let hours = (wake.timeIntervalSince(bed) / 360).rounded() / 10
+        return String(format: "%.1f h", hours)
+    }
+
+    /// "32 min drive with expected traffic + 30 min for snowy at 5:00 AM\nApple 28 · TomTom 30 · Google 29 · Google worst case 41 min".
+    /// v0.4.11 item 24: without Google worst case when the Leave by · worst case row shows it.
+    static func driveDetail(_ drive: Drive, withoutGoogleWorst: Bool = false) -> String {
         let minutes = Int((drive.travelSeconds / 60).rounded())
         let weatherMinutes = drive.weather?.minutes ?? 0
         let weatherNote = drive.weather.map { " + \($0.minutes) min for \($0.reason)" } ?? ""
@@ -227,8 +239,9 @@ enum MorningSteps {
             return "\(minutes - weatherMinutes) min assumed: no drive time (\(fallbackReason))" + weatherNote
         }
         let line = "\(minutes - weatherMinutes) min drive with expected traffic" + weatherNote
-        guard drive.estimates.count > 1 else { return line }
-        let parts = drive.estimates.map { "\($0.service.displayName) \(Int(($0.seconds / 60).rounded()))" }
+        let estimates = withoutGoogleWorst ? drive.estimates.filter { $0.service != .googleWorst } : drive.estimates
+        guard estimates.count > 1 else { return line }
+        let parts = estimates.map { "\($0.service.displayName) \(Int(($0.seconds / 60).rounded()))" }
         return line + "\n" + parts.joined(separator: " · ") + " min"
     }
 

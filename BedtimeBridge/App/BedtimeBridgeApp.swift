@@ -16,6 +16,8 @@ struct BedtimeBridgeApp: App {
         ControlActions.imAwake = {
             NoAlarmMorning.dialog(await BedtimeCoordinator.shared.imAwake(settings: SettingsStore.shared.settings))
         }
+        // v0.4.11 item 29: Siri learns the nap lengths, so "Take a 20 minute nap" matches.
+        BedtimeBridgeShortcuts.updateAppShortcutParameters()
         // Live Activity push tokens go to Home Assistant from launch.
         Task { @MainActor in BedtimeActivities.watchPushTokens() }
         ControlActions.open = { url in

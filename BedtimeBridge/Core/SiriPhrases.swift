@@ -19,12 +19,13 @@ enum SiriPhrases {
     static let groups: [Group] = [
         Group(title: "Alarms", entries: [
             Entry(phrases: ["Plan my wake up with Bedtime Bridge", "Set my Bedtime Bridge alarms"],
-                  does: "Plans from your calendar and sets the alarms; keeps your own alarms if they're set."),
-            Entry(phrases: ["Cancel my Bedtime Bridge alarms"], does: "Turns the alarms off."),
+                  does: "Plans from your calendar, sets the alarms and says what it set; keeps your own alarms if they're set."),
+            Entry(phrases: ["Cancel my Bedtime Bridge alarms"], does: "Turns the alarms off, after you confirm."),
             Entry(phrases: ["No alarms tomorrow in Bedtime Bridge", "No Bedtime Bridge alarms tomorrow"],
-                  does: "Turns the next morning's alarms off and asks about Sleep In."),
-            Entry(phrases: ["Wake up later 30 minutes with Bedtime Bridge", "Wake up later with Bedtime Bridge"],
-                  does: "Moves tonight's alarms later. “Sleep later” works too."),
+                  does: "Turns the next morning's alarms off, after you confirm. Sleep In goes on."),
+            Entry(phrases: ["Wake up later 30 minutes with Bedtime Bridge", "Wake up later an hour with Bedtime Bridge",
+                            "Wake up later with Bedtime Bridge"],
+                  does: "Moves tonight's alarms later: 30 minutes, an hour, 2 hours or 8 hours from now. “Sleep later” works too."),
         ]),
         Group(title: "Bedtime", entries: [
             Entry(phrases: ["Good night in Bedtime Bridge", "Bedtime Bridge good night"],
@@ -35,18 +36,19 @@ enum SiriPhrases {
                   does: "On a morning with no alarms: Sleep In off and Good Morning runs."),
         ]),
         Group(title: "Nap", entries: [
-            Entry(phrases: ["Nap 20 minutes with Bedtime Bridge", "Start a Bedtime Bridge nap", "Nap with Bedtime Bridge"],
-                  does: "Sets a nap's alarms."),
+            Entry(phrases: ["Take a 20 minute nap with Bedtime Bridge", "Nap for an hour with Bedtime Bridge",
+                            "Take a nap with Bedtime Bridge"],
+                  does: "Sets a nap's alarms. Any length works; without one, Siri offers yours from Settings → Nap."),
         ]),
         Group(title: "Wind-down", entries: [
             Entry(phrases: ["Start wind-down in Bedtime Bridge", "Cancel wind-down in Bedtime Bridge",
-                            "Start winding down with Bedtime Bridge"],
+                            "Stop wind-down in Bedtime Bridge", "Start winding down with Bedtime Bridge"],
                   does: "Starts tonight's wind-down now, or cancels it (after you confirm)."),
         ]),
         Group(title: "Calendar", entries: [
             Entry(phrases: ["Add a vacation in Bedtime Bridge", "Add leave in Bedtime Bridge"],
                   does: "Adds a vacation to your calendar."),
-            Entry(phrases: ["Add a wake-up event in Bedtime Bridge"], does: "Adds an event that sets a wake-up."),
+            Entry(phrases: ["Add a wake-up event in Bedtime Bridge"], does: "Adds an event that sets a wake-up; Siri asks where it is."),
         ]),
     ]
 

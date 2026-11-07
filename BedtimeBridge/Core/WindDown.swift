@@ -38,6 +38,14 @@ struct WindDownState: Codable, Equatable {
     var inBed = false
     /// The bedtime shortcut ran tonight (into bed).
     var bedtimeRan = false
+    /// When you got into bed during wind-down (v0.4.11 item 27).
+    var wentToBed: Date? = nil
+
+    /// Bedtime ran or you're in bed: the widgets drop the wind-down view (v0.4.11 item 27).
+    var bedtimeDone: Bool { bedtimeRan || wentToBed != nil }
+
+    /// What the widgets show: wind-down's times only while it's still ahead of bedtime.
+    var showsOnWidgets: Bool { [.scheduled, .windingDown, .bedtime].contains(status) && !bedtimeDone }
 
     init(status: Status = .off, windDown: Date? = nil, goToBed: Date? = nil, firstAlarm: Date? = nil,
          remindersStopped: Bool = false, inBed: Bool = false) {
@@ -65,6 +73,7 @@ struct WindDownState: Codable, Equatable {
         remindersStopped = reply["reminders_stopped"] as? Bool ?? false
         inBed = reply["in_bed"] as? Bool ?? false
         bedtimeRan = reply["bedtime_ran"] as? Bool ?? false
+        wentToBed = date("went_to_bed")
     }
 
     private static let key = "windDownState.v1"
@@ -73,15 +82,24 @@ struct WindDownState: Codable, Equatable {
         get { UserDefaults.standard.data(forKey: key).flatMap { try? JSONDecoder().decode(WindDownState.self, from: $0) } ?? WindDownState() }
         set {
             UserDefaults.standard.set(try? JSONEncoder().encode(newValue), forKey: key)
-            // The widget shows "Bed in 42 min" during wind-down.
+            // The widget shows "Bed in 42 min" during wind-down, until bedtime runs or you're in
+            // bed (v0.4.11 item 27).
             var snapshot = NextAlarmSnapshot.load()
-            let active = [.scheduled, .windingDown, .bedtime].contains(newValue.status)
+            let active = newValue.showsOnWidgets
             snapshot.windDownAt = active ? newValue.windDown : nil
             snapshot.goToBedAt = active ? newValue.goToBed : nil
             snapshot.windDownStatus = newValue.status.rawValue
             snapshot.save()
             ControlRefresh.reload()
         }
+    }
+
+    /// The bedtime shortcut just ran: tonight's wind-down is done, so the widgets change now.
+    static func markBedtimeRan() {
+        var state = cached
+        guard state.status != .off, !state.bedtimeRan else { return }
+        state.bedtimeRan = true
+        cached = state
     }
 
     /// "Start wind-down now" shows from `hours` before go to bed, until wind-down starts; after a

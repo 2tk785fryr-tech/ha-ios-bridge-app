@@ -576,7 +576,8 @@ struct ContentView: View {
     }
 
     private var barMorning: Date? { scheduled.first ?? plan?.firstAlarm }
-    private var barDay: String { (barMorning ?? .now).formatted(.dateTime.weekday(.wide)) }
+    /// v0.4.11 item 28: with nothing set or planned, the morning No alarms turns off (tomorrow).
+    private var barDay: String { BarAction.dayName(morning: barMorning) }
 
     private var actions: some View {
         BottomBarView(
@@ -1512,6 +1513,7 @@ private struct MorningTimeline: View {
         switch step.kind {
         case .windDown: row = TimelineStep(title: step.title, value: step.value, dot: .ring(Theme.textMuted))
         case .goToBed: row = TimelineStep(title: step.title, value: step.value, dot: .filled(Theme.textMuted))
+        case .sleep: row = TimelineStep(title: step.title, value: step.value, dot: .ring(Theme.accent))
         case .wake: row = TimelineStep(title: step.title, value: step.value, detail: step.detail, dot: .filled(Theme.accent), bold: true)
         case .alarm: row = TimelineStep(title: step.title, value: step.value, detail: step.detail, dot: .ring(Theme.accent))
         case .getReady:

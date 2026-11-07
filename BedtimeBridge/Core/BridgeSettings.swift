@@ -465,11 +465,19 @@ final class SettingsStore {
     private let defaults: UserDefaults
 
     var settings: BridgeSettings {
-        didSet { save() }
+        didSet {
+            save()
+            // v0.4.11 item 29: Siri learns the nap lengths you can say.
+            if settings.napLengths != oldValue.napLengths { BedtimeBridgeShortcuts.updateAppShortcutParameters() }
+        }
     }
+
+    /// Nothing was saved before this launch: a fresh install (v0.4.11 item 31's first-launch tutorial).
+    let freshInstall: Bool
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        freshInstall = defaults.data(forKey: Self.key) == nil
         settings = defaults.data(forKey: Self.key).flatMap(Self.decode) ?? BridgeSettings()
         HomeAssistantLinks.everyMessage = Self.everyMessage(settings)
     }

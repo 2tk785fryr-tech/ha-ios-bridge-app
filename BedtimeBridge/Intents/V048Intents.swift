@@ -19,9 +19,10 @@ enum WindDownChoice: String, AppEnum {
     case cancel
 
     static var typeDisplayRepresentation: TypeDisplayRepresentation = "Wind-Down"
+    // v0.4.11 item 30f: Stop is another way to say Cancel.
     static var caseDisplayRepresentations: [WindDownChoice: DisplayRepresentation] = [
-        .start: "Start",
-        .cancel: "Cancel",
+        .start: DisplayRepresentation(title: "Start", synonyms: ["Begin"]),
+        .cancel: DisplayRepresentation(title: "Cancel", synonyms: ["Stop", "End"]),
     ]
 }
 

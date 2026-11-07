@@ -53,6 +53,14 @@ enum BarAction: String, CaseIterable, Identifiable {
         }
     }
 
+    /// v0.4.11 item 28: the day the bar's buttons name. The set or planned morning, else
+    /// tomorrow, the same morning `noAlarmsMorning` turns off.
+    static func dayName(morning: Date?, now: Date = .now) -> String {
+        let calendar = Calendar.current
+        let day = morning ?? calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now))!
+        return day.formatted(.dateTime.weekday(.wide))
+    }
+
     /// The bar's day is today's: after midnight, "No alarms this morning" (v0.4.8 item 7).
     static func isToday(_ day: String, now: Date = .now) -> Bool {
         day == now.formatted(.dateTime.weekday(.wide))

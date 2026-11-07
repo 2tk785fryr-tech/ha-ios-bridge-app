@@ -1508,7 +1508,11 @@ final class BedtimeCoordinator {
     /// When the bedtime routine last started, for Not ready for bed's window (v0.4.2 item 7).
     private(set) var bedtimeRanAt: Date? {
         get { UserDefaults.standard.object(forKey: Self.bedtimeRanKey) as? Date }
-        set { UserDefaults.standard.set(newValue, forKey: Self.bedtimeRanKey) }
+        set {
+            UserDefaults.standard.set(newValue, forKey: Self.bedtimeRanKey)
+            // v0.4.11 item 27: the widgets drop wind-down straight away, not at the next reply.
+            if newValue != nil { WindDownState.markBedtimeRan() }
+        }
     }
 
     func notReadyForBedAvailable(settings: BridgeSettings, now: Date = .now) -> Bool {
