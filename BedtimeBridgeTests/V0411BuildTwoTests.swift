@@ -212,4 +212,78 @@ final class V0411BuildTwoTests: XCTestCase {
         XCTAssertEqual(items.map(\.done), [true, true, false, true, true])
         XCTAssertEqual(items.first?.title, "A shift in your calendar this week")
     }
+
+    // MARK: Item 32, in bed with no alarms
+
+    func testItem32InBedNoAlarmsLastsUntilTheMorningUnlessAnAlarmWasStopped() {
+        let ran = at(22, 47)
+        XCTAssertTrue(OptionWindows.inBedNoAlarms(bedtimeRanAt: ran, lastStop: nil, alarmsSet: false, napping: false,
+                                                  goodMorningFrom: "08:00", now: at(23, 4), calendar: newYork))
+        XCTAssertTrue(OptionWindows.inBedNoAlarms(bedtimeRanAt: ran, lastStop: at(4, 30), alarmsSet: false, napping: false,
+                                                  goodMorningFrom: "08:00", now: at(23, 4), calendar: newYork), "a stop before bedtime doesn't count")
+        XCTAssertFalse(OptionWindows.inBedNoAlarms(bedtimeRanAt: ran, lastStop: nil, alarmsSet: false, napping: false,
+                                                   goodMorningFrom: "08:00", now: at(8, 1, day: 7), calendar: newYork), "over at Good morning from")
+        XCTAssertFalse(OptionWindows.inBedNoAlarms(bedtimeRanAt: ran, lastStop: nil, alarmsSet: true, napping: false,
+                                                   goodMorningFrom: "08:00", now: at(23, 4), calendar: newYork))
+        XCTAssertFalse(OptionWindows.inBedNoAlarms(bedtimeRanAt: at(21, 0), lastStop: at(4, 30, day: 7), alarmsSet: false, napping: false,
+                                                   goodMorningFrom: "08:00", now: at(5, 0, day: 7), calendar: newYork), "a morning, not a night off")
+        // A bedtime after midnight is for that same morning.
+        XCTAssertEqual(OptionWindows.morning(after: at(1, 0, day: 7), goodMorningFrom: "08:00", calendar: newYork), at(8, 0, day: 7))
+        XCTAssertEqual(OptionWindows.morning(after: ran, goodMorningFrom: "08:00", calendar: newYork), at(8, 0, day: 7))
+    }
+
+    func testItem32TheBarOffersNotReadyForBedAndPutsNapInTheMenu() {
+        var i = BottomBar.Inputs(now: at(23, 4))
+        i.inBedNoAlarms = true
+        i.inBedDay = "Saturday"
+        i.notReadyWindow = true
+        i.napEnabled = true
+        i.nothingFound = true
+        let bar = BottomBar.make(i)
+        XCTAssertEqual(bar, BottomBar(top: .status("In bed · no alarms Saturday", .accent), buttons: [.addTemporary, .previewPlan],
+                                      actionRow: [.setAlarmsForTime], hold: .notReadyForBed))
+        XCTAssertFalse(bar.buttons.contains(.nap) || bar.actionRow.contains(.nap))
+        XCTAssertTrue(BottomBar.menu(i, alarmStyleApp: true, morningKnown: false).contains(.nap))
+        XCTAssertTrue(BottomBar.menu(i, alarmStyleApp: true, morningKnown: false).contains(.notGoingToSleep))
+        // Once the window closes: Nothing set, still no Nap in the bar.
+        i.notReadyWindow = false
+        XCTAssertEqual(BottomBar.make(i), BottomBar(top: .status("Nothing set for tonight", .muted), buttons: [.addTemporary, .previewPlan],
+                                                    actionRow: [.setAlarmsForTime]))
+        // Bedtime didn't run: as before, Nap in the bar.
+        i.inBedNoAlarms = false
+        XCTAssertTrue(BottomBar.make(i).actionRow.contains(.nap))
+    }
+
+    func testItem32NotReadyForBedNeedsAlarmsOrANightOff() {
+        XCTAssertTrue(OptionWindows.notReadyForBed(bedtimeRanAt: at(22, 47), alarmsSet: true, hours: 2, now: at(23, 4)))
+        XCTAssertFalse(OptionWindows.notReadyForBed(bedtimeRanAt: at(22, 47), alarmsSet: true, hours: 2, now: at(0, 48, day: 7)))
+    }
+
+    // MARK: Item 33, the in-bed card
+
+    func testItem33TheCardSaysBedtimeRanWhyAndSleepIn() {
+        let card = InBedCard.content(bedtimeRan: at(22, 47), day: "Saturday", plan: nil, skipped: false, sleepIn: true,
+                                     ladderStatus: "idle_uncovered", ladderReason: nil)
+        XCTAssertEqual(card.title, "In bed · no alarms Saturday")
+        XCTAssertEqual(card.lines, ["Bedtime ran at \(WakePlanner.format(at(22, 47))).", "Nothing on your calendar for Saturday.",
+                                    "Sleep In is on.", "No backstops: nothing to cover.", "Added something for the morning? Tap Preview plan."])
+        let unknown = InBedCard.content(bedtimeRan: at(22, 47), day: "Saturday", plan: nil, skipped: true, sleepIn: nil,
+                                        ladderStatus: nil, ladderReason: nil)
+        XCTAssertEqual(unknown.lines[1], "No alarms Saturday: you turned them off.")
+        XCTAssertFalse(unknown.lines.contains { $0.hasPrefix("Sleep In") }, "Sleep In unknown: left out")
+    }
+
+    // MARK: Item 34, Morning weather with no alarms
+
+    func testItem34TheNoAlarmForecastIsAtGoodMorningFromAndRefetchedWhenItChanges() {
+        let (moment, time) = MorningForecast.moment(leaveBy: nil, wakeUp: nil, goodMorningFrom: "09:00", now: at(23, 4), calendar: newYork)
+        XCTAssertEqual(moment, .goodMorning)
+        XCTAssertEqual(time, at(9, 0, day: 7))
+        XCTAssertTrue(NoAlarmWeather.fresh(fetched: at(23, 0), time: "08:00", settingTime: "08:00", forecastAt: at(8, 0, day: 7), now: at(23, 20)))
+        XCTAssertFalse(NoAlarmWeather.fresh(fetched: at(23, 0), time: "08:00", settingTime: "09:00", forecastAt: at(8, 0, day: 7), now: at(23, 20)),
+                       "a new Good morning from time fetches again")
+        XCTAssertFalse(NoAlarmWeather.fresh(fetched: at(22, 0), time: "08:00", settingTime: "08:00", forecastAt: at(8, 0, day: 7), now: at(23, 4)),
+                       "older than 30 min")
+        XCTAssertNil(NoAlarmWeather.text(nil))
+    }
 }

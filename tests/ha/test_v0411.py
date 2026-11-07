@@ -349,3 +349,21 @@ def test_item26_rung_times_passing_no_longer_count():
     history = []
     weekly.record(history, "morning", now - timedelta(days=1), snoozes=1, backstops_fired=3)
     assert weekly.summarize(history, [], now)["backstops_fired"] == 0
+
+
+# MARK: Item 33, Sleep In for the in-bed card
+
+
+async def test_item33_the_context_says_whether_sleep_in_is_on(hass, ladder, hass_client_no_auth):  # noqa: F811
+    hass.states.async_set("input_boolean.sleep_in", "on")
+    await ladder(sleep_in_helper="input_boolean.sleep_in")
+    assert (await send(hass_client_no_auth, {"type": "context", "data": {}}))["sleep_in"] is True
+    hass.states.async_set("input_boolean.sleep_in", "off")
+    assert (await send(hass_client_no_auth, {"type": "context", "data": {}}))["sleep_in"] is False
+    hass.states.async_set("input_boolean.sleep_in", "unavailable")
+    assert (await send(hass_client_no_auth, {"type": "context", "data": {}}))["sleep_in"] is None
+
+
+async def test_item33_no_sleep_in_helper_is_none(hass, ladder, hass_client_no_auth):  # noqa: F811
+    await ladder()
+    assert (await send(hass_client_no_auth, {"type": "context", "data": {}}))["sleep_in"] is None

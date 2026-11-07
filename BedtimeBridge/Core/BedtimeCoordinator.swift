@@ -207,6 +207,8 @@ final class BedtimeCoordinator {
         storedPattern = nil
         updateWidget { $0 = NextAlarmSnapshot(alarmStyle: settings.alarmStyle.rawValue, temporaryAlarms: temporaryAlarms.map(\.time)) }
         lastCause = AlarmCause.none
+        // v0.4.11 item 32: out of bed again; bedtime runs again when you're back in bed.
+        bedtimeRanAt = nil
         await report(.bedtimeUndone, data: [:], settings: settings)
     }
 
@@ -704,6 +706,25 @@ final class BedtimeCoordinator {
               let (hours, unit) = try? await source() else { return nil }
         let (moment, at) = MorningForecast.moment(leaveBy: nil, wakeUp: firstAlarm, goodMorningFrom: settings.noAlarmEarliest, now: now)
         return MorningForecast.pick(hours: hours, at: at, moment: moment, unit: unit)
+    }
+
+    /// v0.4.11 item 34: with no alarms set, Morning weather's forecast for the next morning at
+    /// Good morning from. Fetched at most every 30 min (again sooner when the time changes); a
+    /// failed fetch keeps the last one.
+    private var noAlarmForecastCache: (forecast: MorningForecast, fetched: Date, time: String)?
+
+    func noAlarmForecast(settings phoneSettings: BridgeSettings, now: Date = .now) async -> MorningForecast? {
+        let settings = phoneSettings.applying(HomeAssistantLinks.cachedSettings)
+        if let cache = noAlarmForecastCache, NoAlarmWeather.fresh(fetched: cache.fetched, time: cache.time, settingTime: settings.noAlarmEarliest,
+                                                                  forecastAt: cache.forecast.at, now: now) {
+            return cache.forecast
+        }
+        guard settings.checksWeather, let source = weatherForecast(settings: settings, link: HomeAssistantLinks.current(settings)),
+              let (hours, unit) = try? await source() else { return noAlarmForecastCache?.forecast }
+        let (moment, at) = MorningForecast.moment(leaveBy: nil, wakeUp: nil, goodMorningFrom: settings.noAlarmEarliest, now: now)
+        guard let forecast = MorningForecast.pick(hours: hours, at: at, moment: moment, unit: unit) else { return noAlarmForecastCache?.forecast }
+        noAlarmForecastCache = (forecast, now, settings.noAlarmEarliest)
+        return forecast
     }
 
     func cancelAlarms(settings: BridgeSettings) async throws {
@@ -1526,9 +1547,20 @@ final class BedtimeCoordinator {
     }
 
     func notReadyForBedAvailable(settings: BridgeSettings, now: Date = .now) -> Bool {
-        OptionWindows.notReadyForBed(bedtimeRanAt: bedtimeRanAt, alarmsSet: !setAlarmTimes().filter { $0 > now }.isEmpty,
-                                     hours: settings.notReadyForBedHours, now: now)
+        // v0.4.11 item 32: a bedtime that set no alarms can be undone too.
+        let alarmsSet = !setAlarmTimes().filter { $0 > now }.isEmpty
+        return OptionWindows.notReadyForBed(bedtimeRanAt: bedtimeRanAt, alarmsSet: alarmsSet || inBedNoAlarms(settings: settings, now: now),
+                                            hours: settings.notReadyForBedHours, now: now)
     }
+
+    /// v0.4.11 items 32 and 33: bedtime ran tonight and set no alarms, until the morning.
+    func inBedNoAlarms(settings: BridgeSettings, now: Date = .now) -> Bool {
+        OptionWindows.inBedNoAlarms(bedtimeRanAt: bedtimeRanAt, lastStop: lastStopAt, alarmsSet: !setAlarmTimes().filter { $0 > now }.isEmpty,
+                                    napping: !napAlarms.isEmpty, goodMorningFrom: settings.noAlarmEarliest, now: now)
+    }
+
+    /// When bedtime ran, for Tonight's in-bed card (v0.4.11 item 33).
+    var bedtimeRan: Date? { bedtimeRanAt }
 
     /// An alarm of this wake-up was stopped (so Wake Mike and Good Morning ran): a change this
     /// morning is then "back to bed", wherever it's started (v0.4.1 item 2). A new series resets it.

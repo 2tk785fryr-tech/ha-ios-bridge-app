@@ -31,6 +31,8 @@ struct ContentView: View {
     /// A quiet look at tomorrow on opening found no shift or event (v0.4.7 item 8), so the bar
     /// can offer Set alarms for a time without a preview first.
     @State private var nothingAhead = false
+    /// v0.4.11 item 34: Morning weather with no alarms set, at Good morning from.
+    @State private var noAlarmForecast: MorningForecast?
     /// The quiet look-ahead's plan, for the bar's "Days shift 6:30 · no alarms set" (v0.4.10 item 16).
     @State private var peek: WakePlan?
     /// The minute the screen last redrew for (v0.4.6 item 3); the bar reads it, so a tick redraws.
@@ -160,6 +162,9 @@ struct ContentView: View {
                         // v0.4.10 item 11: Your morning's timeline in place of the Backstops card.
                         AlarmsTimeline(alarms: morningBubbles.map(\.time), wake: NextAlarmSnapshot.load().wakeTime, temporary: temporaryAlarms,
                                        backstops: backstopInfo(leaveBy: NextAlarmSnapshot.load().leaveBy, firstDayBack: false, morning: morningBubbles.first?.time))
+                    } else if let inBed = inBedContent {
+                        // v0.4.11 item 33: bedtime ran and set no alarms.
+                        EmptyPlanCard(title: inBed.title, lines: inBed.lines)
                     } else {
                         EmptyPlanCard()
                     }
@@ -185,7 +190,7 @@ struct ContentView: View {
                         WarningBanner(text: errorMessage, systemImage: "exclamationmark.triangle", tint: Theme.danger)
                     }
 
-                    StatusCard(settings: settings, plan: plan)
+                    StatusCard(settings: settings, plan: plan, noAlarmForecast: scheduled.isEmpty ? noAlarmForecast : nil)
 
                     if let plan, !plan.warnings.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
@@ -248,9 +253,11 @@ struct ContentView: View {
             .onReceive(NotificationCenter.default.publisher(for: WindDownState.changedNotification)) { _ in refreshScheduled() }
             // v0.4.11 item 23: a setting the plan depends on changed: check it moves the alarms.
             .onChange(of: store.settings.planFingerprint) { _, _ in Task { await confirmPlanChange() } }
+            .onChange(of: store.settings.noAlarmEarliest) { _, _ in Task { await refreshNoAlarmForecast() } }
             // Redraw at each minute while open, so the bar changes on time (v0.4.6 item 3).
             .task(id: scenePhase) {
                 guard scenePhase == .active else { return }
+                Task { await refreshNoAlarmForecast() }
                 // v0.4.8 item 4: Stop on the banner snoozed; the slide-and-hold ends it.
                 if let id = BannerStop.takePending() {
                     BannerStop.clearNotification()
@@ -570,6 +577,8 @@ struct ContentView: View {
         i.goodNight = coordinator.goodNightOffered
         i.reporting = TestingReports.enabled
         i.healthIssue = BedtimeHealth.current(now: now)
+        i.inBedNoAlarms = set.isEmpty && coordinator.inBedNoAlarms(settings: store.settings, now: now)
+        i.inBedDay = BarAction.dayName(morning: OptionWindows.morning(after: coordinator.bedtimeRan ?? now, goodMorningFrom: store.settings.noAlarmEarliest))
         return i
     }
 
@@ -581,6 +590,22 @@ struct ContentView: View {
         if let ha = w.firstAlarm, abs(ha.timeIntervalSince(first)) < 60, let wind = w.windDown, let bed = w.goToBed { return (wind, bed) }
         let times = WindDownTimes.compute(firstAlarm: first, settings: store.settings)
         return (times.windDown, times.goToBed)
+    }
+
+    /// v0.4.11 item 34: the no-alarm forecast, only while nothing is set.
+    private func refreshNoAlarmForecast() async {
+        guard coordinator.setAlarmTimes().isEmpty else { return }
+        if let forecast = await coordinator.noAlarmForecast(settings: store.settings) { noAlarmForecast = forecast }
+    }
+
+    /// v0.4.11 item 33: the card after a bedtime that set no alarms, until the morning.
+    private var inBedContent: InBedCard.Content? {
+        guard plan == nil || plan?.hasAlarm == false, scheduled.isEmpty, napAlarms.isEmpty,
+              coordinator.inBedNoAlarms(settings: store.settings), let ran = coordinator.bedtimeRan else { return nil }
+        let morning = OptionWindows.morning(after: ran, goodMorningFrom: store.settings.noAlarmEarliest)
+        return InBedCard.content(bedtimeRan: ran, day: BarAction.dayName(morning: morning), plan: plan ?? coordinator.lastAppliedPlan,
+                                 skipped: skippedMorning.map { Calendar.current.isDate($0, inSameDayAs: morning) } ?? false,
+                                 sleepIn: morningContext?.sleepIn, ladderStatus: morningContext?.ladderStatus, ladderReason: morningContext?.ladderReason)
     }
 
     private var barMorning: Date? { scheduled.first ?? plan?.firstAlarm }
@@ -1414,17 +1439,25 @@ private struct ReasonWithWeather: View {
 }
 
 private struct EmptyPlanCard: View {
+    var title = "No alarms set"
+    var lines = ["Preview to check your shifts and \"wake up\" appointments."]
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Image(systemName: "moon.stars")
                 .font(.system(size: 28))
                 .foregroundStyle(Theme.accentIcon)
-            Text("No alarms set")
+            Text(title)
                 .font(.sora(22, .semibold, relativeTo: .title2))
                 .foregroundStyle(Theme.text)
-            Text("Preview to check your shifts and \"wake up\" appointments.")
-                .font(.subheadline)
-                .foregroundStyle(Theme.textSoft)
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(lines, id: \.self) { line in
+                    Text(line)
+                        .font(.subheadline)
+                        .foregroundStyle(Theme.textSoft)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
         .nightfallCard(radius: 28, padding: 24)
     }
@@ -1716,6 +1749,8 @@ private struct MissingLocationCard: View {
 private struct StatusCard: View {
     let settings: BridgeSettings
     let plan: WakePlan?
+    /// v0.4.11 item 34: no alarms set: the forecast at Good morning from.
+    var noAlarmForecast: MorningForecast? = nil
 
     var body: some View {
         VStack(spacing: 0) {
@@ -1757,6 +1792,7 @@ private struct StatusCard: View {
         // The plain forecast first (v0.4.7 item 5), then what it does to the morning.
         let forecast = plan?.forecast.map { $0.text() + " · " } ?? ""
         if let weather = plan?.weather { return forecast + "+\(weather.minutes) min, \(weather.reason)" }
+        if plan == nil, let text = NoAlarmWeather.text(noAlarmForecast) { return text }
         return plan == nil ? "Checked when you plan" : forecast + "no extra time"
     }
 }
@@ -2038,6 +2074,28 @@ private struct BottomBarView: View {
                     .frame(height: 72)
                     .id(action)
                 }
+            } else if let hold = bar.hold, !bar.actionRow.isEmpty {
+                // v0.4.11 item 32: in bed with no alarms: the status, Not ready for bed's slider,
+                // Set alarms for a time, then the outlined buttons.
+                VStack(spacing: Self.spacing) {
+                    top
+                        .frame(maxWidth: .infinity, minHeight: Self.statusHeight, maxHeight: Self.statusHeight)
+                    HoldSlider(
+                        label: "Slide and hold · \(hold.title(day: day))",
+                        holdLabel: { "Hold \($0)…" },
+                        knobSymbol: knobSymbol(hold),
+                        tint: knobTint(hold),
+                        onHold: { perform(hold) },
+                        accessibilityHint: hold.caption(day: day)
+                    )
+                    .frame(height: Self.rowHeight)
+                    .id(hold)
+                    HStack(spacing: 10) {
+                        ForEach(bar.actionRow) { action in filled(action) }
+                    }
+                    .frame(height: Self.rowHeight)
+                    buttonRow(outline: Theme.buttonOutline)
+                }
             } else if let hold = bar.hold {
                 // Alarms set, bedtime to come (v0.4.8 item 5): the status line with Undo, Good
                 // night's slide-and-hold, then Change plan and Temporary alarm outlined.
@@ -2099,6 +2157,7 @@ private struct BottomBarView: View {
         }
         .frame(height: (bar.actionRow.isEmpty && bar.hold == nil) || slider != nil
                ? Self.topHeight + Self.rowHeight + Self.spacing
+               : bar.hold != nil && !bar.actionRow.isEmpty ? Self.statusHeight + 3 * Self.rowHeight + 3 * Self.spacing
                : bar.hold != nil && bar.top.isMain ? 3 * Self.rowHeight + 2 * Self.spacing
                : Self.statusHeight + 2 * Self.rowHeight + 2 * Self.spacing)
         .disabled(working)

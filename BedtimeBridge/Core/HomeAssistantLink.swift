@@ -66,6 +66,8 @@ struct MorningContext {
 
     /// This morning's backstops that went off: "early", "deadline", "late" (v0.4.11 item 26).
     var firedRungs: Set<String> = []
+    /// Home Assistant's Sleep In (v0.4.11 item 33); nil when it isn't set up.
+    var sleepIn: Bool? = nil
 
     /// The reason while the plan is out of date ("" when Home Assistant gave none).
     var outdatedKey: String? { planOutdated ? (outdatedReason ?? "") : nil }
@@ -225,7 +227,8 @@ struct IntegrationLink: HomeAssistantLink {
             houseTimes: (house["times"] as? [String: String] ?? [:]).compactMapValues(Self.parseDate),
             planOutdated: reply["plan_outdated"] as? Bool ?? false,
             outdatedReason: reply["outdated_reason"] as? String,
-            firedRungs: Set((reply["backstops_fired"] as? [[String: Any]] ?? []).compactMap { $0["rung"] as? String })
+            firedRungs: Set((reply["backstops_fired"] as? [[String: Any]] ?? []).compactMap { $0["rung"] as? String }),
+            sleepIn: reply["sleep_in"] as? Bool
         )
     }
 

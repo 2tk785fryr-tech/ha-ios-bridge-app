@@ -741,6 +741,8 @@ class BedtimeBridge:
             # The override or HA's next shift changed after the plan (v0.4.1 item 10).
             "plan_outdated": bool(self.state.get("plan_outdated")),
             "outdated_reason": self.state.get("outdated_reason"),
+            # v0.4.11 item 33: Sleep In, for the app's in-bed card (None when not set up).
+            "sleep_in": (lambda s: None if s in (None, "unknown", "unavailable") else s == "on")(self._state_of(CONF_SLEEP_IN)),
             # v0.4.11 item 26: the backstops that went off this morning (the app tags them).
             "backstops_fired": list(self.state.get("backstops_fired") or []),
             "wind_down": self.wind_down.summary(),

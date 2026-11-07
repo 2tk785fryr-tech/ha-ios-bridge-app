@@ -447,6 +447,9 @@ Home Assistant side is in `docs/ha-handoffs-v*.md`.
 - **Siri (0.4.11):** *"Take a 20 minute nap with Bedtime Bridge"* (any length), Cancel asks first,
   Plan says what it set, Wake up later understands *"1 hour"* and *"half an hour"*, and Add a
   wake-up event asks where.
+- **In bed with no alarms (0.4.11):** after a bedtime that set no alarms, the card reads *In bed ·
+  no alarms Saturday* (when bedtime ran, why, Sleep In), the bar offers *Not ready for bed* with Nap
+  in ⋯, and Morning weather shows the forecast at *Good morning from*.
 - **How to use Bedtime Bridge (0.4.11):** a step-by-step tutorial in Settings → About, starting
   with your schedule in Apple Calendar. It opens once by itself on a fresh install.
 - **Wake at a different time** (day off, skip) shows a preview where you can add alarms and edit

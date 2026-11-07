@@ -156,3 +156,9 @@ Backstop automation at v1-40 (its inputs carry over: same names). To check witho
 morning: **Developer tools → Events**, fire `bedtime_bridge_backstop_fired` with
 `{"rung": "deadline", "level": "soft"}`. Open the app: Your morning's Deadline backstop shows a
 red *fired* tag until the next plan (it also adds 1 to this week's summary).
+
+## 5. Install 0.4.11.3 (item 33)
+
+**Marketplace → Bedtime Bridge → Update** to 0.4.11.3, then restart Home Assistant. It adds Sleep
+In to what the app reads, so the in-bed card can say *Sleep In is on*. Nothing to change in your
+automations or blueprints. Until it's installed the card leaves the Sleep In line out.

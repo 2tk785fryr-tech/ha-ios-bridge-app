@@ -201,6 +201,9 @@ struct BottomBar: Equatable {
         var tomorrowLabel: String?
         /// Past the evening plan check (v0.4.10 item 18): No alarms takes Nap's place.
         var eveningCheckPassed = false
+        /// v0.4.11 item 32: bedtime ran tonight with no alarms, until the morning; the morning's day.
+        var inBedNoAlarms = false
+        var inBedDay = ""
     }
 
     /// v0.4.10 item 18: when the evening starts for the bar, the wind-down settings' evening plan
@@ -296,6 +299,15 @@ struct BottomBar: Equatable {
             }
             // v0.4.3 item 3: No alarms tomorrow takes Edit alarms' place (Edit stays in ⋯).
             return BottomBar(top: .status("✓ " + count, .good), buttons: i.sleepLaterWindow ? [.sleepLater, .noAlarmsTomorrow] : [.noAlarmsTomorrow, .editAlarms])
+        }
+        // v0.4.11 item 32: in bed with no alarms: Not ready for bed to undo it, your own time,
+        // Temporary and Preview; Nap is in ⋯.
+        if i.inBedNoAlarms {
+            if i.notReadyWindow {
+                return BottomBar(top: .status("In bed · no alarms \(i.inBedDay)", .accent), buttons: temporary + [.previewPlan],
+                                 actionRow: [.setAlarmsForTime], hold: .notReadyForBed)
+            }
+            return BottomBar(top: .status("Nothing set for tonight", .muted), buttons: temporary + [.previewPlan], actionRow: [.setAlarmsForTime])
         }
         let nap: [BarAction] = i.napEnabled ? [.nap] : []
         if NoAlarmMorning.barOffers(offered: i.awakeOffered, alarmsSet: i.alarmsSet, napping: false, evening: i.evening) {
