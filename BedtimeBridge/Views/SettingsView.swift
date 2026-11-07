@@ -747,9 +747,10 @@ private struct NapSettings: View {
     var body: some View {
         SettingsPage(title: "Nap") {
             Section {
-                DefaultToggle(title: "Nap", isOn: $settings.napEnabled, defaultValue: BridgeSettings().napEnabled)
+                DefaultToggle(title: "Show Nap", isOn: $settings.napEnabled, defaultValue: BridgeSettings().napEnabled)
+                    .info("A nap's alarms behave like temporary alarms: no wake routines, Good Morning or backstops, and your other alarms stay.")
             } footer: {
-                Text("Shows the Nap button. A nap's alarms behave like temporary alarms: no wake routines, Good Morning or backstops, and your other alarms stay.")
+                Text("Short naps with a few alarms of their own.")
             }
             if settings.napEnabled {
                 Section {
@@ -762,9 +763,10 @@ private struct NapSettings: View {
                     DefaultStepper(value: $settings.napReadyWithAddressMinutes, in: 0...120, step: 5, defaultValue: BridgeSettings().napReadyWithAddressMinutes, note: { "\($0) min" }) { "Events with an address: \($0) min" }
                     DefaultStepper(value: $settings.napReadyNoAddressMinutes, in: 0...120, step: 5, defaultValue: BridgeSettings().napReadyNoAddressMinutes, note: { "\($0) min" }) { "Events without an address: \($0) min" }
                 } header: {
-                    Text("Get-ready buffer")
-                } footer: {
-                    Text("Your last nap alarm must leave this long before you leave for a shift or an event with an address (after the drive time now and arriving early), or before an event without one, where you may just get up and stay home.")
+                    HStack {
+                        Text("Up before you leave")
+                        InfoButton(text: "Your last nap alarm leaves this long before you leave for a shift or an event with an address (after the drive and arriving early), or before an event without one, where you may just get up and stay home.")
+                    }
                 }
                 Section {
                     ForEach(settings.napLengths, id: \.self) { minutes in
