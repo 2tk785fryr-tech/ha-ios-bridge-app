@@ -133,7 +133,7 @@ enum SettingsPages {
     /// v0.4.7 item 7.
     static let appointmentAlarms = ["alarmCount", "alarmSpacingMinutes", "wakeTimeIs"]
     static let ownAlarms = ["newAlarmHoursAhead", "ownAlarmRoundingMinutes", "ownAlarmPickerSnaps", "ownAlarmCount", "ownAlarmSpacingMinutes", "ownAlarmWakeIs", "ownBackstopsDayOff", "ownBackstopsLeave", "ownEarlyMinutes", "ownDeadlineMinutes", "ownLateMinutes", "ownBackstopsFull"]
-    static let optionWindows = ["endAlarmsEarlyHours", "notReadyForBedHours", "backToBedHours", "startWindDownHours"]
+    static let optionWindows = ["endAlarmsEarlyHours", "notReadyForBedHours", "backToBedHours"]
     static let morningChange = ["morningReasons", "earlyBackstopGapMinutes"]
     static let nap = ["napEnabled", "napAlarmCount", "napSpacingMinutes", "napReadyWithAddressMinutes", "napReadyNoAddressMinutes", "napLengths"]
     static let windDown = ["windDownEnabled", "sleepGoalMinutes", "windDownMinutes", "freeAfterHomeMinutes", "minimumWindDownMinutes", "windDownWarningMinutes", "windDownLaterMinutes", "notInBedReminders", "reminderFirstMinutes", "reminderEveryMinutes", "reminderStopMinutes", "planCheckBeforeMinutes", "planCheckFallback", "windDownOwnAlarm", "startWindDownHours"]

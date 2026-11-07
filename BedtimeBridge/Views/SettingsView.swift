@@ -105,6 +105,10 @@ struct SettingsView: View {
                 SettingsLink(title: "Shortcuts, controls and Siri", icon: "square.grid.2x2", value: "") {
                     ShortcutsSettings(settings: $store.settings)
                 }
+                // v0.4.11 item 55: moved from Alarms.
+                SettingsLink(title: "When bar buttons show", icon: "rectangle.bottomthird.inset.filled", value: "") {
+                    OptionWindowsSettings(settings: $store.settings)
+                }
                 SettingsLink(title: "Weekly summary", icon: "calendar.day.timeline.left", value: settings.weeklySummaryEnabled ? "On" : "Off") {
                     WeeklySummarySettings(settings: $store.settings)
                 }
@@ -679,17 +683,22 @@ private struct AlarmSettingsSection: View {
 
     var body: some View {
         Section {
+            // v0.4.11 item 55: Alarms ring from: This app / Clock app.
             Picker(selection: $settings.alarmStyle) {
-                ForEach(AlarmStyle.allCases) { Text($0.displayName).tag($0) }
+                ForEach(AlarmStyle.allCases) { Text($0 == .app ? "This app" : "Clock app").tag($0) }
             } label: {
-                WithDefault(text: "Alarms", defaultText: settings.alarmStyle == d.alarmStyle ? nil : d.alarmStyle.displayName)
+                WithDefault(text: "Alarms ring from", defaultText: settings.alarmStyle == d.alarmStyle ? nil : "this app")
             }
+            .info(settings.alarmStyle == .app
+                  ? "Rings through Silent and Focus. Snooze and Stop tell Home Assistant directly, because the Shortcuts \"alarm snoozed/stopped\" automations only see Clock app alarms."
+                  : "The app works out the times and your shortcut creates Clock alarms from Wake Plan › Alarm Dates. Your snooze/stop automations keep working, but Apple fixes Clock snooze at 9 minutes.")
             // v0.4.7 item 7: the two alarm series, each on its own page, at the top.
             NavigationLink {
                 AppointmentAlarmSettings(settings: $settings)
             } label: {
-                LabeledContent("Appointment & event alarms", value: AlarmSeriesText.summary(count: settings.alarmCount, spacing: settings.alarmSpacingMinutes))
+                LabeledContent("Default alarm series", value: AlarmSeriesText.summary(count: settings.alarmCount, spacing: settings.alarmSpacingMinutes))
             }
+            .info("Used for wake-up appointments and events, and for shifts set to use the default series.")
             if settings.alarmStyle == .app {
                 NavigationLink {
                     OwnAlarmSettings(settings: $settings)
@@ -700,10 +709,8 @@ private struct AlarmSettingsSection: View {
             if settings.alarmStyle == .app {
                 DefaultStepper(value: $settings.snoozeMinutes, in: 1...30, defaultValue: d.snoozeMinutes, note: { "\($0) min" }) { "Snooze: \($0) min" }
                 AlarmSoundPicker(sound: $settings.alarmSound)
-                NavigationLink("When options show") {
-                    OptionWindowsSettings(settings: $settings)
-                }
-                NavigationLink("Change this morning") {
+                    .info("A new sound is used from the next time alarms are set.")
+                NavigationLink("Reasons for changing alarms") {
                     MorningChangeSettings(settings: $settings)
                 }
             }
@@ -711,12 +718,7 @@ private struct AlarmSettingsSection: View {
         } header: {
             Text("Alarms")
         } footer: {
-            switch settings.alarmStyle {
-            case .app:
-                Text("Rings through Silent and Focus. Snooze and Stop tell Home Assistant directly (set it up below), because the Shortcuts \"alarm snoozed/stopped\" automations only see Clock app alarms. \"Keep the rest until I'm up\" cancels the later alarms only once Home Assistant sees the bedroom door opened or the bed empty for over a minute, so stopping the first alarm and dozing off still leaves the others. A new sound is used from the next time alarms are set.")
-            case .clock:
-                Text("The app works out the times and your shortcut creates Clock alarms from Wake Plan › Alarm Dates. Your snooze/stop automations keep working, but Apple fixes Clock snooze at 9 minutes.")
-            }
+            Text("How your alarms ring and how many there are.")
         }
         Section {
             DefaultToggle(title: "Plug in your phone", isOn: $settings.chargeWarningEnabled, defaultValue: d.chargeWarningEnabled)
@@ -726,13 +728,13 @@ private struct AlarmSettingsSection: View {
         } footer: {
             Text("At bedtime (and at go to bed with wind-down on), a reminder to plug in, and once more after 10 minutes if it's still not charging.")
         }
-        ResetPageSection {
-            settings.resetToDefaults(SettingsPages.alarms)
-        }
         if settings.alarmStyle == .app {
             Section {
                 TestAlarmButton(settings: settings)
             }
+        }
+        ResetPageSection {
+            settings.resetToDefaults(SettingsPages.alarms)
         }
     }
 }
@@ -790,19 +792,18 @@ private struct NapSettings: View {
 }
 
 /// When each situational option shows (v0.4.2 item 7).
-private struct OptionWindowsSettings: View {
+struct OptionWindowsSettings: View {
     @Binding var settings: BridgeSettings
 
     var body: some View {
-        SettingsPage(title: "When options show") {
+        SettingsPage(title: "When bar buttons show") {
             Section {
                 DefaultStepper(value: $settings.endAlarmsEarlyHours, in: 1...12, defaultValue: BridgeSettings().endAlarmsEarlyHours, note: { "\($0) h" }) { "End this morning's alarms: from \($0) h before the first alarm" }
                 DefaultStepper(value: $settings.notReadyForBedHours, in: 1...12, defaultValue: BridgeSettings().notReadyForBedHours, note: { "\($0) h" }) { "Not ready for bed: for \($0) h after bedtime ran" }
                 DefaultStepper(value: $settings.backToBedHours, in: 1...12, defaultValue: BridgeSettings().backToBedHours, note: { "\($0) h" }) { "Back to bed: until \($0) h after the wake-up or the last stop, whichever is later" }
                 LabeledContent("Wake up later", value: "until the first alarm")
-                DefaultStepper(value: $settings.startWindDownHours, in: 1...6, defaultValue: BridgeSettings().startWindDownHours, note: { "\($0) h" }) { "Start wind-down now: from \($0) h before go to bed" }
             } footer: {
-                Text("These decide when each option shows in the bottom bar, the ⋯ menu and the cards.")
+                Text("When each button shows in the bottom bar, the ⋯ menu and the cards. Start wind-down now is set on Wind-down.")
             }
             ResetPageSection { settings.resetToDefaults(SettingsPages.optionWindows) }
         }
@@ -818,7 +819,7 @@ private struct AppointmentAlarmSettings: View {
     private let d = BridgeSettings()
 
     var body: some View {
-        SettingsPage(title: "Appointment & event alarms") {
+        SettingsPage(title: "Default alarm series") {
             Section {
                 DefaultStepper(value: $settings.alarmCount, in: 1...10, defaultValue: d.alarmCount) { "\($0) alarms" }
                 DefaultStepper(value: $settings.alarmSpacingMinutes, in: 1...60, defaultValue: d.alarmSpacingMinutes, note: { "\($0) min" }) { "\($0) min apart" }
@@ -903,7 +904,7 @@ private struct MorningChangeSettings: View {
     @State private var newReason = ""
 
     var body: some View {
-        SettingsPage(title: "Change this morning") {
+        SettingsPage(title: "Reasons for changing alarms") {
             Section {
                 ForEach($settings.morningReasons) { $reason in
                     VStack(alignment: .leading, spacing: 6) {
