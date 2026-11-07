@@ -409,23 +409,24 @@ private struct LeaveReminderSection: View {
 
     var body: some View {
         Section {
-            DefaultToggle(title: "Leave-by reminder", isOn: $settings.leaveReminderEnabled, defaultValue: BridgeSettings().leaveReminderEnabled)
-            if settings.leaveReminderEnabled {
-                NavigationLink {
-                    LeaveRemindersPicker(offsets: $settings.leaveReminderOffsets)
-                } label: {
-                    LabeledContent("Leave reminders", value: LeaveRemindersPicker.summary(settings.leaveReminderOffsets))
-                }
+            // v0.4.11 item 61: one row for the switch and the list.
+            NavigationLink {
+                LeaveRemindersPicker(enabled: $settings.leaveReminderEnabled, offsets: $settings.leaveReminderOffsets)
+            } label: {
+                LabeledContent("Leave reminders", value: settings.leaveReminderEnabled ? LeaveRemindersPicker.summary(settings.leaveReminderOffsets) : "Off")
             }
-            DefaultStepper(value: $settings.widgetLeaveByMinutes, in: 0...120, step: 5, defaultValue: BridgeSettings().widgetLeaveByMinutes, note: { "\($0) min" }) { "Widget: leave-by until \($0) min after" }
+            .info("For shifts and appointments with a location. The drive is also re-checked when you stop an alarm and when you open the app. A reminder that couldn't be re-checked arrives 2 min late, marked \"not re-checked\". They stop 15 min after leave-by.")
+            DefaultStepper(value: $settings.widgetLeaveByMinutes, in: 0...120, step: 5, defaultValue: BridgeSettings().widgetLeaveByMinutes, note: { "\($0) min" }) { "Lock Screen shows Leave by until: \($0) min after" }
+                .info("Once the alarms are done, the Lock Screen widget shows your leave-by time until this long after it.")
         } footer: {
-            Text("For shifts and appointments with a location. Each reminder re-checks traffic: Home Assistant sends RUN_LEAVE_CHECK at its time and Check Drive and Remind notifies with the fresh drive. The drive is also re-checked when you stop an alarm and when you open the app. Reminders set at bedtime arrive 2 min late, marked \"not re-checked\", if no fresh check came. They stop 15 min after leave-by. Once the alarms are done, the Lock Screen widget shows leave-by until this long after it.")
+            Text("Each reminder re-checks traffic first.")
         }
     }
 }
 
 /// Settings → Leave reminders: any of At leave time, 5…30 min before (item 17).
 private struct LeaveRemindersPicker: View {
+    @Binding var enabled: Bool
     @Binding var offsets: [Int]
 
     static func name(_ minutes: Int) -> String { minutes == 0 ? "At leave time" : "\(minutes) min before" }
@@ -436,6 +437,10 @@ private struct LeaveRemindersPicker: View {
 
     var body: some View {
         SettingsPage(title: "Leave reminders") {
+            Section {
+                DefaultToggle(title: "Leave reminders", isOn: $enabled, defaultValue: BridgeSettings().leaveReminderEnabled)
+            }
+            if enabled {
             Section {
                 ForEach(BridgeSettings.leaveReminderChoices.reversed(), id: \.self) { minutes in
                     Toggle(Self.name(minutes), isOn: Binding(
@@ -450,6 +455,7 @@ private struct LeaveRemindersPicker: View {
             } footer: {
                 Text("Each one re-checks the drive and tells you when to leave. Later reminders follow the new leave-by.")
             }
+            }
         }
     }
 }
@@ -463,8 +469,9 @@ private struct DriveTimeSection: View {
             Picker(selection: $settings.driveTimeSource) {
                 ForEach(DriveTimeSource.allCases) { Text($0.displayName).tag($0) }
             } label: {
-                WithDefault(text: "Use", defaultText: settings.driveTimeSource == BridgeSettings().driveTimeSource ? nil : BridgeSettings().driveTimeSource.displayName)
+                WithDefault(text: "Drive times from", defaultText: settings.driveTimeSource == BridgeSettings().driveTimeSource ? nil : BridgeSettings().driveTimeSource.displayName)
             }
+            .info(driveTimeFooter(for: settings.driveTimeSource))
             if googleKeySaved || settings.driveTimeSource == .google {
                 Picker(selection: $settings.googlePessimisticTraffic) {
                     Text("A typical day").tag(false)
@@ -475,25 +482,29 @@ private struct DriveTimeSection: View {
             }
             // v0.4.11 item 1: Your morning's Leave by · worst case.
             Picker(selection: $settings.worstCaseArrival) {
-                ForEach(WorstCaseArrival.allCases) { Text($0.displayName).tag($0) }
+                ForEach(WorstCaseArrival.allCases) { Text($0 == .whenItStarts ? "The start" : "Arriving early").tag($0) }
             } label: {
-                WithDefault(text: "Worst case gets you there", defaultText: settings.worstCaseArrival == BridgeSettings().worstCaseArrival ? nil : BridgeSettings().worstCaseArrival.displayName.lowercased())
+                WithDefault(text: "Worst-case Leave by aims for", defaultText: settings.worstCaseArrival == BridgeSettings().worstCaseArrival ? nil : (BridgeSettings().worstCaseArrival == .whenItStarts ? "the start" : "arriving early"))
             }
-            DefaultStepper(value: $settings.fallbackTravelMinutes, in: 0...180, step: 5, defaultValue: BridgeSettings().fallbackTravelMinutes, note: { "\($0) min" }) { "If no drive time: \($0) min" }
+            .info("Your morning shows Leave by · worst case, the latest you can leave on a bad-traffic day. The start: you get there right as it starts. Arriving early: it takes off the same arrive-early time as Leave by.")
+            DefaultStepper(value: $settings.fallbackTravelMinutes, in: 0...180, step: 5, defaultValue: BridgeSettings().fallbackTravelMinutes, note: { "\($0) min" }) { "Drive time when none is found: \($0) min" }
             DefaultToggle(title: "Start from where I am when away", isOn: $settings.driveFromHereWhenAway, defaultValue: BridgeSettings().driveFromHereWhenAway)
+                .info("Away from home overnight (Home Assistant says so), drives start from where the phone is.")
         } header: {
             Text("Drive time")
         } footer: {
-            Text(driveTimeFooter(for: settings.driveTimeSource) + " Your morning also shows Leave by · worst case, the latest you can leave on a bad-traffic day: when it starts gets you there right at the start, early takes off the same arrive-early time as Leave by.")
+            Text("Where drive times come from and what to plan for.")
         }
 
         Section {
             APIKeyField(source: .tomTom) { _ in }
+                .info("developer.tomtom.com › Dashboard › Keys.")
             APIKeyField(source: .google) { googleKeySaved = $0 }
+                .info("A Routes API key from Google Cloud. With a Google key, its worst case is always shown on the timeline too.")
         } header: {
             Text("API keys")
         } footer: {
-            Text("Each key is saved in your Keychain as soon as you paste it, whichever service you use. Every service with a key is asked each time and shown on the morning timeline; with a Google key, its worst case is always shown too. TomTom: developer.tomtom.com › Dashboard › Keys. Google: a Routes API key from Google Cloud.")
+            Text("Saved in your Keychain as soon as you paste one. Every service with a key is asked each time and shown on the morning timeline.")
         }
     }
 }
